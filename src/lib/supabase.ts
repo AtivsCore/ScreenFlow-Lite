@@ -24,13 +24,31 @@ export function normalizePublicEnvValue(raw: string | undefined | null): string 
 }
 
 /**
+ * Corrige colagem acidental estilo Markdown: `[texto](https://projeto.supabase.co)`.
+ * Comum ao copiar a URL das docs / Notion / e-mail para a Vercel.
+ */
+export function sanitizeSupabaseProjectUrl(raw: string): string {
+  const s = normalizePublicEnvValue(raw);
+  if (!s) return "";
+  const md = /^\[[^\]]*]\(\s*(https?:\/\/[^\s)]+)\s*\)\s*$/i.exec(s);
+  if (md) return md[1];
+  if (s.includes("](")) {
+    const inner = /\(\s*(https:\/\/[^\s)]+)\s*\)/i.exec(s);
+    if (inner) return inner[1];
+  }
+  return s;
+}
+
+/**
  * Resolve URL + anon a partir do `process.env` atual (SSR, Route Handler, CI).
  * Ordem: NEXT_PUBLIC_* → SUPABASE_* (somente servidor / rota API).
  */
 export function resolveSupabaseEnvPairs(): SupabasePublicPair {
-  const url =
+  const urlMerged =
     normalizePublicEnvValue(process.env[NEXT_PUBLIC_SUPABASE_URL_KEY]) ||
     normalizePublicEnvValue(process.env[SUPABASE_URL_KEY]);
+
+  const url = sanitizeSupabaseProjectUrl(urlMerged);
 
   const anonKey =
     normalizePublicEnvValue(process.env[NEXT_PUBLIC_SUPABASE_ANON_KEY_KEY]) ||
@@ -63,7 +81,7 @@ export function logSupabaseEnvDiagnostics(scope: string): void {
 }
 
 export function createSupabaseClientSafe(urlRaw: string, anonKeyRaw: string): SupabaseClient | null {
-  const url = normalizePublicEnvValue(urlRaw);
+  const url = sanitizeSupabaseProjectUrl(urlRaw);
   const anonKey = normalizePublicEnvValue(anonKeyRaw);
 
   if (!url || !anonKey) {
