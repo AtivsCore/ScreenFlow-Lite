@@ -56,7 +56,8 @@ export default function Home() {
       return;
     }
     setLoadError(null);
-    const { data, error } = await supabase.from("atendimentos_lite").select(`
+    try {
+      const { data, error } = await supabase.from("atendimentos_lite").select(`
       id,
       status,
       prioridade,
@@ -66,14 +67,21 @@ export default function Home() {
       locais ( nome )
     `);
 
-    if (error) {
-      setLoadError(error.message);
+      if (error) {
+        setLoadError(error.message);
+        setRows([]);
+      } else {
+        const flat = ((data as AtendimentoLiteNested[]) ?? []).map(mapAtendimentoNestedToFlat);
+        setRows(flat);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setLoadError(`Falha ao carregar a fila: ${msg}`);
       setRows([]);
-    } else {
-      const flat = ((data as AtendimentoLiteNested[]) ?? []).map(mapAtendimentoNestedToFlat);
-      setRows(flat);
+      console.error("[ScreenFlow] refreshRows:", e);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [supabase]);
 
   useEffect(() => {
@@ -83,19 +91,24 @@ export default function Home() {
   useEffect(() => {
     if (!supabase) return;
 
-    const channel = supabase
-      .channel("screenflow-atendimentos-lite")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "atendimentos_lite" },
-        () => {
-          void refreshRows();
-        }
-      )
-      .subscribe();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel("screenflow-atendimentos-lite")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "atendimentos_lite" },
+          () => {
+            void refreshRows();
+          }
+        )
+        .subscribe();
+    } catch (e) {
+      console.warn("[ScreenFlow] Realtime indisponível (a lista ainda pode ser carregada manualmente).", e);
+    }
 
     return () => {
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [supabase, refreshRows]);
 
@@ -114,12 +127,19 @@ export default function Home() {
       if (!supabase || !selectedId) return;
       setPending(true);
       setLoadError(null);
-      const { error } = await supabase
-        .from("atendimentos_lite")
-        .update({ status })
-        .eq("id", selectedId);
-      setPending(false);
-      if (error) setLoadError(error.message);
+      try {
+        const { error } = await supabase
+          .from("atendimentos_lite")
+          .update({ status })
+          .eq("id", selectedId);
+        if (error) setLoadError(error.message);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setLoadError(`Falha ao atualizar status: ${msg}`);
+        console.error("[ScreenFlow] updateStatus:", e);
+      } finally {
+        setPending(false);
+      }
     },
     [supabase, selectedId]
   );
@@ -131,9 +151,11 @@ export default function Home() {
       <div className="flex min-w-0 flex-1 flex-col">
         {envMissing && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-            Defina <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
-            e <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">NEXT_PUBLIC_SUPABASE_ANON_KEY</code> em{" "}
-            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">.env.local</code> na raiz do projeto Next.
+            Defina{" "}
+            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">NEXT_PUBLIC_SUPABASE_URL</code> e{" "}
+            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>{" "}
+            (local: <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">.env.local</code> —
+            produção: Environment Variables na Vercel). Após alterar na Vercel, faça um redeploy.
           </div>
         )}
         {loadError && !envMissing && (
