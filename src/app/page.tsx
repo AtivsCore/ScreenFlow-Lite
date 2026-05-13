@@ -20,7 +20,6 @@ import {
   sortAtendimentosLite,
 } from "@/lib/atendimentos-lite";
 import {
-  createSupabaseBrowserClient,
   createSupabaseClientSafe,
 } from "@/lib/supabase";
 import { useSupabasePublicEnv } from "@/components/supabase-env-provider";
@@ -39,13 +38,48 @@ const tvMonitors = [
 
 export default function Home() {
   const serverPublicEnv = useSupabasePublicEnv();
+  const hasServerCred = !!(serverPublicEnv?.url && serverPublicEnv?.anonKey);
+
+  const [apiEnv, setApiEnv] = useState<{ url: string; anonKey: string } | null>(null);
+  const [apiProbeDone, setApiProbeDone] = useState(hasServerCred);
+
+  useEffect(() => {
+    if (hasServerCred) return;
+
+    let cancelled = false;
+
+    async function probe() {
+      try {
+        const res = await fetch("/api/supabase-public", { cache: "no-store" });
+        if (!res.ok) return;
+        const j = (await res.json()) as { ok?: boolean; url?: string; anonKey?: string };
+        if (cancelled || !j?.ok || typeof j.url !== "string" || typeof j.anonKey !== "string") return;
+        setApiEnv({ url: j.url, anonKey: j.anonKey });
+      } catch {
+        /* silêncio: banner após probe */
+      } finally {
+        if (!cancelled) setApiProbeDone(true);
+      }
+    }
+
+    void probe();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasServerCred]);
+
+  const mergedEnv = useMemo(() => {
+    if (serverPublicEnv?.url && serverPublicEnv.anonKey) return serverPublicEnv;
+    if (apiEnv?.url && apiEnv.anonKey) return apiEnv;
+    return { url: "", anonKey: "" };
+  }, [serverPublicEnv?.url, serverPublicEnv?.anonKey, apiEnv]);
 
   const supabase = useMemo(() => {
-    if (serverPublicEnv?.url && serverPublicEnv.anonKey) {
-      return createSupabaseClientSafe(serverPublicEnv.url, serverPublicEnv.anonKey);
-    }
-    return createSupabaseBrowserClient();
-  }, [serverPublicEnv?.url, serverPublicEnv?.anonKey]);
+    const m = mergedEnv;
+    if (!m.url || !m.anonKey) return null;
+    return createSupabaseClientSafe(m.url, m.anonKey);
+  }, [mergedEnv.url, mergedEnv.anonKey]);
 
   const [rows, setRows] = useState<AtendimentoLite[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -63,8 +97,10 @@ export default function Home() {
   const refreshRows = useCallback(async () => {
     if (!supabase) {
       setRows([]);
-      setLoadError("Supabase não configurado (variáveis de ambiente ausentes).");
-      setLoading(false);
+      if (apiProbeDone) {
+        setLoadError("Supabase não configurado (credenciais ausentes ou inválidas em runtime).");
+        setLoading(false);
+      }
       return;
     }
     setLoadError(null);
@@ -94,7 +130,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, apiProbeDone]);
 
   useEffect(() => {
     void refreshRows();
@@ -156,18 +192,26 @@ export default function Home() {
     [supabase, selectedId]
   );
 
-  const envMissing = !supabase;
+  const envChecking = !apiProbeDone && !supabase;
+  const envMissing = apiProbeDone && !supabase;
 
   return (
     <div className="flex min-h-full flex-1 bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <div className="flex min-w-0 flex-1 flex-col">
+        {envChecking && (
+          <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-400">
+            Verificando variáveis do Supabase no servidor…
+          </div>
+        )}
         {envMissing && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-            Defina{" "}
-            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">NEXT_PUBLIC_SUPABASE_URL</code> e{" "}
-            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>{" "}
-            (local: <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">.env.local</code> —
-            produção: Environment Variables na Vercel). Após alterar na Vercel, faça um redeploy.
+            Credenciais do Supabase não encontradas em runtime (
+            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">NEXT_PUBLIC_SUPABASE_URL</code> +{" "}
+            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
+            , ou aliases <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">SUPABASE_URL</code> +{" "}
+            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">SUPABASE_ANON_KEY</code> no painel da
+            Vercel). Confira o projeto e o ambiente Production; depois redeploy. Nos logs da Vercel procure{" "}
+            <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">[ScreenFlow][env:</code>.
           </div>
         )}
         {loadError && !envMissing && (
@@ -205,7 +249,7 @@ export default function Home() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={!selectedId || pending || envMissing}
+                disabled={!selectedId || pending || !supabase}
                 onClick={() => void updateStatus(STATUS_UPDATE.chamar)}
                 className="min-h-12 min-w-[8.5rem] flex-1 rounded-lg bg-zinc-900 px-5 text-base font-semibold text-white shadow-sm transition hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
@@ -213,7 +257,7 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                disabled={!selectedId || pending || envMissing}
+                disabled={!selectedId || pending || !supabase}
                 onClick={() => void updateStatus(STATUS_UPDATE.rechamar)}
                 className="min-h-12 min-w-[8.5rem] flex-1 rounded-lg border-2 border-zinc-300 bg-white px-5 text-base font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
               >
@@ -221,7 +265,7 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                disabled={!selectedId || pending || envMissing}
+                disabled={!selectedId || pending || !supabase}
                 onClick={() => void updateStatus(STATUS_UPDATE.finalizar)}
                 className="min-h-12 min-w-[8.5rem] flex-1 rounded-lg border-2 border-emerald-600 bg-emerald-600 px-5 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
               >

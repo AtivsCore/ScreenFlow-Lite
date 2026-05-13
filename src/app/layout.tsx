@@ -2,12 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SupabaseEnvProvider } from "@/components/supabase-env-provider";
-import {
-  logSupabaseEnvDiagnostics,
-  normalizePublicEnvValue,
-  NEXT_PUBLIC_SUPABASE_ANON_KEY_KEY,
-  NEXT_PUBLIC_SUPABASE_URL_KEY,
-} from "@/lib/supabase";
+import { logSupabaseEnvDiagnostics, resolveSupabaseEnvPairs } from "@/lib/supabase";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,7 +19,6 @@ export const metadata: Metadata = {
   description: "Gestão de fila e chamadas",
 };
 
-/** Garante que `process.env.NEXT_PUBLIC_*` seja lido em runtime na Vercel (não só no tempo de build). */
 export const dynamic = "force-dynamic";
 
 export default function RootLayout({
@@ -34,10 +28,7 @@ export default function RootLayout({
 }>) {
   logSupabaseEnvDiagnostics("root-layout");
 
-  const supabasePublic = {
-    url: normalizePublicEnvValue(process.env[NEXT_PUBLIC_SUPABASE_URL_KEY]),
-    anonKey: normalizePublicEnvValue(process.env[NEXT_PUBLIC_SUPABASE_ANON_KEY_KEY]),
-  };
+  const supabasePublic = resolveSupabaseEnvPairs();
 
   return (
     <html
