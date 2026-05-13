@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  finalizeSupabasePublicPair,
   logSupabaseEnvDiagnostics,
   resolveSupabaseEnvPairs,
 } from "@/lib/supabase";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   logSupabaseEnvDiagnostics("api-supabase-public");
 
-  const { url, anonKey } = resolveSupabaseEnvPairs();
+  const { url, anonKey } = finalizeSupabasePublicPair(resolveSupabaseEnvPairs());
 
   if (!url || !anonKey) {
     return NextResponse.json(

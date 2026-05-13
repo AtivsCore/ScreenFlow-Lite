@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SupabaseEnvProvider } from "@/components/supabase-env-provider";
-import { logSupabaseEnvDiagnostics, resolveSupabaseEnvPairs } from "@/lib/supabase";
+import { finalizeSupabasePublicPair, logSupabaseEnvDiagnostics, resolveSupabaseEnvPairs } from "@/lib/supabase";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +28,7 @@ export default function RootLayout({
 }>) {
   logSupabaseEnvDiagnostics("root-layout");
 
-  const supabasePublic = resolveSupabaseEnvPairs();
+  const supabasePublic = finalizeSupabasePublicPair(resolveSupabaseEnvPairs());
 
   return (
     <html

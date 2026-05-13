@@ -21,6 +21,8 @@ import {
 } from "@/lib/atendimentos-lite";
 import {
   createSupabaseClientSafe,
+  finalizeSupabasePublicPair,
+  isNetworkLikeFetchFailure,
 } from "@/lib/supabase";
 import { useSupabasePublicEnv } from "@/components/supabase-env-provider";
 
@@ -54,7 +56,7 @@ export default function Home() {
         if (!res.ok) return;
         const j = (await res.json()) as { ok?: boolean; url?: string; anonKey?: string };
         if (cancelled || !j?.ok || typeof j.url !== "string" || typeof j.anonKey !== "string") return;
-        setApiEnv({ url: j.url, anonKey: j.anonKey });
+        setApiEnv(finalizeSupabasePublicPair({ url: j.url, anonKey: j.anonKey }));
       } catch {
         /* silêncio: banner após probe */
       } finally {
@@ -70,8 +72,12 @@ export default function Home() {
   }, [hasServerCred]);
 
   const mergedEnv = useMemo(() => {
-    if (serverPublicEnv?.url && serverPublicEnv.anonKey) return serverPublicEnv;
-    if (apiEnv?.url && apiEnv.anonKey) return apiEnv;
+    if (serverPublicEnv?.url && serverPublicEnv.anonKey) {
+      return finalizeSupabasePublicPair(serverPublicEnv);
+    }
+    if (apiEnv?.url && apiEnv.anonKey) {
+      return finalizeSupabasePublicPair(apiEnv);
+    }
     return { url: "", anonKey: "" };
   }, [serverPublicEnv?.url, serverPublicEnv?.anonKey, apiEnv]);
 
@@ -95,14 +101,45 @@ export default function Home() {
   );
 
   const refreshRows = useCallback(async () => {
+    const applyNested = (nested: AtendimentoLiteNested[]) => {
+      setRows(nested.map(mapAtendimentoNestedToFlat));
+    };
+
+    const tryServerQueue = async (): Promise<boolean> => {
+      try {
+        const r = await fetch("/api/atendimentos-queue", { cache: "no-store" });
+        const j = (await r.json()) as { ok?: boolean; data?: unknown; message?: string };
+        if (!r.ok || !j.ok || !Array.isArray(j.data)) {
+          setLoadError(
+            j.message ||
+              `Não foi possível carregar a fila pelo servidor (HTTP ${r.status}). Verifique RLS/policies se o erro citar permissão.`
+          );
+          setRows([]);
+          return false;
+        }
+        applyNested(j.data as AtendimentoLiteNested[]);
+        setLoadError(null);
+        return true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setLoadError(
+          `Rede: ${msg}. Isto costuma ser bloqueio no navegador (extensão/DNS), não CORS do Supabase. A fila tentou carregar via rota /api/atendimentos-queue.`
+        );
+        setRows([]);
+        console.error("[ScreenFlow] tryServerQueue:", err);
+        return false;
+      }
+    };
+
     if (!supabase) {
       setRows([]);
       if (apiProbeDone) {
-        setLoadError("Supabase não configurado (credenciais ausentes ou inválidas em runtime).");
-        setLoading(false);
+        await tryServerQueue();
       }
+      setLoading(false);
       return;
     }
+
     setLoadError(null);
     try {
       const { data, error } = await supabase.from("atendimentos_lite").select(`
@@ -116,17 +153,24 @@ export default function Home() {
     `);
 
       if (error) {
-        setLoadError(error.message);
-        setRows([]);
+        if (isNetworkLikeFetchFailure(error.message)) {
+          await tryServerQueue();
+        } else {
+          setLoadError(error.message);
+          setRows([]);
+        }
       } else {
-        const flat = ((data as AtendimentoLiteNested[]) ?? []).map(mapAtendimentoNestedToFlat);
-        setRows(flat);
+        applyNested((data as AtendimentoLiteNested[]) ?? []);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setLoadError(`Falha ao carregar a fila: ${msg}`);
-      setRows([]);
-      console.error("[ScreenFlow] refreshRows:", e);
+      if (isNetworkLikeFetchFailure(msg)) {
+        await tryServerQueue();
+      } else {
+        setLoadError(`Falha ao carregar a fila: ${msg}`);
+        setRows([]);
+        console.error("[ScreenFlow] refreshRows:", e);
+      }
     } finally {
       setLoading(false);
     }
@@ -172,28 +216,67 @@ export default function Home() {
 
   const updateStatus = useCallback(
     async (status: string) => {
-      if (!supabase || !selectedId) return;
+      if (!selectedId) return;
       setPending(true);
       setLoadError(null);
+
+      const tryProxyUpdate = async () => {
+        const r = await fetch("/api/atendimentos-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: selectedId, status }),
+        });
+        const j = (await r.json()) as { ok?: boolean; message?: string };
+        if (!r.ok || !j.ok) {
+          setLoadError(j.message || `Atualização via servidor: HTTP ${r.status}`);
+          return;
+        }
+        await refreshRows();
+      };
+
       try {
-        const { error } = await supabase
-          .from("atendimentos_lite")
-          .update({ status })
-          .eq("id", selectedId);
-        if (error) setLoadError(error.message);
+        if (supabase) {
+          const { error } = await supabase
+            .from("atendimentos_lite")
+            .update({ status })
+            .eq("id", selectedId);
+          if (!error) {
+            await refreshRows();
+            return;
+          }
+          if (isNetworkLikeFetchFailure(error.message)) {
+            await tryProxyUpdate();
+            return;
+          }
+          setLoadError(error.message);
+          return;
+        }
+        await tryProxyUpdate();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        setLoadError(`Falha ao atualizar status: ${msg}`);
-        console.error("[ScreenFlow] updateStatus:", e);
+        if (isNetworkLikeFetchFailure(msg)) {
+          try {
+            await tryProxyUpdate();
+          } catch (e2) {
+            setLoadError(e2 instanceof Error ? e2.message : String(e2));
+            console.error("[ScreenFlow] updateStatus proxy:", e2);
+          }
+        } else {
+          setLoadError(`Falha ao atualizar status: ${msg}`);
+          console.error("[ScreenFlow] updateStatus:", e);
+        }
       } finally {
         setPending(false);
       }
     },
-    [supabase, selectedId]
+    [supabase, selectedId, refreshRows]
   );
 
   const envChecking = !apiProbeDone && !supabase;
   const envMissing = apiProbeDone && !supabase;
+  /** Permite Chamar/Rechamar/Finalizar via proxy se o cliente JS não conseguiu falar com o Supabase. */
+  const canMutate =
+    !pending && !!selectedId && (!!supabase || (!!mergedEnv.url && !!mergedEnv.anonKey));
 
   return (
     <div className="flex min-h-full flex-1 bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
@@ -249,7 +332,7 @@ export default function Home() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={!selectedId || pending || !supabase}
+                disabled={!canMutate}
                 onClick={() => void updateStatus(STATUS_UPDATE.chamar)}
                 className="min-h-12 min-w-[8.5rem] flex-1 rounded-lg bg-zinc-900 px-5 text-base font-semibold text-white shadow-sm transition hover:bg-zinc-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
@@ -257,7 +340,7 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                disabled={!selectedId || pending || !supabase}
+                disabled={!canMutate}
                 onClick={() => void updateStatus(STATUS_UPDATE.rechamar)}
                 className="min-h-12 min-w-[8.5rem] flex-1 rounded-lg border-2 border-zinc-300 bg-white px-5 text-base font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
               >
@@ -265,7 +348,7 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                disabled={!selectedId || pending || !supabase}
+                disabled={!canMutate}
                 onClick={() => void updateStatus(STATUS_UPDATE.finalizar)}
                 className="min-h-12 min-w-[8.5rem] flex-1 rounded-lg border-2 border-emerald-600 bg-emerald-600 px-5 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
               >

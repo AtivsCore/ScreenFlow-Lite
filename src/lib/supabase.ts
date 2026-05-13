@@ -39,6 +39,34 @@ export function sanitizeSupabaseProjectUrl(raw: string): string {
   return s;
 }
 
+/** URL final para PostgREST / createClient (sem barra no fim). */
+export function finalizeSupabasePublicUrl(raw: string): string {
+  let u = sanitizeSupabaseProjectUrl(raw);
+  if (!u) return "";
+  u = u.replace(/\/+$/, "");
+  return u;
+}
+
+export function finalizeSupabasePublicPair(pair: SupabasePublicPair): SupabasePublicPair {
+  return {
+    url: finalizeSupabasePublicUrl(pair.url),
+    anonKey: normalizePublicEnvValue(pair.anonKey),
+  };
+}
+
+/** Erros típicos de rede no browser (não confundir com RLS/403 em JSON). */
+export function isNetworkLikeFetchFailure(message: string | undefined | null): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes("failed to fetch") ||
+    m.includes("networkerror") ||
+    m.includes("network request failed") ||
+    m.includes("load failed") ||
+    m.includes("fetch failed")
+  );
+}
+
 /**
  * Resolve URL + anon a partir do `process.env` atual (SSR, Route Handler, CI).
  * Ordem: NEXT_PUBLIC_* → SUPABASE_* (somente servidor / rota API).
@@ -48,7 +76,7 @@ export function resolveSupabaseEnvPairs(): SupabasePublicPair {
     normalizePublicEnvValue(process.env[NEXT_PUBLIC_SUPABASE_URL_KEY]) ||
     normalizePublicEnvValue(process.env[SUPABASE_URL_KEY]);
 
-  const url = sanitizeSupabaseProjectUrl(urlMerged);
+  const url = finalizeSupabasePublicUrl(urlMerged);
 
   const anonKey =
     normalizePublicEnvValue(process.env[NEXT_PUBLIC_SUPABASE_ANON_KEY_KEY]) ||
@@ -81,8 +109,10 @@ export function logSupabaseEnvDiagnostics(scope: string): void {
 }
 
 export function createSupabaseClientSafe(urlRaw: string, anonKeyRaw: string): SupabaseClient | null {
-  const url = sanitizeSupabaseProjectUrl(urlRaw);
-  const anonKey = normalizePublicEnvValue(anonKeyRaw);
+  const { url, anonKey } = finalizeSupabasePublicPair({
+    url: urlRaw,
+    anonKey: anonKeyRaw,
+  });
 
   if (!url || !anonKey) {
     logSupabaseInit(
@@ -112,7 +142,7 @@ export function createSupabaseClientSafe(urlRaw: string, anonKeyRaw: string): Su
 
 /** Fallback no browser: apenas chaves NEXT_PUBLIC_* (inlining do bundler). */
 export function createSupabaseBrowserClient(): SupabaseClient | null {
-  const url = normalizePublicEnvValue(process.env[NEXT_PUBLIC_SUPABASE_URL_KEY]);
+  const url = finalizeSupabasePublicUrl(process.env[NEXT_PUBLIC_SUPABASE_URL_KEY] ?? "");
   const anonKey = normalizePublicEnvValue(process.env[NEXT_PUBLIC_SUPABASE_ANON_KEY_KEY]);
   return createSupabaseClientSafe(url, anonKey);
 }
