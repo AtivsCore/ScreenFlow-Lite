@@ -1,4 +1,4 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# See https://help.github.com/articles/ignoring-files/ for more information about ignoring files.
 
 # dependencies
 /node_modules
@@ -35,6 +35,9 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# pasta antiga (remova localmente quando o dev server liberar DLLs bloqueadas)
+/screenflow-lite/
 
 # typescript
 *.tsbuildinfo

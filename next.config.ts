@@ -1,10 +1,6 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  turbopack: {
-    // Evita inferir a pasta pai quando existem vários package-lock no workspace
-    root: process.cwd(),
-  },
-};
+/** App Next na raiz do repositório — Vercel faz o build a partir deste diretório. */
+const nextConfig: NextConfig = {};
 
 export default nextConfig;
