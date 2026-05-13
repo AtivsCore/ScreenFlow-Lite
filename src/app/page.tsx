@@ -19,7 +19,11 @@ import {
   mapAtendimentoNestedToFlat,
   sortAtendimentosLite,
 } from "@/lib/atendimentos-lite";
-import { createSupabaseBrowserClient } from "@/lib/supabase";
+import {
+  createSupabaseBrowserClient,
+  createSupabaseClientSafe,
+} from "@/lib/supabase";
+import { useSupabasePublicEnv } from "@/components/supabase-env-provider";
 
 const settingsLinks = [
   { href: "/medicos", label: "Médicos", icon: Stethoscope },
@@ -34,7 +38,15 @@ const tvMonitors = [
 ];
 
 export default function Home() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const serverPublicEnv = useSupabasePublicEnv();
+
+  const supabase = useMemo(() => {
+    if (serverPublicEnv?.url && serverPublicEnv.anonKey) {
+      return createSupabaseClientSafe(serverPublicEnv.url, serverPublicEnv.anonKey);
+    }
+    return createSupabaseBrowserClient();
+  }, [serverPublicEnv?.url, serverPublicEnv?.anonKey]);
+
   const [rows, setRows] = useState<AtendimentoLite[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
