@@ -16,62 +16,15 @@ import {
   isFinalizado,
   mapAtendimentoNestedToFlat,
 } from "@/lib/atendimentos-lite";
-import {
-  createSupabaseClientSafe,
-  finalizeSupabasePublicPair,
-  isNetworkLikeFetchFailure,
-} from "@/lib/supabase";
-import { useSupabasePublicEnv } from "@/components/supabase-env-provider";
+import { isNetworkLikeFetchFailure } from "@/lib/supabase";
+import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export default function Home() {
-  const serverPublicEnv = useSupabasePublicEnv();
-  const hasServerCred = !!(serverPublicEnv?.url && serverPublicEnv?.anonKey);
-
-  const [apiEnv, setApiEnv] = useState<{ url: string; anonKey: string } | null>(null);
-  const [apiProbeDone, setApiProbeDone] = useState(hasServerCred);
-
-  useEffect(() => {
-    if (hasServerCred) return;
-
-    let cancelled = false;
-
-    async function probe() {
-      try {
-        const res = await fetch("/api/supabase-public", { cache: "no-store" });
-        if (!res.ok) return;
-        const j = (await res.json()) as { ok?: boolean; url?: string; anonKey?: string };
-        if (cancelled || !j?.ok || typeof j.url !== "string" || typeof j.anonKey !== "string") return;
-        setApiEnv(finalizeSupabasePublicPair({ url: j.url, anonKey: j.anonKey }));
-      } catch {
-        /* banner após probe */
-      } finally {
-        if (!cancelled) setApiProbeDone(true);
-      }
-    }
-
-    void probe();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hasServerCred]);
-
-  const mergedEnv = useMemo(() => {
-    if (serverPublicEnv?.url && serverPublicEnv.anonKey) {
-      return finalizeSupabasePublicPair(serverPublicEnv);
-    }
-    if (apiEnv?.url && apiEnv.anonKey) {
-      return finalizeSupabasePublicPair(apiEnv);
-    }
-    return { url: "", anonKey: "" };
-  }, [serverPublicEnv, apiEnv]);
-
-  const supabase = useMemo(() => {
-    const m = mergedEnv;
-    if (!m.url || !m.anonKey) return null;
-    return createSupabaseClientSafe(m.url, m.anonKey);
-  }, [mergedEnv]);
+  const router = useRouter();
+  const { supabase, mergedEnv, envMissing, envChecking, apiProbeDone } = useMergedSupabaseClient();
+  const [sessionReady, setSessionReady] = useState(false);
 
   const [rows, setRows] = useState<AtendimentoLite[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -82,6 +35,34 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [registryOpen, setRegistryOpen] = useState(false);
   const [editRow, setEditRow] = useState<AtendimentoLite | null>(null);
+
+  useEffect(() => {
+    if (!supabase || envMissing) return;
+    let cancelled = false;
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      setSessionReady(true);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_evt, session) => {
+      if (cancelled) return;
+      if (!session) {
+        setSessionReady(false);
+        router.replace("/login");
+        return;
+      }
+      setSessionReady(true);
+    });
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [supabase, envMissing, router]);
 
   const displayRows = useMemo(() => filterAndSortQueue(rows, queueTab), [rows, queueTab]);
 
@@ -173,13 +154,14 @@ export default function Home() {
   }, [supabase, apiProbeDone]);
 
   useEffect(() => {
+    if (!sessionReady) return;
     queueMicrotask(() => {
       void refreshRows();
     });
-  }, [refreshRows]);
+  }, [refreshRows, sessionReady]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !sessionReady) return;
 
     let channel: ReturnType<typeof supabase.channel> | null = null;
     try {
@@ -200,7 +182,7 @@ export default function Home() {
     return () => {
       if (channel) void supabase.removeChannel(channel);
     };
-  }, [supabase, refreshRows]);
+  }, [supabase, sessionReady, refreshRows]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -302,14 +284,23 @@ export default function Home() {
     [supabase, selectedId, refreshRows, tryProxyPatch]
   );
 
-  const envChecking = !apiProbeDone && !supabase;
-  const envMissing = apiProbeDone && !supabase;
   const canMutate =
     !pending && !!selectedId && (!!supabase || (!!mergedEnv.url && !!mergedEnv.anonKey));
 
+  if (supabase && !sessionReady && !envMissing) {
+    return (
+      <div className="flex min-h-[100dvh] w-full flex-col items-center justify-center bg-zinc-100 text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Verificando sessão…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[100dvh] min-h-0 w-full flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
-      <AppSidebar onOpenSettings={() => setSettingsOpen(true)} />
+      <AppSidebar
+        onOpenSettings={() => setSettingsOpen(true)}
+        onSignOut={() => void supabase?.auth.signOut()}
+      />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {envChecking && (
