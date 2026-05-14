@@ -7,9 +7,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type Body = { id?: string; status?: string };
+type Body = {
+  id?: string;
+  status?: string;
+  profissional_id?: string | null;
+  observacao?: string | null;
+};
 
-/** PATCH via servidor (mesmo motivo do GET da fila: rede no browser). */
+/** PATCH parcial via servidor (rede no browser / proxy). */
 export async function POST(req: Request) {
   logSupabaseEnvDiagnostics("api-atendimentos-status");
 
@@ -21,9 +26,20 @@ export async function POST(req: Request) {
   }
 
   const id = typeof body.id === "string" ? body.id.trim() : "";
-  const status = typeof body.status === "string" ? body.status.trim() : "";
-  if (!id || !status) {
-    return NextResponse.json({ ok: false, message: "Campos id e status obrigatórios." }, { status: 400 });
+  if (!id) {
+    return NextResponse.json({ ok: false, message: "Campo id obrigatório." }, { status: 400 });
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (typeof body.status === "string" && body.status.trim()) payload.status = body.status.trim();
+  if (body.profissional_id !== undefined) payload.profissional_id = body.profissional_id;
+  if (body.observacao !== undefined) payload.observacao = body.observacao;
+
+  if (Object.keys(payload).length === 0) {
+    return NextResponse.json(
+      { ok: false, message: "Informe status, profissional_id ou observacao." },
+      { status: 400 }
+    );
   }
 
   const { url, anonKey } = finalizeSupabasePublicPair(resolveSupabaseEnvPairs());
@@ -44,7 +60,7 @@ export async function POST(req: Request) {
         "Content-Type": "application/json",
         Prefer: "return=minimal",
       },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
