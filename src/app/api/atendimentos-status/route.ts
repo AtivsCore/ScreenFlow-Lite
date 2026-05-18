@@ -11,7 +11,12 @@ type Body = {
   id?: string;
   status?: string;
   profissional_id?: string | null;
+  local_id?: string | null;
+  especialidade_id?: string | null;
+  tv_id?: string | null;
   observacao?: string | null;
+  prioridade?: boolean;
+  excluir_do_fechamento?: boolean;
 };
 
 /** PATCH parcial via servidor (rede no browser / proxy). */
@@ -33,11 +38,16 @@ export async function POST(req: Request) {
   const payload: Record<string, unknown> = {};
   if (typeof body.status === "string" && body.status.trim()) payload.status = body.status.trim();
   if (body.profissional_id !== undefined) payload.profissional_id = body.profissional_id;
+  if (body.local_id !== undefined) payload.local_id = body.local_id;
+  if (body.especialidade_id !== undefined) payload.especialidade_id = body.especialidade_id;
+  if (body.tv_id !== undefined) payload.tv_id = body.tv_id;
   if (body.observacao !== undefined) payload.observacao = body.observacao;
+  if (typeof body.prioridade === "boolean") payload.prioridade = body.prioridade;
+  if (typeof body.excluir_do_fechamento === "boolean") payload.excluir_do_fechamento = body.excluir_do_fechamento;
 
   if (Object.keys(payload).length === 0) {
     return NextResponse.json(
-      { ok: false, message: "Informe status, profissional_id ou observacao." },
+      { ok: false, message: "Informe ao menos um campo para atualizar." },
       { status: 400 }
     );
   }

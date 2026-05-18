@@ -17,6 +17,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ScreenFlow Lite",
   description: "Gestão de fila e chamadas",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export const dynamic = "force-dynamic";

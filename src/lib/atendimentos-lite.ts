@@ -1,16 +1,24 @@
+import { SERVICES_TABLE } from "@/lib/db-tables";
+
 /** Linha de `public.atendimentos_lite` (formato plano usado na UI) */
 export type AtendimentoLite = {
   id: string;
   tenant_id: string | null;
   paciente_id: string | null;
   profissional_id: string | null;
+  local_id: string | null;
+  especialidade_id: string | null;
+  tv_id: string | null;
   hora_marcada: string | null;
   status: string | null;
   prioridade: boolean | null;
   observacao: string | null;
+  excluir_do_fechamento: boolean | null;
   created_at: string | null;
   nome: string | null;
-  medicoNome: string | null;
+  profissionalNome: string | null;
+  localNome: string | null;
+  servicoNome: string | null;
 };
 
 /** Resposta do `.select()` com FKs embutidas */
@@ -19,13 +27,21 @@ export type AtendimentoLiteNested = {
   tenant_id: string | null;
   paciente_id: string | null;
   profissional_id: string | null;
+  local_id?: string | null;
+  especialidade_id?: string | null;
+  tv_id?: string | null;
   hora_marcada: string | null;
   status: string | null;
   prioridade: boolean | null;
   observacao: string | null;
+  excluir_do_fechamento?: boolean | null;
   created_at: string | null;
   pacientes?: { nome: string | null } | { nome: string | null }[] | null;
   profissionais?: { id: string; nome: string | null } | { id: string; nome: string | null }[] | null;
+  locais?: { id: string; nome: string | null } | { id: string; nome: string | null }[] | null;
+  /** Legado; use chave dinâmica conforme `SERVICES_TABLE` em `db-tables`. */
+  especialidades?: { id: string; nome: string | null } | { id: string; nome: string | null }[] | null;
+  servicos?: { id: string; nome: string | null } | { id: string; nome: string | null }[] | null;
 };
 
 function nomeRelacionamento(
@@ -48,6 +64,20 @@ function profissionalRel(
   return { id: one?.id ?? null, nome: one?.nome ?? null };
 }
 
+function nomeJoinRel(
+  rel: { nome: string | null } | { nome: string | null }[] | null | undefined
+): string | null {
+  if (rel == null) return null;
+  if (Array.isArray(rel)) return rel[0]?.nome ?? null;
+  return rel.nome ?? null;
+}
+
+function servicoNomeFromNested(row: AtendimentoLiteNested): string | null {
+  const dict = row as unknown as Record<string, unknown>;
+  const embed = dict[SERVICES_TABLE] ?? dict.especialidades ?? dict.servicos;
+  return nomeJoinRel(embed as Parameters<typeof nomeJoinRel>[0]);
+}
+
 /** Converte o retorno do join embutido para o modelo plano da tabela */
 export function mapAtendimentoNestedToFlat(row: AtendimentoLiteNested): AtendimentoLite {
   const prof = profissionalRel(row.profissionais);
@@ -56,13 +86,19 @@ export function mapAtendimentoNestedToFlat(row: AtendimentoLiteNested): Atendime
     tenant_id: row.tenant_id,
     paciente_id: row.paciente_id,
     profissional_id: row.profissional_id ?? prof.id,
+    local_id: row.local_id ?? null,
+    especialidade_id: row.especialidade_id ?? null,
+    tv_id: row.tv_id ?? null,
     hora_marcada: row.hora_marcada,
     status: row.status,
     prioridade: row.prioridade,
     observacao: row.observacao,
+    excluir_do_fechamento: row.excluir_do_fechamento ?? false,
     created_at: row.created_at,
     nome: nomeRelacionamento(row.pacientes),
-    medicoNome: prof.nome,
+    profissionalNome: prof.nome,
+    localNome: nomeJoinRel(row.locais),
+    servicoNome: servicoNomeFromNested(row),
   };
 }
 
@@ -123,6 +159,11 @@ export function isActiveQueueRow(row: AtendimentoLite): boolean {
   return !isFinalizado(row);
 }
 
+export type QueueSortOptions = {
+  /** Quando false, ordenação “Ordem de Chegada” ignora campo de prioridade. */
+  priorityLawEnabled?: boolean;
+};
+
 /**
  * Filtra finalizados e aplica ordenação da aba.
  * — Ordem: prioridade desc, depois created_at asc.
@@ -131,13 +172,20 @@ export function isActiveQueueRow(row: AtendimentoLite): boolean {
  * — Prioridade: só prioritários.
  * — Urgente: prioritários; “urgente” no texto da observação antes; depois horário marcado.
  */
-export function filterAndSortQueue(rows: AtendimentoLite[], tab: QueueTabId): AtendimentoLite[] {
+export function filterAndSortQueue(
+  rows: AtendimentoLite[],
+  tab: QueueTabId,
+  options?: QueueSortOptions
+): AtendimentoLite[] {
+  const law = options?.priorityLawEnabled !== false;
   const active = rows.filter(isActiveQueueRow);
   switch (tab) {
     case "ordem":
       return [...active].sort((a, b) => {
-        const pd = prioridadeOrdem(b.prioridade) - prioridadeOrdem(a.prioridade);
-        if (pd !== 0) return pd;
+        if (law) {
+          const pd = prioridadeOrdem(b.prioridade) - prioridadeOrdem(a.prioridade);
+          if (pd !== 0) return pd;
+        }
         return timeMs(a.created_at) - timeMs(b.created_at);
       });
     case "hora": {

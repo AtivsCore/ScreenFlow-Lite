@@ -1,16 +1,14 @@
 "use client";
 
-import type { AtendimentoLite, QueueTabId } from "@/lib/atendimentos-lite";
+import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 import {
-  QUEUE_TAB_LABELS,
   formatCreatedAt,
   formatHoraMarcada,
 } from "@/lib/atendimentos-lite";
+import type { QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Pencil, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
-
-const TABS: QueueTabId[] = ["ordem", "hora", "encaixe", "prioridade", "urgente"];
 
 function statusStyle(status: string | null): string {
   const s = (status ?? "").toLowerCase();
@@ -23,8 +21,10 @@ function statusStyle(status: string | null): string {
 type QueueSectionProps = {
   id?: string;
   displayRows: AtendimentoLite[];
-  queueTab: QueueTabId;
-  onQueueTab: (t: QueueTabId) => void;
+  queueTabs: QueueTabEntry[];
+  queueTabId: string;
+  onQueueTabId: (id: string) => void;
+  priorityLawEnabled: boolean;
   selectedId: string | null;
   onSelectId: (id: string) => void;
   loading: boolean;
@@ -37,8 +37,10 @@ type QueueSectionProps = {
 export function QueueSection({
   id = "sf-queue",
   displayRows,
-  queueTab,
-  onQueueTab,
+  queueTabs,
+  queueTabId,
+  onQueueTabId,
+  priorityLawEnabled,
   selectedId,
   onSelectId,
   loading,
@@ -50,7 +52,7 @@ export function QueueSection({
   const [deleting, setDeleting] = useState<string | null>(null);
 
   async function handleDelete(row: AtendimentoLite) {
-    if (!supabase || !confirm(`Excluir atendimento de “${row.nome ?? "paciente"}”?`)) return;
+    if (!supabase || !confirm(`Excluir registro de “${row.nome ?? "cliente"}”?`)) return;
     setDeleting(row.id);
     const { error } = await supabase.from("atendimentos_lite").delete().eq("id", row.id);
     if (error) alert(error.message);
@@ -74,7 +76,7 @@ export function QueueSection({
             className="flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             <UserPlus className="size-3.5" strokeWidth={1.75} aria-hidden />
-            Registrar paciente
+            Novo registro
           </button>
         </div>
 
@@ -83,20 +85,20 @@ export function QueueSection({
           role="tablist"
           aria-label="Vistas da fila"
         >
-          {TABS.map((t) => (
+          {queueTabs.map((t) => (
             <button
-              key={t}
+              key={t.id}
               type="button"
               role="tab"
-              aria-selected={queueTab === t}
-              onClick={() => onQueueTab(t)}
+              aria-selected={queueTabId === t.id}
+              onClick={() => onQueueTabId(t.id)}
               className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium transition ${
-                queueTab === t
+                queueTabId === t.id
                   ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                   : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
               }`}
             >
-              {QUEUE_TAB_LABELS[t]}
+              {t.label}
             </button>
           ))}
         </div>
@@ -108,9 +110,9 @@ export function QueueSection({
             <tr>
               <th className="w-[100px] px-2 py-1.5">Chegada</th>
               <th className="w-[110px] px-2 py-1.5">Horário marc.</th>
-              <th className="w-[60px] px-2 py-1.5">Prior.</th>
-              <th className="min-w-[100px] px-2 py-1.5">Paciente</th>
-              <th className="min-w-[80px] px-2 py-1.5">Médico</th>
+              {priorityLawEnabled ? <th className="w-[60px] px-2 py-1.5">Prior.</th> : null}
+              <th className="min-w-[100px] px-2 py-1.5">Cliente</th>
+              <th className="min-w-[80px] px-2 py-1.5">Profissional</th>
               <th className="min-w-[70px] px-2 py-1.5">Status</th>
               <th className="w-[72px] px-2 py-1.5 text-right">Ações</th>
             </tr>
@@ -118,14 +120,14 @@ export function QueueSection({
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={7} className="px-2 py-6 text-center text-zinc-500">
-                  Carregando atendimentos…
+                <td colSpan={priorityLawEnabled ? 7 : 6} className="px-2 py-6 text-center text-zinc-500">
+                  Carregando registros…
                 </td>
               </tr>
             )}
             {!loading && displayRows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-2 py-6 text-center text-zinc-500">
+                <td colSpan={priorityLawEnabled ? 7 : 6} className="px-2 py-6 text-center text-zinc-500">
                   Nenhum registro ativo nesta vista.
                 </td>
               </tr>
@@ -155,19 +157,21 @@ export function QueueSection({
                     <td className="whitespace-nowrap px-2 py-1 font-mono font-medium text-zinc-800 dark:text-zinc-200">
                       {formatHoraMarcada(row.hora_marcada)}
                     </td>
-                    <td className="px-2 py-1">
-                      <span
-                        className={
-                          row.prioridade === true
-                            ? "rounded bg-amber-200 px-1 py-0.5 font-medium text-amber-950 dark:bg-amber-900/70 dark:text-amber-100"
-                            : "rounded bg-zinc-200 px-1 py-0.5 font-medium text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100"
-                        }
-                      >
-                        {row.prioridade === true ? "Sim" : "Não"}
-                      </span>
-                    </td>
+                    {priorityLawEnabled ? (
+                      <td className="px-2 py-1">
+                        <span
+                          className={
+                            row.prioridade === true
+                              ? "rounded bg-amber-200 px-1 py-0.5 font-medium text-amber-950 dark:bg-amber-900/70 dark:text-amber-100"
+                              : "rounded bg-zinc-200 px-1 py-0.5 font-medium text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100"
+                          }
+                        >
+                          {row.prioridade === true ? "Sim" : "Não"}
+                        </span>
+                      </td>
+                    ) : null}
                     <td className="truncate px-2 py-1 font-medium">{row.nome ?? "—"}</td>
-                    <td className="truncate px-2 py-1 text-zinc-700 dark:text-zinc-300">{row.medicoNome ?? "—"}</td>
+                    <td className="truncate px-2 py-1 text-zinc-700 dark:text-zinc-300">{row.profissionalNome ?? "—"}</td>
                     <td className={`truncate px-2 py-1 ${statusStyle(row.status)}`}>{row.status ?? "—"}</td>
                     <td className="px-2 py-1 text-right" onClick={(e) => e.stopPropagation()}>
                       <button
