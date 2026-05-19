@@ -53,3 +53,6 @@ CREATE INDEX IF NOT EXISTS idx_atendimentos_lite_tenant_created
 --
 -- Remover FK tenant_id → tenants (banco compartilhado Pro):
 --   docs/supabase-lite-drop-servicos-fk.sql
+--
+-- RLS da fila (atendimentos_lite — Novo Registro / Chamar / Finalizar):
+--   docs/supabase-lite-rls-atendimentos-fix.sql
