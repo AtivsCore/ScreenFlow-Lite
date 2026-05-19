@@ -13,16 +13,18 @@ import {
   STATUS_UPDATE,
   filterAndSortQueue,
   isFinalizado,
-  mapAtendimentoNestedToFlat,
+  mapAtendimentosNestedToFlat,
 } from "@/lib/atendimentos-lite";
+import { buildServicoLookup } from "@/lib/atendimentos-rest";
 import { isNetworkLikeFetchFailure } from "@/lib/supabase";
 import { SERVICES_TABLE } from "@/lib/db-tables";
 import { mergeTenantConfig, type ResolvedTenantConfig } from "@/lib/tenant-config";
+import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const ENV_TENANT_ID = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID?.trim() || null;
+const ENV_TENANT_ID = resolveDefaultTenantId();
 
 export default function Home() {
   const router = useRouter();
@@ -153,14 +155,29 @@ export default function Home() {
   const tenantIdForInsert = effectiveTenantId;
 
   const refreshRows = useCallback(async () => {
-    const applyNested = (nested: AtendimentoLiteNested[]) => {
-      setRows(nested.map(mapAtendimentoNestedToFlat));
+    const applyNested = (
+      nested: AtendimentoLiteNested[],
+      servicos?: { id: string; nome: string | null }[]
+    ) => {
+      const lookup = servicos ? buildServicoLookup(servicos) : undefined;
+      setRows(mapAtendimentosNestedToFlat(nested, lookup));
+    };
+
+    const fetchServicosClient = async (): Promise<{ id: string; nome: string | null }[]> => {
+      if (!supabase) return [];
+      const { data } = await supabase.from(SERVICES_TABLE).select("id,nome").order("nome");
+      return (data as { id: string; nome: string | null }[] | null) ?? [];
     };
 
     const tryServerQueue = async (): Promise<boolean> => {
       try {
         const r = await fetch("/api/atendimentos-queue", { cache: "no-store" });
-        const j = (await r.json()) as { ok?: boolean; data?: unknown; message?: string };
+        const j = (await r.json()) as {
+          ok?: boolean;
+          data?: unknown;
+          servicos?: { id: string; nome: string | null }[];
+          message?: string;
+        };
         if (!r.ok || !j.ok || !Array.isArray(j.data)) {
           setLoadError(
             j.message ||
@@ -169,7 +186,7 @@ export default function Home() {
           setRows([]);
           return false;
         }
-        applyNested(j.data as AtendimentoLiteNested[]);
+        applyNested(j.data as AtendimentoLiteNested[], j.servicos);
         setLoadError(null);
         return true;
       } catch (err) {
@@ -209,10 +226,14 @@ export default function Home() {
         "pacientes ( nome )",
         "profissionais ( id, nome )",
         "locais ( id, nome )",
-        SERVICES_TABLE + " ( id, nome )",
       ].join(",\n      ");
 
-      const { data, error } = await supabase.from("atendimentos_lite").select(atendimentosSelect);
+      const [atendRes, servicos] = await Promise.all([
+        supabase.from("atendimentos_lite").select(atendimentosSelect),
+        fetchServicosClient(),
+      ]);
+
+      const { data, error } = atendRes;
 
       if (error) {
         if (isNetworkLikeFetchFailure(error.message)) {
@@ -222,7 +243,7 @@ export default function Home() {
           setRows([]);
         }
       } else {
-        applyNested(((data ?? []) as unknown) as AtendimentoLiteNested[]);
+        applyNested(((data ?? []) as unknown) as AtendimentoLiteNested[], servicos);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

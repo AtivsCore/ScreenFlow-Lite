@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { ATENDIMENTOS_LITE_REST_SELECT } from "@/lib/atendimentos-rest";
+import { ATENDIMENTOS_LITE_REST_SELECT, type ServicoRow } from "@/lib/atendimentos-rest";
+import { SERVICES_TABLE } from "@/lib/db-tables";
 import {
   finalizeSupabasePublicPair,
   logSupabaseEnvDiagnostics,
@@ -23,21 +24,23 @@ export async function GET() {
     );
   }
 
+  const headers = {
+    apikey: anonKey,
+    Authorization: `Bearer ${anonKey}`,
+    Accept: "application/json",
+  };
+
   const endpoint = `${url}/rest/v1/atendimentos_lite?select=${encodeURIComponent(ATENDIMENTOS_LITE_REST_SELECT)}`;
+  const servicosEndpoint = `${url}/rest/v1/${SERVICES_TABLE}?select=id,nome&order=nome`;
 
   try {
-    const res = await fetch(endpoint, {
-      method: "GET",
-      cache: "no-store",
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
-        Accept: "application/json",
-      },
-    });
+    const [atendRes, servRes] = await Promise.all([
+      fetch(endpoint, { method: "GET", cache: "no-store", headers }),
+      fetch(servicosEndpoint, { method: "GET", cache: "no-store", headers }),
+    ]);
 
-    const text = await res.text();
-    if (!res.ok) {
+    const text = await atendRes.text();
+    if (!atendRes.ok) {
       let message = text.slice(0, 400);
       try {
         const j = JSON.parse(text) as { message?: string; hint?: string };
@@ -46,13 +49,27 @@ export async function GET() {
         /* texto plano */
       }
       return NextResponse.json(
-        { ok: false, message, status: res.status },
-        { status: res.status >= 500 ? 502 : res.status, headers: { "Cache-Control": "no-store" } }
+        { ok: false, message, status: atendRes.status },
+        { status: atendRes.status >= 500 ? 502 : atendRes.status, headers: { "Cache-Control": "no-store" } }
       );
     }
 
     const data = JSON.parse(text) as unknown;
-    return NextResponse.json({ ok: true, data }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+
+    let servicos: ServicoRow[] = [];
+    if (servRes.ok) {
+      try {
+        const parsed = JSON.parse(await servRes.text()) as unknown;
+        if (Array.isArray(parsed)) servicos = parsed as ServicoRow[];
+      } catch {
+        /* serviços opcionais */
+      }
+    }
+
+    return NextResponse.json(
+      { ok: true, data, servicos },
+      { headers: { "Cache-Control": "no-store, max-age=0" } }
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[ScreenFlow] api/atendimentos-queue fetch:", e);

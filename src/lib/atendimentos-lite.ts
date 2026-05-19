@@ -102,6 +102,27 @@ export function mapAtendimentoNestedToFlat(row: AtendimentoLiteNested): Atendime
   };
 }
 
+/** Aplica lookup de serviços (busca independente) sobre linhas já mapeadas. */
+export function applyServicoLookup(
+  rows: AtendimentoLite[],
+  lookup: Map<string, string | null>
+): AtendimentoLite[] {
+  return rows.map((row) => {
+    if (!row.especialidade_id) return row;
+    const nome = lookup.get(row.especialidade_id);
+    if (nome === undefined) return row;
+    return { ...row, servicoNome: nome };
+  });
+}
+
+export function mapAtendimentosNestedToFlat(
+  nested: AtendimentoLiteNested[],
+  servicoLookup?: Map<string, string | null>
+): AtendimentoLite[] {
+  const flat = nested.map(mapAtendimentoNestedToFlat);
+  return servicoLookup ? applyServicoLookup(flat, servicoLookup) : flat;
+}
+
 /** Valores escritos nos botões de ação da recepção */
 export const STATUS_UPDATE = {
   chamar: "Chamado",
@@ -109,7 +130,7 @@ export const STATUS_UPDATE = {
   finalizar: "Finalizado",
 } as const;
 
-export type QueueTabId = "ordem" | "hora" | "encaixe" | "prioridade" | "urgente";
+export type QueueTabId = "ordem" | "hora" | "encaixe" | "prioridade" | "urgente" | "outros";
 
 export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
   ordem: "Ordem de Chegada",
@@ -117,6 +138,7 @@ export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
   encaixe: "Encaixe",
   prioridade: "Prioridade",
   urgente: "Urgente",
+  outros: "Outros",
 };
 
 function prioridadeOrdem(p: boolean | null): number {
@@ -214,6 +236,14 @@ export function filterAndSortQueue(
           if (ub !== ua) return ub - ua;
           return horaComparable(a.hora_marcada) - horaComparable(b.hora_marcada);
         });
+    case "outros":
+      return [...active].sort((a, b) => {
+        if (law) {
+          const pd = prioridadeOrdem(b.prioridade) - prioridadeOrdem(a.prioridade);
+          if (pd !== 0) return pd;
+        }
+        return timeMs(a.created_at) - timeMs(b.created_at);
+      });
     default:
       return active;
   }

@@ -2,14 +2,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { SERVICES_TABLE } from "@/lib/db-tables";
-import type { QueueTabPreset } from "@/lib/tenant-config";
+import { QUEUE_TAB_LABELS } from "@/lib/atendimentos-lite";
 import {
   configuracoesForSupabase,
+  queueTabTypeLabel,
+  type QueueTabPreset,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
-import type { QueueTabId } from "@/lib/atendimentos-lite";
-import { QUEUE_TAB_LABELS } from "@/lib/atendimentos-lite";
-import { HeartPulse, Layers, MapPin, Palette, Settings2, Stethoscope } from "lucide-react";
+import { Briefcase, ClipboardList, Layers, MapPin, Palette, Settings2, UserCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
@@ -26,7 +26,7 @@ type SettingsHubModalProps = {
 
 type MainTab = "fluxo" | "geral" | "cadastros";
 
-const PRESETS: QueueTabPreset[] = ["ordem", "hora", "encaixe", "prioridade", "urgente"];
+const PRESETS: QueueTabPreset[] = ["ordem", "hora", "encaixe", "prioridade", "urgente", "outros"];
 
 export function SettingsHubModal({
   open,
@@ -45,6 +45,7 @@ export function SettingsHubModal({
 
   const [newTabLabel, setNewTabLabel] = useState("");
   const [newTabPreset, setNewTabPreset] = useState<QueueTabPreset>("ordem");
+  const [customTypeName, setCustomTypeName] = useState("");
 
   useEffect(() => {
     if (open) {
@@ -97,7 +98,7 @@ export function SettingsHubModal({
             [
               ["fluxo", "Fluxo de abas", Layers],
               ["geral", "Geral & TV", Settings2],
-              ["cadastros", "Cadastros base", MapPin],
+              ["cadastros", "Cadastros base", ClipboardList],
             ] as const
           ).map(([id, label, Icon]) => (
             <button
@@ -145,7 +146,7 @@ export function SettingsHubModal({
                     className="min-w-[8rem] flex-1 rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
                   />
                   <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-medium uppercase text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                    {QUEUE_TAB_LABELS[tab.preset as QueueTabId]}
+                    {queueTabTypeLabel(tab)}
                   </span>
                   <button
                     type="button"
@@ -167,15 +168,17 @@ export function SettingsHubModal({
             <div className="rounded-lg border border-dashed border-zinc-300 p-2 dark:border-zinc-600">
               <p className="mb-2 text-[10px] font-semibold text-zinc-600 dark:text-zinc-400">Adicionar aba</p>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <label className="block flex-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
-                  Nome
-                  <input
-                    value={newTabLabel}
-                    onChange={(e) => setNewTabLabel(e.target.value)}
-                    placeholder="Ex.: Retorno"
-                    className="mt-0.5 w-full rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-[11px] dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
-                  />
-                </label>
+                {newTabPreset !== "outros" ? (
+                  <label className="block flex-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
+                    Nome
+                    <input
+                      value={newTabLabel}
+                      onChange={(e) => setNewTabLabel(e.target.value)}
+                      placeholder="Ex.: Retorno"
+                      className="mt-0.5 w-full rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-[11px] dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+                    />
+                  </label>
+                ) : null}
                 <label className="block w-full text-[10px] font-medium text-zinc-600 dark:text-zinc-400 sm:w-40">
                   Tipo
                   <select
@@ -190,10 +193,39 @@ export function SettingsHubModal({
                     ))}
                   </select>
                 </label>
+                {newTabPreset === "outros" ? (
+                  <label className="block flex-1 text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
+                    Nome personalizado do tipo
+                    <input
+                      value={customTypeName}
+                      onChange={(e) => setCustomTypeName(e.target.value)}
+                      placeholder="Ex.: VIP, Retornos…"
+                      className="mt-0.5 w-full rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-[11px] dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+                    />
+                  </label>
+                ) : null}
                 <button
                   type="button"
                   className="rounded-lg bg-zinc-900 px-3 py-2 text-[11px] font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900"
                   onClick={() => {
+                    if (newTabPreset === "outros") {
+                      const custom = customTypeName.trim();
+                      if (!custom) return;
+                      updateDraft((d) => ({
+                        ...d,
+                        queueTabs: [
+                          ...d.queueTabs,
+                          {
+                            id: crypto.randomUUID(),
+                            preset: "outros",
+                            label: custom,
+                            customTypeLabel: custom,
+                          },
+                        ],
+                      }));
+                      setCustomTypeName("");
+                      return;
+                    }
                     const label = newTabLabel.trim();
                     if (!label) return;
                     if (!draft.priorityLawEnabled && (newTabPreset === "prioridade" || newTabPreset === "urgente")) {
@@ -404,7 +436,7 @@ export function SettingsHubModal({
               onClick={() => setCrud({ title: "Equipe (profissionais)", table: "profissionais" })}
               className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-left text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:bg-zinc-800"
             >
-              <Stethoscope className="size-5 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
+              <UserCheck className="size-5 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
               Equipe (profissionais)
             </button>
             <button
@@ -420,17 +452,15 @@ export function SettingsHubModal({
               onClick={() => setCrud({ title: "Serviços", table: SERVICES_TABLE })}
               className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-left text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:bg-zinc-800"
             >
-              <HeartPulse className="size-5 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
+              <Briefcase className="size-5 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
               Serviços
             </button>
           </div>
         )}
 
-        {!tenantId && (
+        {!supabase && (
           <p className="mt-3 text-[10px] text-amber-700 dark:text-amber-300">
-            Sem <code className="rounded bg-amber-100 px-1 dark:bg-amber-950/60">tenant_id</code> na fila: defina{" "}
-            <code className="rounded bg-amber-100 px-1 dark:bg-amber-950/60">NEXT_PUBLIC_DEFAULT_TENANT_ID</code> para
-            gravar configurações no Supabase.
+            Supabase indisponível: configurações serão aplicadas apenas nesta sessão (não persistidas no banco).
           </p>
         )}
       </Modal>

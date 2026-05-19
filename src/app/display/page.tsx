@@ -4,13 +4,15 @@ import type { AtendimentoLite, AtendimentoLiteNested } from "@/lib/atendimentos-
 import {
   formatCreatedAt,
   formatHoraMarcada,
-  mapAtendimentoNestedToFlat,
+  mapAtendimentosNestedToFlat,
 } from "@/lib/atendimentos-lite";
+import { buildServicoLookup } from "@/lib/atendimentos-rest";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import { mergeTenantConfig } from "@/lib/tenant-config";
+import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { useEffect, useMemo, useState } from "react";
 
-const ENV_TENANT = process.env.NEXT_PUBLIC_DEFAULT_TENANT_ID?.trim() || "";
+const ENV_TENANT = resolveDefaultTenantId();
 
 function isCallingStatus(status: string | null): boolean {
   const s = (status ?? "").toLowerCase();
@@ -95,7 +97,12 @@ export default function DisplayPage() {
     async function tick() {
       try {
         const qRes = await fetch("/api/atendimentos-queue", { cache: "no-store" });
-        const qJson = (await qRes.json()) as { ok?: boolean; data?: unknown; message?: string };
+        const qJson = (await qRes.json()) as {
+          ok?: boolean;
+          data?: unknown;
+          servicos?: { id: string; nome: string | null }[];
+          message?: string;
+        };
         if (!qRes.ok || !qJson.ok || !Array.isArray(qJson.data)) {
           if (!cancelled) {
             setLoadErr(qJson.message || `Fila HTTP ${qRes.status}`);
@@ -104,7 +111,8 @@ export default function DisplayPage() {
           return;
         }
         const nested = qJson.data as AtendimentoLiteNested[];
-        const flat = nested.map(mapAtendimentoNestedToFlat);
+        const lookup = qJson.servicos ? buildServicoLookup(qJson.servicos) : undefined;
+        const flat = mapAtendimentosNestedToFlat(nested, lookup);
         if (cancelled) return;
         setLoadErr(null);
         setRows(flat);

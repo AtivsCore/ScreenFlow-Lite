@@ -1,4 +1,5 @@
 import type { QueueTabId } from "@/lib/atendimentos-lite";
+import { QUEUE_TAB_LABELS } from "@/lib/atendimentos-lite";
 
 export type QueueTabPreset = QueueTabId;
 
@@ -6,6 +7,8 @@ export type QueueTabEntry = {
   id: string;
   preset: QueueTabPreset;
   label: string;
+  /** Rótulo personalizado quando `preset` é `outros`. */
+  customTypeLabel?: string;
 };
 
 export type DisplayPaletteId = "red-black" | "yellow-black" | "blue-white" | "green-black";
@@ -84,11 +87,24 @@ function parseQueueTabs(raw: unknown): QueueTabEntry[] | null {
     const id = typeof item.id === "string" ? item.id.trim() : "";
     const preset = item.preset as QueueTabPreset;
     const label = typeof item.label === "string" ? item.label.trim() : "";
-    const presets: QueueTabPreset[] = ["ordem", "hora", "encaixe", "prioridade", "urgente"];
+    const customTypeLabel =
+      typeof item.customTypeLabel === "string" ? item.customTypeLabel.trim() : undefined;
+    const presets: QueueTabPreset[] = ["ordem", "hora", "encaixe", "prioridade", "urgente", "outros"];
     if (!id || !label || !presets.includes(preset)) continue;
-    out.push({ id, preset, label });
+    out.push({
+      id,
+      preset,
+      label,
+      ...(preset === "outros" && customTypeLabel ? { customTypeLabel } : {}),
+    });
   }
   return out.length ? out : null;
+}
+
+/** Rótulo do critério/tipo exibido na configuração da aba. */
+export function queueTabTypeLabel(tab: QueueTabEntry): string {
+  if (tab.preset === "outros" && tab.customTypeLabel) return tab.customTypeLabel;
+  return QUEUE_TAB_LABELS[tab.preset];
 }
 
 function parseRegisterForm(raw: unknown): Partial<RegisterFormConfig> | null {
