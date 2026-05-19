@@ -456,6 +456,7 @@ export default function Home() {
             canMutate={canMutate}
             pending={pending}
             priorityLawEnabled={tenantConfig.priorityLawEnabled}
+            tenantId={effectiveTenantId}
             onChamar={() => void updateStatus(STATUS_UPDATE.chamar)}
             onRechamar={() => void updateStatus(STATUS_UPDATE.rechamar)}
             onFinalizar={() => void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true })}

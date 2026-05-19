@@ -471,6 +471,7 @@ export function SettingsHubModal({
           supabase={supabase}
           title={crud.title}
           table={crud.table}
+          tenantId={tenantId}
           onClose={() => setCrud(null)}
           onSaved={onDataChanged}
         />

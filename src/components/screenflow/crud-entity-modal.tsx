@@ -1,7 +1,8 @@
 "use client";
 
+import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 
 type Row = { id: string; nome: string | null };
@@ -12,10 +13,23 @@ type CrudEntityModalProps = {
   supabase: SupabaseClient | null;
   title: string;
   table: string;
+  tenantId?: string | null;
   onSaved?: () => void;
 };
 
-export function CrudEntityModal({ open, onClose, supabase, title, table, onSaved }: CrudEntityModalProps) {
+export function CrudEntityModal({
+  open,
+  onClose,
+  supabase,
+  title,
+  table,
+  tenantId,
+  onSaved,
+}: CrudEntityModalProps) {
+  const effectiveTenantId = useMemo(
+    () => tenantId?.trim() || resolveDefaultTenantId(),
+    [tenantId]
+  );
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +40,11 @@ export function CrudEntityModal({ open, onClose, supabase, title, table, onSaved
     if (!supabase || !open) return;
     setLoading(true);
     setError(null);
-    const { data, error: err } = await supabase.from(table).select("id,nome").order("nome");
+    const { data, error: err } = await supabase
+      .from(table)
+      .select("id,nome")
+      .eq("tenant_id", effectiveTenantId)
+      .order("nome");
     if (err) {
       setError(err.message);
       setRows([]);
@@ -34,7 +52,7 @@ export function CrudEntityModal({ open, onClose, supabase, title, table, onSaved
       setRows((data as Row[] | null) ?? []);
     }
     setLoading(false);
-  }, [supabase, table, open]);
+  }, [supabase, table, open, effectiveTenantId]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -48,7 +66,10 @@ export function CrudEntityModal({ open, onClose, supabase, title, table, onSaved
     if (!trimmed || !supabase) return;
     setBusy(true);
     setError(null);
-    const { error: err } = await supabase.from(table).insert({ nome: trimmed });
+    const { error: err } = await supabase.from(table).insert({
+      nome: trimmed,
+      tenant_id: effectiveTenantId,
+    });
     if (err) setError(err.message);
     else {
       setNome("");

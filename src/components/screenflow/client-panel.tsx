@@ -29,6 +29,7 @@ type ClientPanelProps = {
     tv_id?: string | null;
     observacao?: string | null;
   }) => Promise<void>;
+  tenantId?: string | null;
 };
 
 function SelectWithQuickAdd({
@@ -92,6 +93,7 @@ export function ClientPanel({
   onFinalizar,
   onLimpar,
   onPatch,
+  tenantId,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<Opt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
@@ -245,6 +247,7 @@ export function ClientPanel({
           supabase={supabase}
           title={quickCrud.title}
           table={quickCrud.table}
+          tenantId={tenantId}
           onClose={() => setQuickCrud(null)}
           onSaved={() => void loadOptions()}
         />
