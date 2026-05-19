@@ -1,7 +1,8 @@
 "use client";
 
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
-import { SERVICES_TABLE } from "@/lib/db-tables";
+import { preferredServicesTable } from "@/lib/db-tables";
+import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -103,17 +104,18 @@ export function ClientPanel({
 
   const loadOptions = useCallback(async () => {
     if (!supabase) return;
-    const [p, l, s, t] = await Promise.all([
+    const tid = tenantId?.trim();
+    const [p, l, sResult, t] = await Promise.all([
       supabase.from("profissionais").select("id,nome").order("nome"),
       supabase.from("locais").select("id,nome").order("nome"),
-      supabase.from(SERVICES_TABLE).select("id,nome").order("nome"),
+      fetchServicos(supabase, tid),
       supabase.from("tvs").select("id,nome").order("nome"),
     ]);
     setProfissionais(((p.error ? null : p.data) as Opt[] | null) ?? []);
     setLocais(((l.error ? null : l.data) as Opt[] | null) ?? []);
-    setServicos(((s.error ? null : s.data) as Opt[] | null) ?? []);
+    setServicos(sResult.data);
     setTvs(((t.error ? null : t.data) as Opt[] | null) ?? []);
-  }, [supabase]);
+  }, [supabase, tenantId]);
 
   useEffect(() => {
     void loadOptions();
@@ -181,7 +183,9 @@ export function ClientPanel({
             disabled={selectDisabled}
             quickAddDisabled={quickAddDisabled}
             onChange={(v) => void onPatch({ especialidade_id: v || null })}
-            onQuickAdd={() => setQuickCrud({ title: "Serviços", table: SERVICES_TABLE })}
+            onQuickAdd={() =>
+              setQuickCrud({ title: "Serviços", table: preferredServicesTable() })
+            }
           />
 
           <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">

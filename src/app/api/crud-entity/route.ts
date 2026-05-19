@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { SERVICES_TABLE } from "@/lib/db-tables";
+import { preferredServicesTable, servicesTableCandidates } from "@/lib/db-tables";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import {
   createSupabaseClientSafe,
@@ -11,7 +11,11 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-const ALLOWED_TABLES = new Set(["profissionais", "locais", "servicos", "especialidades", SERVICES_TABLE]);
+const ALLOWED_TABLES = new Set([
+  "profissionais",
+  "locais",
+  ...servicesTableCandidates(),
+]);
 
 type Body = {
   table?: string;

@@ -1,9 +1,10 @@
 "use client";
 
+import { resolveDefaultTenantId } from "@/lib/tenant-id";
+import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SERVICES_TABLE } from "@/lib/db-tables";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 
 type ProfRow = { id: string; nome: string | null };
@@ -39,6 +40,11 @@ export function RegistryPatientModal({
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
 
+  const effectiveTenantId = useMemo(
+    () => tenantId?.trim() || resolveDefaultTenantId(),
+    [tenantId]
+  );
+
   const [nomeCliente, setNomeCliente] = useState("");
   const [profissionalId, setProfissionalId] = useState<string>("");
   const [profissionalLivre, setProfissionalLivre] = useState("");
@@ -60,20 +66,20 @@ export function RegistryPatientModal({
     if (!open || !supabase) return;
     let cancelled = false;
     void (async () => {
-      const [p, s, l] = await Promise.all([
-        supabase.from("profissionais").select("id,nome").order("nome"),
-        supabase.from(SERVICES_TABLE).select("id,nome").order("nome"),
-        supabase.from("locais").select("id,nome").order("nome"),
+      const [p, sResult, l] = await Promise.all([
+        supabase.from("profissionais").select("id,nome").eq("tenant_id", effectiveTenantId).order("nome"),
+        fetchServicos(supabase, effectiveTenantId),
+        supabase.from("locais").select("id,nome").eq("tenant_id", effectiveTenantId).order("nome"),
       ]);
       if (cancelled) return;
       setProfissionais((p.data as ProfRow[] | null) ?? []);
-      setServicos((s.data as OptRow[] | null) ?? []);
+      setServicos(sResult.data);
       setLocais((l.data as OptRow[] | null) ?? []);
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, supabase]);
+  }, [open, supabase, effectiveTenantId]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,7 +105,11 @@ export function RegistryPatientModal({
     let pacienteId: string | null = null;
     const nome = nomeCliente.trim();
     if (nome) {
-      const { data: pRow, error: pErr } = await supabase.from("pacientes").insert({ nome }).select("id").single();
+      const { data: pRow, error: pErr } = await supabase
+        .from("pacientes")
+        .insert({ nome, tenant_id: effectiveTenantId })
+        .select("id")
+        .single();
       if (pErr || !pRow) {
         setError(pErr?.message ?? "Falha ao criar cliente.");
         setBusy(false);
@@ -121,12 +131,11 @@ export function RegistryPatientModal({
 
     const payload: Record<string, unknown> = {
       paciente_id: pacienteId,
+      tenant_id: effectiveTenantId,
       prioridade: law ? prioridade : false,
       observacao: observacao.trim() || null,
       status: defaultStatus,
     };
-
-    if (tenantId) payload.tenant_id = tenantId;
 
     if (rf.showProfissional && profissionalId && !(rf.profissionalPreferFreeText && profissionalLivre.trim())) {
       payload.profissional_id = profissionalId;

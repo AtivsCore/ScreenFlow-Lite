@@ -16,8 +16,8 @@ import {
   mapAtendimentosNestedToFlat,
 } from "@/lib/atendimentos-lite";
 import { buildServicoLookup } from "@/lib/atendimentos-rest";
+import { fetchServicos } from "@/lib/fetch-servicos";
 import { isNetworkLikeFetchFailure } from "@/lib/supabase";
-import { SERVICES_TABLE } from "@/lib/db-tables";
 import { mergeTenantConfig, type ResolvedTenantConfig } from "@/lib/tenant-config";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
@@ -165,8 +165,8 @@ export default function Home() {
 
     const fetchServicosClient = async (): Promise<{ id: string; nome: string | null }[]> => {
       if (!supabase) return [];
-      const { data } = await supabase.from(SERVICES_TABLE).select("id,nome").order("nome");
-      return (data as { id: string; nome: string | null }[] | null) ?? [];
+      const { data } = await fetchServicos(supabase, effectiveTenantId);
+      return data;
     };
 
     const tryServerQueue = async (): Promise<boolean> => {
@@ -257,7 +257,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, apiProbeDone]);
+  }, [supabase, apiProbeDone, effectiveTenantId]);
 
   useEffect(() => {
     if (!sessionReady) return;

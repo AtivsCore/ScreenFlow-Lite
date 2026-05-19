@@ -1,7 +1,7 @@
 "use client";
 
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
-import { SERVICES_TABLE } from "@/lib/db-tables";
+import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
@@ -42,20 +42,20 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [p, l, s] = await Promise.all([
+      const [p, l, sResult] = await Promise.all([
         supabase.from("profissionais").select("id,nome").order("nome"),
         supabase.from("locais").select("id,nome").order("nome"),
-        supabase.from(SERVICES_TABLE).select("id,nome").order("nome"),
+        fetchServicos(supabase, row.tenant_id),
       ]);
       if (cancelled) return;
       setProfissionais((p.data as Opt[] | null) ?? []);
       setLocais((l.data as Opt[] | null) ?? []);
-      setServicos((s.data as Opt[] | null) ?? []);
+      setServicos(sResult.data);
     })();
     return () => {
       cancelled = true;
     };
-  }, [supabase]);
+  }, [supabase, row.tenant_id]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

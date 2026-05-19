@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ATENDIMENTOS_LITE_REST_SELECT, type ServicoRow } from "@/lib/atendimentos-rest";
-import { SERVICES_TABLE } from "@/lib/db-tables";
+import { fetchServicosRest } from "@/lib/fetch-servicos";
 import {
   finalizeSupabasePublicPair,
   logSupabaseEnvDiagnostics,
@@ -31,12 +31,11 @@ export async function GET() {
   };
 
   const endpoint = `${url}/rest/v1/atendimentos_lite?select=${encodeURIComponent(ATENDIMENTOS_LITE_REST_SELECT)}`;
-  const servicosEndpoint = `${url}/rest/v1/${SERVICES_TABLE}?select=id,nome&order=nome`;
 
   try {
-    const [atendRes, servRes] = await Promise.all([
+    const [atendRes, servicosResult] = await Promise.all([
       fetch(endpoint, { method: "GET", cache: "no-store", headers }),
-      fetch(servicosEndpoint, { method: "GET", cache: "no-store", headers }),
+      fetchServicosRest(url, anonKey),
     ]);
 
     const text = await atendRes.text();
@@ -56,18 +55,10 @@ export async function GET() {
 
     const data = JSON.parse(text) as unknown;
 
-    let servicos: ServicoRow[] = [];
-    if (servRes.ok) {
-      try {
-        const parsed = JSON.parse(await servRes.text()) as unknown;
-        if (Array.isArray(parsed)) servicos = parsed as ServicoRow[];
-      } catch {
-        /* serviços opcionais */
-      }
-    }
+    const servicos: ServicoRow[] = servicosResult.data;
 
     return NextResponse.json(
-      { ok: true, data, servicos },
+      { ok: true, data, servicos, servicosTable: servicosResult.table },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     );
   } catch (e) {

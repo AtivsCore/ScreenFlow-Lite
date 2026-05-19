@@ -1,7 +1,7 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SERVICES_TABLE } from "@/lib/db-tables";
+import { preferredServicesTable } from "@/lib/db-tables";
 import { QUEUE_TAB_LABELS } from "@/lib/atendimentos-lite";
 import {
   configuracoesForSupabase,
@@ -449,7 +449,7 @@ export function SettingsHubModal({
             </button>
             <button
               type="button"
-              onClick={() => setCrud({ title: "Serviços", table: SERVICES_TABLE })}
+              onClick={() => setCrud({ title: "Serviços", table: preferredServicesTable() })}
               className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-left text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:bg-zinc-800"
             >
               <Briefcase className="size-5 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
