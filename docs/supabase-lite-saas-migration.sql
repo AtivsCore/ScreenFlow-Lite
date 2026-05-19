@@ -43,3 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_atendimentos_lite_tenant_created
 -- ALTER TABLE public.atendimentos_lite
 --   ADD CONSTRAINT atendimentos_lite_tv_id_fkey
 --   FOREIGN KEY (tv_id) REFERENCES public.tvs (id);
+
+-- ---------------------------------------------------------------------------
+-- RLS dos cadastros rápidos (profissionais, locais, servicos):
+--   docs/supabase-lite-rls-cadastros.sql

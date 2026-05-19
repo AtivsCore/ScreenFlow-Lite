@@ -5,4 +5,4 @@
  */
 export const SERVICES_TABLE =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_SUPABASE_SERVICES_TABLE?.trim()) ||
-  "servicos";
+  "especialidades";

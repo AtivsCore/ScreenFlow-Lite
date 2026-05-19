@@ -66,12 +66,59 @@ export function CrudEntityModal({
     if (!trimmed || !supabase) return;
     setBusy(true);
     setError(null);
+
     const { error: err } = await supabase.from(table).insert({
       nome: trimmed,
       tenant_id: effectiveTenantId,
     });
-    if (err) setError(err.message);
-    else {
+
+    if (err) {
+      const isRls = /row-level security/i.test(err.message);
+      if (isRls) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (token) {
+          try {
+            const res = await fetch("/api/crud-entity", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                table,
+                nome: trimmed,
+                tenantId: effectiveTenantId,
+              }),
+            });
+            const json = (await res.json()) as { ok?: boolean; message?: string };
+            if (res.ok && json.ok) {
+              setNome("");
+              onSaved?.();
+              await load();
+              setBusy(false);
+              return;
+            }
+            setError(
+              json.message ??
+                "RLS bloqueou o cadastro. Rode docs/supabase-lite-rls-cadastros.sql no Supabase e defina NEXT_PUBLIC_DEFAULT_TENANT_ID na Vercel."
+            );
+            setBusy(false);
+            return;
+          } catch (proxyErr) {
+            const msg = proxyErr instanceof Error ? proxyErr.message : String(proxyErr);
+            setError(`${err.message} (fallback API: ${msg})`);
+            setBusy(false);
+            return;
+          }
+        }
+      }
+      setError(
+        isRls
+          ? `${err.message} — Verifique NEXT_PUBLIC_DEFAULT_TENANT_ID na Vercel e as políticas RLS (docs/supabase-lite-rls-cadastros.sql). Tenant usado: ${effectiveTenantId.slice(0, 8)}…`
+          : err.message
+      );
+    } else {
       setNome("");
       onSaved?.();
       await load();
