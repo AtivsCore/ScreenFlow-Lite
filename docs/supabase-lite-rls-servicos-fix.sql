@@ -1,7 +1,7 @@
 -- ScreenFlow Lite — correção RLS para public.servicos
 --
--- Sintoma: "Cadastro bloqueado por RLS" no modal Serviços (Lite).
--- Causa comum: tabela criada DEPOIS do script geral de RLS → RLS ativo sem policy de INSERT.
+-- Se o erro for FK (servicos_tenant_id_fkey), rode ANTES:
+--   docs/supabase-lite-drop-servicos-fk.sql
 --
 -- Execute no Supabase → SQL Editor (pode rodar quantas vezes precisar).
 
@@ -28,12 +28,9 @@ BEGIN
     pol_prefix || '_select'
   );
 
-  -- INSERT: tenant_id válido em public.tenants (mesma regra de profissionais/locais)
+  -- INSERT: tenant_id preenchido (sem validar FK — banco compartilhado Pro/Lite)
   EXECUTE format(
-    'CREATE POLICY %I ON public.servicos FOR INSERT TO authenticated WITH CHECK (
-       tenant_id IS NOT NULL
-       AND EXISTS (SELECT 1 FROM public.tenants t WHERE t.id = tenant_id)
-     )',
+    'CREATE POLICY %I ON public.servicos FOR INSERT TO authenticated WITH CHECK (tenant_id IS NOT NULL)',
     pol_prefix || '_insert'
   );
 

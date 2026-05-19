@@ -39,10 +39,7 @@ BEGIN
     );
 
     EXECUTE format(
-      'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK (
-         tenant_id IS NOT NULL
-         AND EXISTS (SELECT 1 FROM public.tenants t WHERE t.id = tenant_id)
-       )',
+      'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated WITH CHECK (tenant_id IS NOT NULL)',
       pol_prefix || '_insert',
       tbl
     );
