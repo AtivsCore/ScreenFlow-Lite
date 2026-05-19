@@ -228,7 +228,8 @@ export function CrudEntityModal({
         {!loading && rows.length === 0 && (
           <p className="p-4 text-xs text-zinc-500">
             Nenhum registro ({effectiveTable}). Se a tabela não existir, rode{" "}
-            docs/supabase-lite-create-servicos.sql no Supabase.
+            docs/supabase-lite-create-servicos.sql no Supabase. Se RLS bloquear, rode
+            docs/supabase-lite-rls-servicos-fix.sql.
           </p>
         )}
         <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">

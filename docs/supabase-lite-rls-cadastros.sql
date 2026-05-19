@@ -3,10 +3,11 @@
 -- Execute no Supabase → SQL Editor se o app retornar:
 --   "new row violates row-level security policy"
 --
--- Detecta automaticamente public.servicos OU public.especialidades (usa a que existir).
+-- IMPORTANTE: se criou public.servicos depois, rode também:
+--   docs/supabase-lite-rls-servicos-fix.sql
 --
 -- Vercel: NEXT_PUBLIC_DEFAULT_TENANT_ID = UUID de public.tenants
--- App:    NEXT_PUBLIC_SUPABASE_SERVICES_TABLE=especialidades  (se não usar servicos)
+-- App:    NEXT_PUBLIC_SUPABASE_SERVICES_TABLE=servicos
 
 DO $lite_rls$
 DECLARE
@@ -29,6 +30,7 @@ BEGIN
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol_prefix || '_select', tbl);
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol_prefix || '_insert', tbl);
     EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol_prefix || '_delete', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol_prefix || '_update', tbl);
 
     EXECUTE format(
       'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated USING (tenant_id IS NOT NULL)',
@@ -46,10 +48,20 @@ BEGIN
     );
 
     EXECUTE format(
+      'CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated
+       USING (tenant_id IS NOT NULL)
+       WITH CHECK (tenant_id IS NOT NULL)',
+      pol_prefix || '_update',
+      tbl
+    );
+
+    EXECUTE format(
       'CREATE POLICY %I ON public.%I FOR DELETE TO authenticated USING (tenant_id IS NOT NULL)',
       pol_prefix || '_delete',
       tbl
     );
+
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO authenticated', tbl);
 
     RAISE NOTICE 'RLS aplicado em public.%.', tbl;
   END LOOP;

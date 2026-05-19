@@ -19,6 +19,9 @@ const ALLOWED_TABLES = new Set([
   ...servicesTableCandidates(),
 ]);
 
+const RLS_FIX_HINT =
+  "Execute docs/supabase-lite-rls-servicos-fix.sql (ou docs/supabase-lite-rls-cadastros.sql) no Supabase SQL Editor.";
+
 type Body = {
   table?: string;
   nome?: string;
@@ -33,7 +36,7 @@ function pickAccessToken(req: Request): string | null {
   return null;
 }
 
-/** INSERT em cadastros base via service role (após validar sessão). Contorna RLS mal configurado. */
+/** INSERT em cadastros base: sessão do usuário (RLS) → fallback service role opcional. */
 export async function POST(req: Request) {
   let body: Body;
   try {
@@ -86,36 +89,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Sessão inválida ou expirada." }, { status: 401 });
   }
 
-  const serviceRole = normalizePublicEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY);
-  if (!serviceRole) {
+  const tenantId = body.tenantId?.trim() || resolveDefaultTenantId();
+  const payload = { nome, tenant_id: tenantId };
+
+  const { error: userInsertErr } = await userClient.from(targetTable).insert(payload);
+  if (!userInsertErr) {
     return NextResponse.json(
-      {
-        ok: false,
-        message:
-          "Cadastro bloqueado por RLS. Configure políticas no Supabase (docs/supabase-lite-rls-cadastros.sql) ou defina SUPABASE_SERVICE_ROLE_KEY no servidor.",
-      },
-      { status: 503 }
+      { ok: true, tenantId, table: targetTable, via: "session" },
+      { headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  const admin = createSupabaseClientSafe(url, serviceRole);
-  if (!admin) {
-    return NextResponse.json({ ok: false, message: "Cliente admin indisponível." }, { status: 503 });
+  const serviceRole = normalizePublicEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  if (serviceRole) {
+    const admin = createSupabaseClientSafe(url, serviceRole);
+    if (admin) {
+      const { error: adminErr } = await admin.from(targetTable).insert(payload);
+      if (!adminErr) {
+        return NextResponse.json(
+          { ok: true, tenantId, table: targetTable, via: "service_role" },
+          { headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      return NextResponse.json({ ok: false, message: adminErr.message }, { status: 400 });
+    }
   }
 
-  const tenantId = body.tenantId?.trim() || resolveDefaultTenantId();
-
-  const { error: insertErr } = await admin.from(targetTable).insert({
-    nome,
-    tenant_id: tenantId,
-  });
-
-  if (insertErr) {
-    return NextResponse.json({ ok: false, message: insertErr.message }, { status: 400 });
-  }
-
+  const isRls = /row-level security/i.test(userInsertErr.message);
   return NextResponse.json(
-    { ok: true, tenantId, table: targetTable },
-    { headers: { "Cache-Control": "no-store" } }
+    {
+      ok: false,
+      message: isRls
+        ? `${userInsertErr.message} — ${RLS_FIX_HINT}`
+        : userInsertErr.message,
+    },
+    { status: isRls ? 403 : 400 }
   );
 }
