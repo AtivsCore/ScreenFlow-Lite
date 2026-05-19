@@ -12,7 +12,7 @@ DO $lite_rls$
 DECLARE
   tbl name;
   pol_prefix text;
-  tables name[] := ARRAY['profissionais', 'locais', 'servicos', 'especialidades'];
+  tables name[] := ARRAY['profissionais', 'locais', 'servicos', 'especialidades', 'servico', 'especialidade'];
 BEGIN
   FOREACH tbl IN ARRAY tables
   LOOP

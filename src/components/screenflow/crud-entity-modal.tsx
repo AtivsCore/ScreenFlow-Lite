@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  isMissingServicesTableError,
+  isServicesTableCandidate,
+  SERVICES_CRUD_TABLE,
+} from "@/lib/db-tables";
+import { resolveServicesTableName } from "@/lib/fetch-servicos";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -30,29 +36,64 @@ export function CrudEntityModal({
     () => tenantId?.trim() || resolveDefaultTenantId(),
     [tenantId]
   );
+
+  const needsServicesResolve = table === SERVICES_CRUD_TABLE || isServicesTableCandidate(table);
+
+  const [effectiveTable, setEffectiveTable] = useState(table);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    if (!open) return;
+    setEffectiveTable(table);
+  }, [open, table]);
+
+  const ensureTable = useCallback(async (): Promise<string | null> => {
+    if (!supabase) return null;
+    if (!needsServicesResolve) return table;
+
+    const { table: resolved, error: resolveErr } = await resolveServicesTableName(
+      supabase,
+      effectiveTenantId
+    );
+    if (!resolved) {
+      setError(resolveErr);
+      return null;
+    }
+    setEffectiveTable(resolved);
+    return resolved;
+  }, [supabase, needsServicesResolve, table, effectiveTenantId]);
+
   const load = useCallback(async () => {
     if (!supabase || !open) return;
     setLoading(true);
     setError(null);
+
+    const tbl = needsServicesResolve ? await ensureTable() : table;
+    if (!tbl) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
     const { data, error: err } = await supabase
-      .from(table)
+      .from(tbl)
       .select("id,nome")
       .eq("tenant_id", effectiveTenantId)
       .order("nome");
+
     if (err) {
       setError(err.message);
       setRows([]);
     } else {
+      setEffectiveTable(tbl);
       setRows((data as Row[] | null) ?? []);
     }
     setLoading(false);
-  }, [supabase, table, open, effectiveTenantId]);
+  }, [supabase, table, open, effectiveTenantId, needsServicesResolve, ensureTable]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -67,10 +108,29 @@ export function CrudEntityModal({
     setBusy(true);
     setError(null);
 
-    const { error: err } = await supabase.from(table).insert({
+    let tbl = needsServicesResolve ? await ensureTable() : effectiveTable;
+    if (!tbl) {
+      setBusy(false);
+      return;
+    }
+
+    let { error: err } = await supabase.from(tbl).insert({
       nome: trimmed,
       tenant_id: effectiveTenantId,
     });
+
+    if (err && needsServicesResolve && isMissingServicesTableError(err.message)) {
+      const retry = await resolveServicesTableName(supabase, effectiveTenantId);
+      if (retry.table && retry.table !== tbl) {
+        tbl = retry.table;
+        setEffectiveTable(tbl);
+        const again = await supabase.from(tbl).insert({
+          nome: trimmed,
+          tenant_id: effectiveTenantId,
+        });
+        err = again.error;
+      }
+    }
 
     if (err) {
       const isRls = /row-level security/i.test(err.message);
@@ -86,7 +146,7 @@ export function CrudEntityModal({
                 Authorization: `Bearer ${token}`,
               },
               body: JSON.stringify({
-                table,
+                table: tbl,
                 nome: trimmed,
                 tenantId: effectiveTenantId,
               }),
@@ -99,10 +159,7 @@ export function CrudEntityModal({
               setBusy(false);
               return;
             }
-            setError(
-              json.message ??
-                "RLS bloqueou o cadastro. Rode docs/supabase-lite-rls-cadastros.sql no Supabase e defina NEXT_PUBLIC_DEFAULT_TENANT_ID na Vercel."
-            );
+            setError(json.message ?? err.message);
             setBusy(false);
             return;
           } catch (proxyErr) {
@@ -113,11 +170,7 @@ export function CrudEntityModal({
           }
         }
       }
-      setError(
-        isRls
-          ? `${err.message} — Verifique NEXT_PUBLIC_DEFAULT_TENANT_ID na Vercel e as políticas RLS (docs/supabase-lite-rls-cadastros.sql). Tenant usado: ${effectiveTenantId.slice(0, 8)}…`
-          : err.message
-      );
+      setError(err.message);
     } else {
       setNome("");
       onSaved?.();
@@ -130,7 +183,7 @@ export function CrudEntityModal({
     if (!supabase || !confirm("Excluir este registro?")) return;
     setBusy(true);
     setError(null);
-    const { error: err } = await supabase.from(table).delete().eq("id", id);
+    const { error: err } = await supabase.from(effectiveTable).delete().eq("id", id);
     if (err) setError(err.message);
     else {
       onSaved?.();
@@ -138,6 +191,9 @@ export function CrudEntityModal({
     }
     setBusy(false);
   }
+
+  const showDetectedTable =
+    needsServicesResolve && effectiveTable !== table && effectiveTable !== SERVICES_CRUD_TABLE;
 
   return (
     <Modal open={open} title={title} onClose={onClose} widthClassName="max-w-md">
@@ -157,6 +213,11 @@ export function CrudEntityModal({
           Adicionar
         </button>
       </form>
+      {showDetectedTable ? (
+        <p className="mb-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+          Tabela detectada: <code className="font-mono">{effectiveTable}</code>
+        </p>
+      ) : null}
       {error && (
         <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
           {error}
@@ -165,7 +226,10 @@ export function CrudEntityModal({
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-700">
         {loading && <p className="p-4 text-xs text-zinc-500">Carregando…</p>}
         {!loading && rows.length === 0 && (
-          <p className="p-4 text-xs text-zinc-500">Nenhum registro. Verifique RLS e o nome da tabela ({table}).</p>
+          <p className="p-4 text-xs text-zinc-500">
+            Nenhum registro ({effectiveTable}). Se a tabela não existir, rode{" "}
+            docs/supabase-lite-create-servicos.sql no Supabase.
+          </p>
         )}
         <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
           {rows.map((r) => (

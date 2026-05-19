@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { preferredServicesTable, servicesTableCandidates } from "@/lib/db-tables";
+import { servicesTableCandidates, SERVICES_CRUD_TABLE } from "@/lib/db-tables";
+import { fetchServicosRest } from "@/lib/fetch-servicos";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import {
   createSupabaseClientSafe,
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 const ALLOWED_TABLES = new Set([
   "profissionais",
   "locais",
+  SERVICES_CRUD_TABLE,
   ...servicesTableCandidates(),
 ]);
 
@@ -49,14 +51,31 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: `Tabela não permitida: ${table}` }, { status: 400 });
   }
 
-  const accessToken = pickAccessToken(req);
-  if (!accessToken) {
-    return NextResponse.json({ ok: false, message: "Sessão ausente (Bearer token)." }, { status: 401 });
-  }
-
   const { url, anonKey } = finalizeSupabasePublicPair(resolveSupabaseEnvPairs());
   if (!url || !anonKey) {
     return NextResponse.json({ ok: false, message: "Supabase não configurado no servidor." }, { status: 503 });
+  }
+
+  let targetTable = table;
+  if (table === SERVICES_CRUD_TABLE || servicesTableCandidates().includes(table)) {
+    const discovered = await fetchServicosRest(url, anonKey);
+    if (!discovered.table || discovered.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            discovered.error ??
+            "Tabela de serviços não encontrada. Execute docs/supabase-lite-create-servicos.sql no Supabase.",
+        },
+        { status: 400 }
+      );
+    }
+    targetTable = discovered.table;
+  }
+
+  const accessToken = pickAccessToken(req);
+  if (!accessToken) {
+    return NextResponse.json({ ok: false, message: "Sessão ausente (Bearer token)." }, { status: 401 });
   }
 
   const userClient = createClient(url, anonKey, {
@@ -86,7 +105,7 @@ export async function POST(req: Request) {
 
   const tenantId = body.tenantId?.trim() || resolveDefaultTenantId();
 
-  const { error: insertErr } = await admin.from(table).insert({
+  const { error: insertErr } = await admin.from(targetTable).insert({
     nome,
     tenant_id: tenantId,
   });
@@ -95,5 +114,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: insertErr.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, tenantId }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(
+    { ok: true, tenantId, table: targetTable },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

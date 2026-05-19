@@ -1,7 +1,7 @@
 "use client";
 
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
-import { preferredServicesTable } from "@/lib/db-tables";
+import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Plus } from "lucide-react";
@@ -183,9 +183,7 @@ export function ClientPanel({
             disabled={selectDisabled}
             quickAddDisabled={quickAddDisabled}
             onChange={(v) => void onPatch({ especialidade_id: v || null })}
-            onQuickAdd={() =>
-              setQuickCrud({ title: "Serviços", table: preferredServicesTable() })
-            }
+            onQuickAdd={() => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE })}
           />
 
           <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">

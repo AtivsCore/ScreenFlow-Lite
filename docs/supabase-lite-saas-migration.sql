@@ -47,3 +47,6 @@ CREATE INDEX IF NOT EXISTS idx_atendimentos_lite_tenant_created
 -- ---------------------------------------------------------------------------
 -- RLS dos cadastros rápidos (profissionais, locais, servicos):
 --   docs/supabase-lite-rls-cadastros.sql
+--
+-- Criar tabela servicos (se não existir nenhuma variante):
+--   docs/supabase-lite-create-servicos.sql
