@@ -19,7 +19,7 @@ import { buildServicoLookup } from "@/lib/atendimentos-rest";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { isNetworkLikeFetchFailure } from "@/lib/supabase";
 import { mergeTenantConfig, type ResolvedTenantConfig } from "@/lib/tenant-config";
-import { resolveDefaultTenantId } from "@/lib/tenant-id";
+import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -170,8 +170,18 @@ export default function Home() {
     };
 
     const tryServerQueue = async (): Promise<boolean> => {
+      const queueTenant =
+        parseTenantIdParam(effectiveTenantId) ?? parseTenantIdParam(ENV_TENANT_ID);
+      if (!queueTenant) {
+        setLoadError("tenant_id inválido — configure NEXT_PUBLIC_DEFAULT_TENANT_ID ou vincule um tenant.");
+        setRows([]);
+        return false;
+      }
       try {
-        const r = await fetch("/api/atendimentos-queue", { cache: "no-store" });
+        const r = await fetch(
+          `/api/atendimentos-queue?tenant_id=${encodeURIComponent(queueTenant)}`,
+          { cache: "no-store" }
+        );
         const j = (await r.json()) as {
           ok?: boolean;
           data?: unknown;
@@ -230,7 +240,9 @@ export default function Home() {
       ].join(",\n      ");
 
       const [atendRes, servicos] = await Promise.all([
-        supabase.from("atendimentos_lite").select(atendimentosSelect),
+        (effectiveTenantId
+          ? supabase.from("atendimentos_lite").select(atendimentosSelect).eq("tenant_id", effectiveTenantId)
+          : supabase.from("atendimentos_lite").select(atendimentosSelect)),
         fetchServicosClient(),
       ]);
 

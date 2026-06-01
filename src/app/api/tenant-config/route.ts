@@ -5,6 +5,7 @@ import {
   resolveSupabaseEnvPairs,
 } from "@/lib/supabase";
 import { mergeTenantConfig } from "@/lib/tenant-config";
+import { resolvePublicTenantId } from "@/lib/tenant-id";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +14,16 @@ export async function GET(req: Request) {
   logSupabaseEnvDiagnostics("api-tenant-config");
 
   const { searchParams } = new URL(req.url);
-  const tenantId = searchParams.get("tenant_id")?.trim();
+  const tenantId = resolvePublicTenantId(searchParams.get("tenant_id"));
   if (!tenantId) {
-    return NextResponse.json({ ok: true, config: mergeTenantConfig({}), source: "defaults-no-tenant" });
+    return NextResponse.json(
+      {
+        ok: false,
+        message:
+          "Parâmetro tenant_id obrigatório (UUID). Ex.: /api/tenant-config?tenant_id=<uuid>",
+      },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   const { url, anonKey } = finalizeSupabasePublicPair(resolveSupabaseEnvPairs());

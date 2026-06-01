@@ -9,10 +9,9 @@ import {
 import { buildServicoLookup } from "@/lib/atendimentos-rest";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import { mergeTenantConfig } from "@/lib/tenant-config";
-import { resolveDefaultTenantId } from "@/lib/tenant-id";
+import { resolvePublicTenantId } from "@/lib/tenant-id";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-
-const ENV_TENANT = resolveDefaultTenantId();
 
 function isCallingStatus(status: string | null): boolean {
   const s = (status ?? "").toLowerCase();
@@ -50,7 +49,12 @@ const PALETTE_STYLES: Record<
 };
 
 export default function DisplayPage() {
-  const [tenantId, setTenantId] = useState<string>(ENV_TENANT);
+  const searchParams = useSearchParams();
+  const tenantId = useMemo(
+    () => resolvePublicTenantId(searchParams.get("tenant_id")),
+    [searchParams]
+  );
+
   const [config, setConfig] = useState<ResolvedTenantConfig>(() => mergeTenantConfig({}));
   type TvPartial = Partial<ResolvedTenantConfig["tvDisplay"]>;
   const [tvLocal, setTvLocal] = useState<TvPartial>({});
@@ -61,8 +65,9 @@ export default function DisplayPage() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!tenantId) return;
     if (typeof window === "undefined") return;
-    const key = `sf-lite-display-${tenantId || "default"}`;
+    const key = `sf-lite-display-${tenantId}`;
     try {
       const raw = localStorage.getItem(key);
       if (raw) setTvLocal(JSON.parse(raw) as TvPartial);
@@ -88,15 +93,23 @@ export default function DisplayPage() {
   const palette = PALETTE_STYLES[tvMerged.colorPalette] ?? PALETTE_STYLES["blue-white"];
 
   useEffect(() => {
-    const sp = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
-    const qTenant = sp?.get("tenant_id")?.trim() ?? "";
-    const seedTenant = qTenant || ENV_TENANT;
+    if (!tenantId) {
+      setLoadErr(
+        "tenant_id ausente ou inválido na URL. Use /display?tenant_id=<uuid-do-cliente>."
+      );
+      setRows([]);
+      return;
+    }
 
+    const scopedTenantId = tenantId;
     let cancelled = false;
 
     async function tick() {
       try {
-        const qRes = await fetch("/api/atendimentos-queue", { cache: "no-store" });
+        const qRes = await fetch(
+          `/api/atendimentos-queue?tenant_id=${encodeURIComponent(scopedTenantId)}`,
+          { cache: "no-store" }
+        );
         const qJson = (await qRes.json()) as {
           ok?: boolean;
           data?: unknown;
@@ -112,22 +125,22 @@ export default function DisplayPage() {
         }
         const nested = qJson.data as AtendimentoLiteNested[];
         const lookup = qJson.servicos ? buildServicoLookup(qJson.servicos) : undefined;
-        const flat = mapAtendimentosNestedToFlat(nested, lookup);
+        const flat = mapAtendimentosNestedToFlat(nested, lookup).filter(
+          (r) => (r.tenant_id ?? "").toLowerCase() === scopedTenantId
+        );
         if (cancelled) return;
         setLoadErr(null);
         setRows(flat);
 
-        const inferred = flat.find((r) => r.tenant_id)?.tenant_id ?? seedTenant;
-        if (inferred) setTenantId((prev) => inferred || prev);
-
-        const cfgTid = inferred || seedTenant;
         const cfgRes = await fetch(
-          `/api/tenant-config${cfgTid ? `?tenant_id=${encodeURIComponent(cfgTid)}` : ""}`,
+          `/api/tenant-config?tenant_id=${encodeURIComponent(scopedTenantId)}`,
           { cache: "no-store" }
         );
-        const cJson = (await cfgRes.json()) as { ok?: boolean; config?: unknown };
+        const cJson = (await cfgRes.json()) as { ok?: boolean; config?: unknown; message?: string };
         if (!cancelled && cfgRes.ok && cJson.ok && cJson.config) {
           setConfig(mergeTenantConfig(cJson.config));
+        } else if (!cancelled && !cfgRes.ok) {
+          setLoadErr(cJson.message || `Config HTTP ${cfgRes.status}`);
         }
       } catch (e) {
         if (!cancelled) setLoadErr(e instanceof Error ? e.message : String(e));
@@ -140,7 +153,7 @@ export default function DisplayPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     const lines = tvMerged.footerLines;
@@ -168,11 +181,10 @@ export default function DisplayPage() {
   const qrTarget = useMemo(() => {
     const custom = config.tvDisplay.qrTargetUrl?.trim();
     if (custom) return custom;
-    if (typeof window === "undefined") return "";
+    if (typeof window === "undefined" || !tenantId) return "";
     const params = new URLSearchParams();
-    if (tenantId) params.set("tenant_id", tenantId);
-    const qs = params.toString();
-    return `${window.location.origin}/display${qs ? `?${qs}` : ""}`;
+    params.set("tenant_id", tenantId);
+    return `${window.location.origin}/display?${params.toString()}`;
   }, [config.tvDisplay.qrTargetUrl, tenantId]);
 
   useEffect(() => {
@@ -318,8 +330,9 @@ export default function DisplayPage() {
             type="button"
             className="w-full rounded border border-white/25 py-1 text-[10px] font-medium text-white/80 hover:bg-white/10"
             onClick={() => {
+              if (!tenantId) return;
               try {
-                localStorage.removeItem(`sf-lite-display-${tenantId || "default"}`);
+                localStorage.removeItem(`sf-lite-display-${tenantId}`);
               } catch {
                 /* */
               }

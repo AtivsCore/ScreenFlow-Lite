@@ -97,6 +97,7 @@ export async function fetchServicos(
 export async function fetchServicosRest(
   url: string,
   anonKey: string,
+  tenantId: string,
   headers?: Record<string, string>
 ): Promise<{ data: ServicoRow[]; table: string; error?: string }> {
   const baseHeaders = {
@@ -106,18 +107,22 @@ export async function fetchServicosRest(
     ...headers,
   };
 
+  const tenantFilter = `tenant_id=eq.${encodeURIComponent(tenantId)}`;
   let lastMissing: string | null = null;
 
   for (const table of candidateOrder()) {
-    const probe = `${url}/rest/v1/${table}?select=id&limit=1`;
+    const probe = `${url}/rest/v1/${table}?select=id&${tenantFilter}&limit=1`;
     const res = await fetch(probe, { method: "GET", cache: "no-store", headers: baseHeaders });
     if (res.ok) {
       setResolvedServicesTable(table);
-      const full = await fetch(`${url}/rest/v1/${table}?select=id,nome,ordem&order=ordem&order=nome`, {
+      const full = await fetch(
+        `${url}/rest/v1/${table}?select=id,nome,ordem&${tenantFilter}&order=ordem&order=nome`,
+        {
         method: "GET",
         cache: "no-store",
         headers: baseHeaders,
-      });
+      }
+      );
       const parsed = full.ok ? ((await full.json()) as unknown) : [];
       return {
         data: Array.isArray(parsed) ? (parsed as ServicoRow[]) : [],

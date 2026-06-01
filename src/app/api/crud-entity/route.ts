@@ -61,9 +61,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Supabase não configurado no servidor." }, { status: 503 });
   }
 
+  const tenantId = body.tenantId?.trim() || resolveDefaultTenantId();
+
   let targetTable = table;
   if (table === SERVICES_CRUD_TABLE || servicesTableCandidates().includes(table)) {
-    const discovered = await fetchServicosRest(url, anonKey);
+    const discovered = await fetchServicosRest(url, anonKey, tenantId);
     if (!discovered.table || discovered.error) {
       return NextResponse.json(
         {
@@ -91,7 +93,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Sessão inválida ou expirada." }, { status: 401 });
   }
 
-  const tenantId = body.tenantId?.trim() || resolveDefaultTenantId();
   const payload: Record<string, unknown> = { nome, tenant_id: tenantId };
 
   if (targetTable === "profissionais") {
