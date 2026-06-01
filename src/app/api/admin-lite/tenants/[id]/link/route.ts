@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { assertMasterSession } from "@/lib/admin-auth";
-import { getLiteLoginUrl } from "@/lib/lite-public-urls";
+import { getLiteLoginUrl, getLitePublicBaseUrl } from "@/lib/lite-public-urls";
 import { createAdminClient } from "@/lib/supabase-admin";
 
 export async function GET(
@@ -80,5 +80,6 @@ export async function GET(
     email,
     senha: novaSenha,
     link: getLiteLoginUrl(),
+    app_base: getLitePublicBaseUrl(),
   });
 }

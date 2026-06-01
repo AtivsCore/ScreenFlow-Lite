@@ -1,0 +1,43 @@
+{
+  "name": "screenflow-lite-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ScreenFlow Lite — cliente desktop (Electron)",
+  "main": "desktop-app/main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "build": "electron-builder",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "app.screenflow.lite",
+    "productName": "ScreenFlow Lite",
+    "forceCodeSigning": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop-app/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "ScreenFlow_Setup.exe",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    }
+  }
+}

@@ -193,8 +193,9 @@ export default async function ClienteLiteDetailPage({
                   fontSize: "0.85rem",
                 }}
               >
-                Gere uma senha temporária e o link de login. Envie estas credenciais para o
-                cliente por e-mail ou WhatsApp; ele entra em /login e acessa o painel da fila.
+                Gere uma senha temporária e o link de login do ScreenFlow Lite. Envie estas
+                credenciais para o cliente por e-mail ou WhatsApp; ele instala o app (kit) ou
+                entra em /login e acessa o painel da fila.
               </p>
               <GerarLinkAcessoButton tenantId={row.id} kitLabel={row.slug} />
             </>

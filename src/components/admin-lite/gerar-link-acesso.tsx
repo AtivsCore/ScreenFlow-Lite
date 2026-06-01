@@ -9,6 +9,8 @@ type Credenciais = {
   link: string;
 };
 
+const INSTALLER_URL = "/downloads/ScreenFlow_Setup.exe";
+
 function safeZipLabel(value: string): string {
   const s = value
     .trim()
@@ -91,16 +93,16 @@ export function GerarLinkAcessoButton({
     setKitErro("");
     setKitLoading(true);
     try {
-      const resKit = await fetch(
-        `/api/admin-lite/tenants/${encodeURIComponent(tenantId)}/kit`
-      );
-      if (!resKit.ok) {
-        setKitErro("Não foi possível gerar o kit HTML. Tente de novo.");
+      const resExe = await fetch(INSTALLER_URL);
+      if (!resExe.ok) {
+        setKitErro(
+          "Instalador não encontrado. Coloque ScreenFlow_Setup.exe em public/downloads/ e publique de novo."
+        );
         return;
       }
-      const kitHtml = await resKit.text();
+      const exeBlob = await resExe.blob();
       const zip = new JSZip();
-      zip.file("ScreenFlow_Lite_Kit.html", kitHtml);
+      zip.file("ScreenFlow_Setup.exe", exeBlob);
       zip.file("CREDENCIAIS_DE_ACESSO.txt", credenciaisTxt(credenciais));
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const url = URL.createObjectURL(zipBlob);
@@ -187,7 +189,7 @@ export function GerarLinkAcessoButton({
             >
               {credenciais.senha}
             </p>
-            <p style={label}>Link para login</p>
+            <p style={label}>Link para login (ScreenFlow Lite)</p>
             <p
               style={{
                 margin: 0,
@@ -232,7 +234,7 @@ export function GerarLinkAcessoButton({
               maxWidth: 440,
             }}
           >
-            O ZIP inclui o guia HTML (TV + abas da fila) e um arquivo de texto com estas
+            O ZIP inclui o instalador ScreenFlow_Setup.exe e um arquivo de texto com estas
             credenciais — pronto para anexar na mensagem ao cliente.
           </p>
         </div>

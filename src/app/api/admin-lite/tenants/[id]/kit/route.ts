@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { assertMasterSession } from "@/lib/admin-auth";
-import { getLiteDisplayUrl, getLiteLoginUrl, getLitePublicBaseUrl } from "@/lib/lite-public-urls";
+import {
+  getLiteDisplayUrl,
+  getLiteLoginUrl,
+  getLitePublicBaseUrl,
+  SCREENFLOW_LITE_DEFAULT_BASE_URL,
+} from "@/lib/lite-public-urls";
 import { createAdminClient } from "@/lib/supabase-admin";
 
 function escapeHtml(s: string): string {
@@ -177,7 +182,7 @@ export async function GET(
     licencaKey: row.licenca_key,
     loginUrl: getLiteLoginUrl(),
     displayUrl: getLiteDisplayUrl(row.id),
-    appLabel: publicBase.length > 0 ? publicBase : "(defina NEXT_PUBLIC_SCREENFLOW_LITE_URL)",
+    appLabel: publicBase || SCREENFLOW_LITE_DEFAULT_BASE_URL,
   });
 
   return new NextResponse(html, {
