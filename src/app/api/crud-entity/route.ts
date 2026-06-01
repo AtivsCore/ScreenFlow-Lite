@@ -20,11 +20,13 @@ const ALLOWED_TABLES = new Set([
 ]);
 
 const RLS_FIX_HINT =
-  "Execute docs/supabase-lite-rls-servicos-fix.sql (ou docs/supabase-lite-rls-cadastros.sql) no Supabase SQL Editor.";
+  "Execute docs/supabase-lite-rls-cadastros-fix.sql no SQL Editor do projeto Supabase Lite (não use o banco Pro).";
 
 type Body = {
   table?: string;
   nome?: string;
+  especialidade?: string | null;
+  ordem?: number | null;
   tenantId?: string | null;
 };
 
@@ -68,7 +70,7 @@ export async function POST(req: Request) {
           ok: false,
           message:
             discovered.error ??
-            "Tabela de serviços não encontrada. Execute docs/supabase-lite-create-servicos.sql no Supabase.",
+            "Tabela de serviços não encontrada. Execute docs/supabase-lite-create-servicos.sql no Supabase Lite.",
         },
         { status: 400 }
       );
@@ -90,7 +92,18 @@ export async function POST(req: Request) {
   }
 
   const tenantId = body.tenantId?.trim() || resolveDefaultTenantId();
-  const payload = { nome, tenant_id: tenantId };
+  const payload: Record<string, unknown> = { nome, tenant_id: tenantId };
+
+  if (targetTable === "profissionais") {
+    const esp = typeof body.especialidade === "string" ? body.especialidade.trim() : "";
+    if (esp) payload.especialidade = esp;
+  }
+
+  if (servicesTableCandidates().includes(targetTable) || targetTable === "servicos") {
+    if (typeof body.ordem === "number" && Number.isFinite(body.ordem)) {
+      payload.ordem = body.ordem;
+    }
+  }
 
   const { error: userInsertErr } = await userClient.from(targetTable).insert(payload);
   if (!userInsertErr) {

@@ -1,10 +1,17 @@
 "use client";
 
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
+import {
+  prioridadeBooleanFromClassificacao,
+  resolveClassificacaoPrioridade,
+  type ClassificacaoPrioridade,
+} from "@/lib/classificacao-prioridade";
+import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
 type Opt = { id: string; nome: string | null };
 
@@ -30,10 +37,12 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
   const [profissionalId, setProfissionalId] = useState(row.profissional_id ?? "");
   const [localId, setLocalId] = useState(row.local_id ?? "");
   const [servicoId, setServicoId] = useState(row.especialidade_id ?? "");
-  const [prioridade, setPrioridade] = useState(row.prioridade === true);
+  const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>(() =>
+    resolveClassificacaoPrioridade(row.classificacao_prioridade, row.prioridade)
+  );
   const [observacao, setObservacao] = useState(row.observacao ?? "");
   const [excluirFechamento, setExcluirFechamento] = useState(row.excluir_do_fechamento === true);
-  const [profissionais, setProfissionais] = useState<Opt[]>([]);
+  const [profissionais, setProfissionais] = useState<ProfissionalRow[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
   const [servicos, setServicos] = useState<Opt[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -42,13 +51,20 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const tid = row.tenant_id?.trim();
+      const profQuery = tid
+        ? supabase.from("profissionais").select("id,nome,especialidade").eq("tenant_id", tid).order("nome")
+        : supabase.from("profissionais").select("id,nome,especialidade").order("nome");
+      const locQuery = tid
+        ? supabase.from("locais").select("id,nome").eq("tenant_id", tid).order("nome")
+        : supabase.from("locais").select("id,nome").order("nome");
       const [p, l, sResult] = await Promise.all([
-        supabase.from("profissionais").select("id,nome").order("nome"),
-        supabase.from("locais").select("id,nome").order("nome"),
+        profQuery,
+        locQuery,
         fetchServicos(supabase, row.tenant_id),
       ]);
       if (cancelled) return;
-      setProfissionais((p.data as Opt[] | null) ?? []);
+      setProfissionais((p.data as ProfissionalRow[] | null) ?? []);
       setLocais((l.data as Opt[] | null) ?? []);
       setServicos(sResult.data);
     })();
@@ -79,7 +95,8 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
       excluir_do_fechamento: excluirFechamento,
     };
     if (priorityLawEnabled) {
-      patch.prioridade = prioridade;
+      patch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
+      patch.classificacao_prioridade = classificacao;
     }
 
     const { error: ae } = await supabase.from("atendimentos_lite").update(patch).eq("id", row.id);
@@ -117,7 +134,7 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
           <option value="">—</option>
           {profissionais.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.nome ?? m.id}
+              {formatProfissionalLabel(m)}
             </option>
           ))}
         </select>
@@ -156,15 +173,7 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
       </label>
 
       {priorityLawEnabled ? (
-        <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          <input
-            type="checkbox"
-            checked={prioridade}
-            onChange={(e) => setPrioridade(e.target.checked)}
-            className="rounded border-zinc-400"
-          />
-          Prioridade (lei de prioridade)
-        </label>
+        <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
       ) : null}
 
       <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">

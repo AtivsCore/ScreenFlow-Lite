@@ -1,14 +1,17 @@
 "use client";
 
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
+import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { fetchServicos } from "@/lib/fetch-servicos";
+import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 
 type Opt = { id: string; nome: string | null };
+type ProfOpt = ProfissionalRow;
 
 type QuickCrud = { title: string; table: string };
 
@@ -96,7 +99,7 @@ export function ClientPanel({
   onPatch,
   tenantId,
 }: ClientPanelProps) {
-  const [profissionais, setProfissionais] = useState<Opt[]>([]);
+  const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
   const [servicos, setServicos] = useState<Opt[]>([]);
   const [tvs, setTvs] = useState<Opt[]>([]);
@@ -106,12 +109,16 @@ export function ClientPanel({
     if (!supabase) return;
     const tid = tenantId?.trim();
     const [p, l, sResult, t] = await Promise.all([
-      supabase.from("profissionais").select("id,nome").order("nome"),
-      supabase.from("locais").select("id,nome").order("nome"),
+      tid
+        ? supabase.from("profissionais").select("id,nome,especialidade").eq("tenant_id", tid).order("nome")
+        : supabase.from("profissionais").select("id,nome,especialidade").order("nome"),
+      tid
+        ? supabase.from("locais").select("id,nome").eq("tenant_id", tid).order("nome")
+        : supabase.from("locais").select("id,nome").order("nome"),
       fetchServicos(supabase, tid),
       supabase.from("tvs").select("id,nome").order("nome"),
     ]);
-    setProfissionais(((p.error ? null : p.data) as Opt[] | null) ?? []);
+    setProfissionais(((p.error ? null : p.data) as ProfOpt[] | null) ?? []);
     setLocais(((l.error ? null : l.data) as Opt[] | null) ?? []);
     setServicos(sResult.data);
     setTvs(((t.error ? null : t.data) as Opt[] | null) ?? []);
@@ -127,6 +134,9 @@ export function ClientPanel({
   const tvValue = selected?.tv_id ?? "";
   const selectDisabled = !selected || !canMutate || pending;
   const quickAddDisabled = !supabase;
+  const prioStyle = selected
+    ? classificacaoBadgeStyle(selected.classificacao_prioridade, selected.prioridade)
+    : null;
 
   return (
     <>
@@ -141,9 +151,9 @@ export function ClientPanel({
                 <p className="mt-0.5 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
                   {selected.nome ?? "—"}
                 </p>
-                {priorityLawEnabled ? (
-                  <p className="mt-1.5 inline-flex rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-950/80 dark:text-amber-200">
-                    {selected.prioridade === true ? "Prioritário" : "Regular"}
+                {priorityLawEnabled && prioStyle ? (
+                  <p className={`mt-1.5 inline-flex px-2 py-0.5 text-[10px] ${prioStyle.badge}`}>
+                    {prioStyle.label}
                   </p>
                 ) : null}
               </>
@@ -169,7 +179,10 @@ export function ClientPanel({
           <SelectWithQuickAdd
             label="Profissional"
             value={profissionalValue}
-            options={profissionais}
+            options={profissionais.map((p) => ({
+              id: p.id,
+              nome: formatProfissionalLabel(p),
+            }))}
             disabled={selectDisabled}
             quickAddDisabled={quickAddDisabled}
             onChange={(v) => void onPatch({ profissional_id: v || null })}

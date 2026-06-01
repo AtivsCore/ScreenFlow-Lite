@@ -11,10 +11,12 @@ CREATE TABLE IF NOT EXISTS public.servicos (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
   nome text NOT NULL,
+  ordem integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_servicos_tenant_nome ON public.servicos (tenant_id, nome);
+CREATE INDEX IF NOT EXISTS idx_servicos_tenant_ordem ON public.servicos (tenant_id, ordem, nome);
 
 -- App Next.js / Vercel:
 --   NEXT_PUBLIC_SUPABASE_SERVICES_TABLE=servicos

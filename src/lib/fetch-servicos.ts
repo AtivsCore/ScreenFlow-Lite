@@ -7,7 +7,7 @@ import {
 } from "@/lib/db-tables";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type ServicoRow = { id: string; nome: string | null };
+export type ServicoRow = { id: string; nome: string | null; ordem?: number | null };
 
 export type FetchServicosResult = {
   data: ServicoRow[];
@@ -33,7 +33,7 @@ async function queryServicosTable(
   table: string,
   tenantId?: string | null
 ): Promise<{ data: ServicoRow[] | null; error: string | null }> {
-  let query = supabase.from(table).select("id,nome").order("nome");
+  let query = supabase.from(table).select("id,nome,ordem").order("ordem").order("nome");
   if (tenantId?.trim()) {
     query = query.eq("tenant_id", tenantId.trim());
   }
@@ -113,7 +113,7 @@ export async function fetchServicosRest(
     const res = await fetch(probe, { method: "GET", cache: "no-store", headers: baseHeaders });
     if (res.ok) {
       setResolvedServicesTable(table);
-      const full = await fetch(`${url}/rest/v1/${table}?select=id,nome&order=nome`, {
+      const full = await fetch(`${url}/rest/v1/${table}?select=id,nome,ordem&order=ordem&order=nome`, {
         method: "GET",
         cache: "no-store",
         headers: baseHeaders,

@@ -5,6 +5,7 @@ import {
   formatCreatedAt,
   formatHoraMarcada,
 } from "@/lib/atendimentos-lite";
+import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 import type { QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Pencil, Trash2, UserPlus } from "lucide-react";
@@ -135,6 +136,9 @@ export function QueueSection({
             {!loading &&
               displayRows.map((row) => {
                 const isSel = row.id === selectedId;
+                const prioStyle = priorityLawEnabled
+                  ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
+                  : null;
                 return (
                   <tr
                     key={row.id}
@@ -149,7 +153,7 @@ export function QueueSection({
                     }}
                     className={`cursor-pointer border-b border-zinc-100 transition hover:bg-zinc-50/80 dark:border-zinc-800 dark:hover:bg-zinc-800/40 ${
                       isSel ? "bg-zinc-100 dark:bg-zinc-800/60" : ""
-                    }`}
+                    } ${prioStyle?.rowAccent ?? ""}`}
                   >
                     <td className="whitespace-nowrap px-2 py-1 font-mono text-zinc-500 dark:text-zinc-400">
                       {formatCreatedAt(row.created_at)}
@@ -159,15 +163,7 @@ export function QueueSection({
                     </td>
                     {priorityLawEnabled ? (
                       <td className="px-2 py-1">
-                        <span
-                          className={
-                            row.prioridade === true
-                              ? "rounded bg-amber-200 px-1 py-0.5 font-medium text-amber-950 dark:bg-amber-900/70 dark:text-amber-100"
-                              : "rounded bg-zinc-200 px-1 py-0.5 font-medium text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100"
-                          }
-                        >
-                          {row.prioridade === true ? "Sim" : "Não"}
-                        </span>
+                        <span className={prioStyle?.badge ?? ""}>{prioStyle?.label ?? "—"}</span>
                       </td>
                     ) : null}
                     <td className="truncate px-2 py-1 font-medium">{row.nome ?? "—"}</td>

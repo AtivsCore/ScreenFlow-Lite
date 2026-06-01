@@ -15,7 +15,8 @@ type Body = {
   especialidade_id?: string | null;
   tv_id?: string | null;
   observacao?: string | null;
-  prioridade?: boolean;
+        prioridade?: boolean;
+        classificacao_prioridade?: string;
   excluir_do_fechamento?: boolean;
 };
 
@@ -43,6 +44,9 @@ export async function POST(req: Request) {
   if (body.tv_id !== undefined) payload.tv_id = body.tv_id;
   if (body.observacao !== undefined) payload.observacao = body.observacao;
   if (typeof body.prioridade === "boolean") payload.prioridade = body.prioridade;
+  if (typeof body.classificacao_prioridade === "string" && body.classificacao_prioridade.trim()) {
+    payload.classificacao_prioridade = body.classificacao_prioridade.trim();
+  }
   if (typeof body.excluir_do_fechamento === "boolean") payload.excluir_do_fechamento = body.excluir_do_fechamento;
 
   if (Object.keys(payload).length === 0) {

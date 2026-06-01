@@ -1,4 +1,6 @@
 import { SERVICES_TABLE } from "@/lib/db-tables";
+import { prioridadeSortWeight, resolveClassificacaoPrioridade } from "@/lib/classificacao-prioridade";
+import { formatProfissionalLabel } from "@/lib/profissionais-display";
 
 /** Linha de `public.atendimentos_lite` (formato plano usado na UI) */
 export type AtendimentoLite = {
@@ -12,6 +14,7 @@ export type AtendimentoLite = {
   hora_marcada: string | null;
   status: string | null;
   prioridade: boolean | null;
+  classificacao_prioridade: string | null;
   observacao: string | null;
   excluir_do_fechamento: boolean | null;
   created_at: string | null;
@@ -33,11 +36,16 @@ export type AtendimentoLiteNested = {
   hora_marcada: string | null;
   status: string | null;
   prioridade: boolean | null;
+  classificacao_prioridade?: string | null;
   observacao: string | null;
   excluir_do_fechamento?: boolean | null;
   created_at: string | null;
   pacientes?: { nome: string | null } | { nome: string | null }[] | null;
-  profissionais?: { id: string; nome: string | null } | { id: string; nome: string | null }[] | null;
+  profissionais?:
+    | { id: string; nome: string | null; especialidade?: string | null }
+    | { id: string; nome: string | null; especialidade?: string | null }[]
+    | null
+    | undefined;
   locais?: { id: string; nome: string | null } | { id: string; nome: string | null }[] | null;
   /** Legado; use chave dinâmica conforme `SERVICES_TABLE` em `db-tables`. */
   especialidades?: { id: string; nome: string | null } | { id: string; nome: string | null }[] | null;
@@ -54,14 +62,19 @@ function nomeRelacionamento(
 
 function profissionalRel(
   rel:
-    | { id: string; nome: string | null }
-    | { id: string; nome: string | null }[]
+    | { id: string; nome: string | null; especialidade?: string | null }
+    | { id: string; nome: string | null; especialidade?: string | null }[]
     | null
     | undefined
-): { id: string | null; nome: string | null } {
-  if (rel == null) return { id: null, nome: null };
+): { id: string | null; nome: string | null; displayNome: string | null } {
+  if (rel == null) return { id: null, nome: null, displayNome: null };
   const one = Array.isArray(rel) ? rel[0] : rel;
-  return { id: one?.id ?? null, nome: one?.nome ?? null };
+  const nome = one?.nome ?? null;
+  return {
+    id: one?.id ?? null,
+    nome,
+    displayNome: one ? formatProfissionalLabel(one) : null,
+  };
 }
 
 function nomeJoinRel(
@@ -92,11 +105,12 @@ export function mapAtendimentoNestedToFlat(row: AtendimentoLiteNested): Atendime
     hora_marcada: row.hora_marcada,
     status: row.status,
     prioridade: row.prioridade,
+    classificacao_prioridade: row.classificacao_prioridade ?? null,
     observacao: row.observacao,
     excluir_do_fechamento: row.excluir_do_fechamento ?? false,
     created_at: row.created_at,
     nome: nomeRelacionamento(row.pacientes),
-    profissionalNome: prof.nome,
+    profissionalNome: prof.displayNome ?? prof.nome,
     localNome: nomeJoinRel(row.locais),
     servicoNome: servicoNomeFromNested(row),
   };
@@ -141,8 +155,8 @@ export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
   outros: "Outros",
 };
 
-function prioridadeOrdem(p: boolean | null): number {
-  return p === true ? 1 : 0;
+function prioridadeOrdemRow(row: AtendimentoLite): number {
+  return prioridadeSortWeight(row.classificacao_prioridade, row.prioridade);
 }
 
 /** ms desde epoch; fallback +inf para ordenar por último */
@@ -205,7 +219,7 @@ export function filterAndSortQueue(
     case "ordem":
       return [...active].sort((a, b) => {
         if (law) {
-          const pd = prioridadeOrdem(b.prioridade) - prioridadeOrdem(a.prioridade);
+          const pd = prioridadeOrdemRow(b) - prioridadeOrdemRow(a);
           if (pd !== 0) return pd;
         }
         return timeMs(a.created_at) - timeMs(b.created_at);
@@ -225,11 +239,15 @@ export function filterAndSortQueue(
         .sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
     case "prioridade":
       return [...active]
-        .filter((r) => r.prioridade === true)
-        .sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
+        .filter((r) => resolveClassificacaoPrioridade(r.classificacao_prioridade, r.prioridade) !== "normal")
+        .sort((a, b) => {
+          const pd = prioridadeOrdemRow(b) - prioridadeOrdemRow(a);
+          if (pd !== 0) return pd;
+          return timeMs(a.created_at) - timeMs(b.created_at);
+        });
     case "urgente":
       return [...active]
-        .filter((r) => r.prioridade === true)
+        .filter((r) => resolveClassificacaoPrioridade(r.classificacao_prioridade, r.prioridade) === "emergencia")
         .sort((a, b) => {
           const ua = /\burg(ent)?e?\b/i.test(a.observacao ?? "") ? 1 : 0;
           const ub = /\burg(ent)?e?\b/i.test(b.observacao ?? "") ? 1 : 0;
@@ -239,7 +257,7 @@ export function filterAndSortQueue(
     case "outros":
       return [...active].sort((a, b) => {
         if (law) {
-          const pd = prioridadeOrdem(b.prioridade) - prioridadeOrdem(a.prioridade);
+          const pd = prioridadeOrdemRow(b) - prioridadeOrdemRow(a);
           if (pd !== 0) return pd;
         }
         return timeMs(a.created_at) - timeMs(b.created_at);

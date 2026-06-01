@@ -1,5 +1,5 @@
 /** Query PostgREST idêntica ao `.select()` do cliente (sem join em serviços — evita erro de schema cache). */
-export const ATENDIMENTOS_LITE_REST_SELECT = `id,tenant_id,paciente_id,profissional_id,local_id,especialidade_id,tv_id,hora_marcada,status,prioridade,observacao,excluir_do_fechamento,created_at,pacientes(nome),profissionais(id,nome),locais(id,nome)`;
+export const ATENDIMENTOS_LITE_REST_SELECT = `id,tenant_id,paciente_id,profissional_id,local_id,especialidade_id,tv_id,hora_marcada,status,prioridade,classificacao_prioridade,observacao,excluir_do_fechamento,created_at,pacientes(nome),profissionais(id,nome,especialidade),locais(id,nome)`;
 
 export type ServicoRow = { id: string; nome: string | null };
 

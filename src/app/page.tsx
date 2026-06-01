@@ -220,11 +220,12 @@ export default function Home() {
         "hora_marcada",
         "status",
         "prioridade",
+        "classificacao_prioridade",
         "observacao",
         "excluir_do_fechamento",
         "created_at",
         "pacientes ( nome )",
-        "profissionais ( id, nome )",
+        "profissionais ( id, nome, especialidade )",
         "locais ( id, nome )",
       ].join(",\n      ");
 
@@ -309,6 +310,7 @@ export default function Home() {
         especialidade_id?: string | null;
         tv_id?: string | null;
         prioridade?: boolean;
+        classificacao_prioridade?: string;
         excluir_do_fechamento?: boolean;
       }
     ) => {

@@ -1,13 +1,18 @@
 "use client";
 
+import {
+  prioridadeBooleanFromClassificacao,
+  type ClassificacaoPrioridade,
+} from "@/lib/classificacao-prioridade";
+import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ResolvedTenantConfig } from "@/lib/tenant-config";
+import type { QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
-type ProfRow = { id: string; nome: string | null };
 type OptRow = { id: string; nome: string | null };
 
 type RegistryPatientModalProps = {
@@ -28,6 +33,24 @@ function appendObsLine(obs: string, label: string, value: string): string {
   return base ? `${base}\n${line}` : line;
 }
 
+function applyTriagemPreset(
+  tab: QueueTabEntry | undefined,
+  classificacao: ClassificacaoPrioridade,
+  setClassificacao: (c: ClassificacaoPrioridade) => void
+): ClassificacaoPrioridade {
+  if (!tab) return classificacao;
+  switch (tab.preset) {
+    case "prioridade":
+      setClassificacao("prioritario");
+      return "prioritario";
+    case "urgente":
+      setClassificacao("emergencia");
+      return "emergencia";
+    default:
+      return classificacao;
+  }
+}
+
 export function RegistryPatientModal({
   open,
   onClose,
@@ -39,13 +62,17 @@ export function RegistryPatientModal({
 }: RegistryPatientModalProps) {
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
+  const queueTabs = tenantConfig.queueTabs;
 
   const effectiveTenantId = useMemo(
     () => tenantId?.trim() || resolveDefaultTenantId(),
     [tenantId]
   );
 
+  const defaultTriagemId = queueTabs[0]?.id ?? "";
+
   const [nomeCliente, setNomeCliente] = useState("");
+  const [triagemTabId, setTriagemTabId] = useState(defaultTriagemId);
   const [profissionalId, setProfissionalId] = useState<string>("");
   const [profissionalLivre, setProfissionalLivre] = useState("");
   const [servicoId, setServicoId] = useState<string>("");
@@ -53,26 +80,37 @@ export function RegistryPatientModal({
   const [localId, setLocalId] = useState<string>("");
   const [localLivre, setLocalLivre] = useState("");
   const [horaMarcada, setHoraMarcada] = useState("");
-  const [prioridade, setPrioridade] = useState(false);
+  const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>("normal");
   const [observacaoBase, setObservacaoBase] = useState("");
 
-  const [profissionais, setProfissionais] = useState<ProfRow[]>([]);
+  const [profissionais, setProfissionais] = useState<ProfissionalRow[]>([]);
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [locais, setLocais] = useState<OptRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const triagemTab = useMemo(
+    () => queueTabs.find((t) => t.id === triagemTabId) ?? queueTabs[0],
+    [queueTabs, triagemTabId]
+  );
+
+  const triagemLabel = triagemTab?.label ?? "Entrada na fila";
 
   useEffect(() => {
     if (!open || !supabase) return;
     let cancelled = false;
     void (async () => {
       const [p, sResult, l] = await Promise.all([
-        supabase.from("profissionais").select("id,nome").eq("tenant_id", effectiveTenantId).order("nome"),
+        supabase
+          .from("profissionais")
+          .select("id,nome,especialidade")
+          .eq("tenant_id", effectiveTenantId)
+          .order("nome"),
         fetchServicos(supabase, effectiveTenantId),
         supabase.from("locais").select("id,nome").eq("tenant_id", effectiveTenantId).order("nome"),
       ]);
       if (cancelled) return;
-      setProfissionais((p.data as ProfRow[] | null) ?? []);
+      setProfissionais((p.data as ProfissionalRow[] | null) ?? []);
       setServicos(sResult.data);
       setLocais((l.data as OptRow[] | null) ?? []);
     })();
@@ -84,6 +122,7 @@ export function RegistryPatientModal({
   useEffect(() => {
     if (!open) return;
     setNomeCliente("");
+    setTriagemTabId(queueTabs[0]?.id ?? "");
     setProfissionalId("");
     setProfissionalLivre("");
     setServicoId("");
@@ -91,10 +130,18 @@ export function RegistryPatientModal({
     setLocalId("");
     setLocalLivre("");
     setHoraMarcada("");
-    setPrioridade(false);
+    setClassificacao("normal");
     setObservacaoBase("");
     setError(null);
-  }, [open, tenantConfig.priorityLawEnabled]);
+  }, [open, tenantConfig.priorityLawEnabled, queueTabs]);
+
+  function handleTriagemChange(tabId: string) {
+    setTriagemTabId(tabId);
+    const tab = queueTabs.find((t) => t.id === tabId);
+    if (law && tab) {
+      applyTriagemPreset(tab, classificacao, setClassificacao);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -119,6 +166,9 @@ export function RegistryPatientModal({
     }
 
     let observacao = observacaoBase.trim();
+    if (triagemTab) {
+      observacao = appendObsLine(observacao, triagemLabel, triagemTab.label);
+    }
     if (rf.profissionalPreferFreeText && profissionalLivre.trim()) {
       observacao = appendObsLine(observacao, "Profissional", profissionalLivre);
     }
@@ -129,10 +179,17 @@ export function RegistryPatientModal({
       observacao = appendObsLine(observacao, "Local", localLivre);
     }
 
+    let finalClassificacao: ClassificacaoPrioridade = classificacao;
+    if (law && triagemTab) {
+      if (triagemTab.preset === "prioridade") finalClassificacao = "prioritario";
+      else if (triagemTab.preset === "urgente") finalClassificacao = "emergencia";
+    }
+
     const payload: Record<string, unknown> = {
       paciente_id: pacienteId,
       tenant_id: effectiveTenantId,
-      prioridade: law ? prioridade : false,
+      prioridade: law ? prioridadeBooleanFromClassificacao(finalClassificacao) : false,
+      classificacao_prioridade: law ? finalClassificacao : "normal",
       observacao: observacao.trim() || null,
       status: defaultStatus,
     };
@@ -149,9 +206,12 @@ export function RegistryPatientModal({
       payload.local_id = localId;
     }
 
-    if (rf.showHoraMarcada && horaMarcada.trim()) {
+    const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
+    if (wantsHora && horaMarcada.trim()) {
       const d = new Date(horaMarcada);
       payload.hora_marcada = Number.isNaN(d.getTime()) ? horaMarcada.trim() : d.toISOString();
+    } else if (triagemTab?.preset === "encaixe") {
+      payload.hora_marcada = null;
     }
 
     const { error: aErr } = await supabase.from("atendimentos_lite").insert(payload);
@@ -168,6 +228,7 @@ export function RegistryPatientModal({
 
   const visibleFields =
     rf.showClienteNome ||
+    queueTabs.length > 0 ||
     rf.showProfissional ||
     rf.profissionalPreferFreeText ||
     rf.showServico ||
@@ -175,7 +236,7 @@ export function RegistryPatientModal({
     rf.showLocal ||
     rf.localPreferFreeText ||
     rf.showHoraMarcada ||
-    (law && rf.showObservacao !== false) ||
+    law ||
     rf.showObservacao;
 
   return (
@@ -186,6 +247,23 @@ export function RegistryPatientModal({
             Nenhum campo visível nas configurações. Ative campos em Configurações → Geral.
           </p>
         )}
+
+        {queueTabs.length > 0 ? (
+          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {triagemLabel}
+            <select
+              value={triagemTabId}
+              onChange={(e) => handleTriagemChange(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            >
+              {queueTabs.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         {rf.showClienteNome ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
@@ -209,7 +287,7 @@ export function RegistryPatientModal({
               <option value="">—</option>
               {profissionais.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.nome ?? m.id}
+                  {formatProfissionalLabel(m)}
                 </option>
               ))}
             </select>
@@ -286,7 +364,7 @@ export function RegistryPatientModal({
           </label>
         ) : null}
 
-        {rf.showHoraMarcada ? (
+        {(rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
             Horário marcado
             <input
@@ -299,15 +377,7 @@ export function RegistryPatientModal({
         ) : null}
 
         {law ? (
-          <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            <input
-              type="checkbox"
-              checked={prioridade}
-              onChange={(e) => setPrioridade(e.target.checked)}
-              className="rounded border-zinc-400"
-            />
-            Prioridade (lei de prioridade)
-          </label>
+          <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
         ) : null}
 
         {rf.showObservacao ? (
