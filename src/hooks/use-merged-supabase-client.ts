@@ -1,7 +1,8 @@
 "use client";
 
 import { useSupabasePublicEnv } from "@/components/supabase-env-provider";
-import { createSupabaseClientSafe, finalizeSupabasePublicPair } from "@/lib/supabase";
+import { finalizeSupabasePublicPair } from "@/lib/supabase";
+import { createBrowserSupabaseClient } from "@/lib/supabase-browser";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 
@@ -57,7 +58,7 @@ export function useMergedSupabaseClient(): {
   const supabase = useMemo(() => {
     const m = mergedEnv;
     if (!m.url || !m.anonKey) return null;
-    return createSupabaseClientSafe(m.url, m.anonKey);
+    return createBrowserSupabaseClient(m.url, m.anonKey);
   }, [mergedEnv]);
 
   const envChecking = !apiProbeDone && !supabase;

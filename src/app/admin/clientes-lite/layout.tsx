@@ -5,10 +5,12 @@ import type { ReactNode } from "react";
 
 type AdminLiteLayoutProps = { children: ReactNode };
 
+const ADMIN_LOGIN_NEXT = "/admin/clientes-lite";
+
 export default async function AdminLiteLayout({ children }: AdminLiteLayoutProps) {
   const master = getMasterEmail();
   if (!master) {
-    redirect("/login");
+    redirect(`/login?next=${encodeURIComponent(ADMIN_LOGIN_NEXT)}&reason=master_env`);
   }
 
   const supabase = await createServerSupabaseClient();
@@ -17,8 +19,11 @@ export default async function AdminLiteLayout({ children }: AdminLiteLayoutProps
   } = await supabase.auth.getUser();
 
   const email = (user?.email ?? "").trim().toLowerCase();
-  if (!user || email !== master) {
-    redirect("/login");
+  if (!user) {
+    redirect(`/login?next=${encodeURIComponent(ADMIN_LOGIN_NEXT)}&reason=no_session`);
+  }
+  if (email !== master) {
+    redirect(`/login?next=${encodeURIComponent(ADMIN_LOGIN_NEXT)}&reason=not_master`);
   }
 
   return <>{children}</>;

@@ -1,11 +1,20 @@
 "use client";
 
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+
+function resolvePostLoginPath(nextParam: string | null): string {
+  if (!nextParam) return "/";
+  if (!nextParam.startsWith("/") || nextParam.startsWith("//")) return "/";
+  return nextParam;
+}
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = resolvePostLoginPath(searchParams.get("next"));
+  const denyReason = searchParams.get("reason");
   const { supabase, envChecking, envMissing } = useMergedSupabaseClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +33,7 @@ export default function LoginPage() {
     void supabase.auth.getSession().then(({ data }) => {
       if (cancelled) return;
       if (data.session) {
-        router.replace("/");
+        router.replace(nextPath);
         return;
       }
       setCheckingSession(false);
@@ -32,7 +41,7 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, envMissing, router]);
+  }, [supabase, envMissing, router, nextPath]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,7 +57,7 @@ export default function LoginPage() {
       setBusy(false);
       return;
     }
-    router.replace("/");
+    router.replace(nextPath);
     router.refresh();
     setBusy(false);
   }
@@ -72,6 +81,24 @@ export default function LoginPage() {
         {envMissing && (
           <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
             Supabase não configurado neste ambiente (variáveis de URL e anon key).
+          </p>
+        )}
+
+        {denyReason === "not_master" && (
+          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            Esta conta não é o administrador master. Use o e-mail configurado em{" "}
+            <code className="font-mono">NEXT_PUBLIC_MASTER_EMAIL</code>.
+          </p>
+        )}
+        {denyReason === "master_env" && (
+          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+            Painel admin indisponível: configure{" "}
+            <code className="font-mono">NEXT_PUBLIC_MASTER_EMAIL</code> na Vercel e faça redeploy.
+          </p>
+        )}
+        {denyReason === "no_session" && nextPath.startsWith("/admin/") && (
+          <p className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-100">
+            Entre com a conta master para acessar o painel de clientes.
           </p>
         )}
 
