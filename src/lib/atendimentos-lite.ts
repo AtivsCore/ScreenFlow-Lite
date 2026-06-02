@@ -163,6 +163,16 @@ export const STATUS_UPDATE = {
   finalizar: "Finalizado",
 } as const;
 
+/** Rótulo de status na fila: somente aguardando, chamado ou rechamado. */
+export function normalizeQueueStatusLabel(
+  status: string | null | undefined
+): "aguardando" | "chamado" | "rechamado" {
+  const s = (status ?? "").trim().toLowerCase();
+  if (s.includes("recham")) return "rechamado";
+  if (s.includes("chamado") || (s.includes("cham") && !s.includes("aguard"))) return "chamado";
+  return "aguardando";
+}
+
 export type QueueTabId = "todos" | "ordem" | "hora" | "encaixe" | "prioridade" | "urgente" | "outros";
 
 export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
