@@ -566,14 +566,14 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <AppSidebar
         onOpenSegment={() => setSegmentOpen(true)}
         onOpenSettings={openGeneralSettings}
         onSignOut={() => void supabase?.auth.signOut()}
       />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {envChecking && (
           <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-400">
             Verificando variáveis do Supabase no servidor…

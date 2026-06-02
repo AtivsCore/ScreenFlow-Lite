@@ -59,6 +59,11 @@ function resolveKanbanMeta(
   };
 }
 
+function formatKanbanContextLine(meta: { profissional: string | null; local: string | null }): string | null {
+  const parts = [meta.profissional, meta.local].filter((v): v is string => Boolean(v?.trim()));
+  return parts.length ? parts.join(" • ") : null;
+}
+
 type KanbanCardProps = {
   row: AtendimentoLite;
   isSel: boolean;
@@ -85,6 +90,7 @@ const KanbanCard = memo(function KanbanCard({
     : null;
   const statusLabel = normalizeQueueStatusLabel(row.status);
   const clientName = row.nome?.trim() || "—";
+  const contextLine = formatKanbanContextLine(meta);
 
   return (
     <article
@@ -117,20 +123,29 @@ const KanbanCard = memo(function KanbanCard({
         ) : null}
       </div>
 
+      <div className="mt-0.5 min-w-0">
+        {meta.servico ? (
+          <p
+            className="truncate text-[9px] uppercase leading-tight tracking-wide text-zinc-500 dark:text-zinc-400"
+            title={meta.servico}
+          >
+            {meta.servico}
+          </p>
+        ) : null}
+        {contextLine ? (
+          <p
+            className="truncate text-[11px] leading-tight text-zinc-500 dark:text-zinc-400"
+            title={contextLine}
+          >
+            {contextLine}
+          </p>
+        ) : null}
+      </div>
+
       <div className="mt-0.5 flex items-center justify-between gap-1">
-        <div className="min-w-0 flex-1">
-          {meta.servico ? (
-            <p
-              className="truncate text-[9px] uppercase leading-tight tracking-wide text-zinc-500 dark:text-zinc-400"
-              title={meta.servico}
-            >
-              {meta.servico}
-            </p>
-          ) : null}
-          <span className={`text-[9px] font-semibold uppercase leading-none tracking-wide ${queueStatusStyle(statusLabel)}`}>
-            {statusLabel}
-          </span>
-        </div>
+        <span className={`text-[9px] font-semibold uppercase leading-none tracking-wide ${queueStatusStyle(statusLabel)}`}>
+          {statusLabel}
+        </span>
         <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
@@ -505,9 +520,9 @@ export function QueueSection({
               return (
                 <section
                   key={tab.id}
-                  className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50"
+                  className="flex h-full min-h-0 max-h-full min-w-[240px] max-w-[260px] flex-1 basis-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50"
                 >
-                  <header className="z-[1] shrink-0 border-y border-zinc-200 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800/80">
+                  <header className="shrink-0 border-y border-zinc-200 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800/80">
                     <div className="flex items-center justify-between gap-1">
                       <h3
                         className="truncate text-[9px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
