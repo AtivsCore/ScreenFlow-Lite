@@ -23,7 +23,7 @@ import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 const ENV_TENANT_ID = resolveDefaultTenantId();
 
@@ -39,8 +39,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"fluxo" | "geral" | "cadastros">("fluxo");
   const [registryOpen, setRegistryOpen] = useState(false);
   const [editRow, setEditRow] = useState<AtendimentoLite | null>(null);
+  const [, startTransition] = useTransition();
 
   const [tenantConfig, setTenantConfig] = useState<ResolvedTenantConfig>(() => mergeTenantConfig({}));
   const [tvRows, setTvRows] = useState<{ id: string; nome: string | null }[]>([]);
@@ -166,6 +168,26 @@ export default function Home() {
   );
 
   const tenantIdForInsert = effectiveTenantId;
+
+  const handleSelectId = useCallback((id: string) => {
+    startTransition(() => setSelectedId(id));
+  }, []);
+
+  const openFlowSettings = useCallback(() => {
+    setSettingsInitialTab("fluxo");
+    setSettingsOpen(true);
+  }, []);
+
+  const openGeneralSettings = useCallback(() => {
+    setSettingsInitialTab("geral");
+    setSettingsOpen(true);
+  }, []);
+
+  const applyLocalPatch = useCallback((id: string, patch: Record<string, unknown>) => {
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? ({ ...r, ...patch } as AtendimentoLite) : r))
+    );
+  }, []);
 
   const refreshRows = useCallback(async () => {
     const applyNested = (
@@ -364,35 +386,38 @@ export default function Home() {
       tv_id?: string | null;
     }) => {
       if (!selectedId) return;
+      applyLocalPatch(selectedId, patch);
       setPending(true);
       setLoadError(null);
       try {
         if (supabase) {
           const { error } = await supabase.from("atendimentos_lite").update(patch).eq("id", selectedId);
-          if (!error) {
-            await refreshRows();
-            return;
-          }
+          if (!error) return;
           if (isNetworkLikeFetchFailure(error.message)) {
-            await tryProxyPatch(selectedId, patch);
+            const ok = await tryProxyPatch(selectedId, patch);
+            if (!ok) void refreshRows();
             return;
           }
           setLoadError(error.message);
+          void refreshRows();
           return;
         }
-        await tryProxyPatch(selectedId, patch);
+        const ok = await tryProxyPatch(selectedId, patch);
+        if (!ok) void refreshRows();
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (isNetworkLikeFetchFailure(msg)) {
-          await tryProxyPatch(selectedId, patch);
+          const ok = await tryProxyPatch(selectedId, patch);
+          if (!ok) void refreshRows();
         } else {
           setLoadError(msg);
+          void refreshRows();
         }
       } finally {
         setPending(false);
       }
     },
-    [supabase, selectedId, refreshRows, tryProxyPatch]
+    [supabase, selectedId, applyLocalPatch, refreshRows, tryProxyPatch]
   );
 
   const updateStatus = useCallback(
@@ -449,7 +474,7 @@ export default function Home() {
   return (
     <div className="flex h-[100dvh] min-h-0 w-full flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <AppSidebar
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={openGeneralSettings}
         onSignOut={() => void supabase?.auth.signOut()}
       />
 
@@ -483,6 +508,7 @@ export default function Home() {
             canMutate={canMutate}
             pending={pending}
             priorityLawEnabled={tenantConfig.priorityLawEnabled}
+            observacoesVisibility={tenantConfig.observacoesVisibility}
             tenantId={effectiveTenantId}
             onChamar={() => void updateStatus(STATUS_UPDATE.chamar)}
             onRechamar={() => void updateStatus(STATUS_UPDATE.rechamar)}
@@ -509,12 +535,14 @@ export default function Home() {
             queueTabId={queueTabId}
             onQueueTabId={setQueueTabId}
             priorityLawEnabled={tenantConfig.priorityLawEnabled}
+            observacoesVisibility={tenantConfig.observacoesVisibility}
             selectedId={selectedId}
-            onSelectId={setSelectedId}
+            onSelectId={handleSelectId}
             loading={loading}
             supabase={supabase}
             onRefresh={() => void refreshRows()}
             onRegisterClick={() => setRegistryOpen(true)}
+            onOpenFlowSettings={openFlowSettings}
             onEditRow={(row) => setEditRow(row)}
           />
         </main>
@@ -526,6 +554,7 @@ export default function Home() {
         supabase={supabase}
         tenantId={effectiveTenantId}
         config={tenantConfig}
+        initialMainTab={settingsInitialTab}
         onConfigUpdated={(c) => setTenantConfig(c)}
         onDataChanged={() => void refreshRows()}
       />
@@ -536,7 +565,10 @@ export default function Home() {
         supabase={supabase}
         tenantId={tenantIdForInsert}
         tenantConfig={tenantConfig}
-        onRegistered={() => void refreshRows()}
+        onRegistered={(meta) => {
+          if (meta?.queueTabId) setQueueTabId(meta.queueTabId);
+          void refreshRows();
+        }}
       />
 
       <EditAtendimentoModal

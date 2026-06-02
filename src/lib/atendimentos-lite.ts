@@ -1,5 +1,6 @@
 import { SERVICES_TABLE } from "@/lib/db-tables";
-import { prioridadeSortWeight, resolveClassificacaoPrioridade } from "@/lib/classificacao-prioridade";
+import { prioridadeSortWeight } from "@/lib/classificacao-prioridade";
+import { rowMatchesQueueTab } from "@/lib/fila-preset";
 import { formatProfissionalLabel } from "@/lib/profissionais-display";
 
 /** Linha de `public.atendimentos_lite` (formato plano usado na UI) */
@@ -214,7 +215,7 @@ export function filterAndSortQueue(
   options?: QueueSortOptions
 ): AtendimentoLite[] {
   const law = options?.priorityLawEnabled !== false;
-  const active = rows.filter(isActiveQueueRow);
+  const active = rows.filter(isActiveQueueRow).filter((r) => rowMatchesQueueTab(r, tab));
   switch (tab) {
     case "ordem":
       return [...active].sort((a, b) => {
@@ -234,26 +235,20 @@ export function filterAndSortQueue(
       return [...sortedHora, ...tail];
     }
     case "encaixe":
-      return [...active]
-        .filter((r) => !r.hora_marcada)
-        .sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
+      return [...active].sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
     case "prioridade":
-      return [...active]
-        .filter((r) => resolveClassificacaoPrioridade(r.classificacao_prioridade, r.prioridade) !== "normal")
-        .sort((a, b) => {
-          const pd = prioridadeOrdemRow(b) - prioridadeOrdemRow(a);
-          if (pd !== 0) return pd;
-          return timeMs(a.created_at) - timeMs(b.created_at);
-        });
+      return [...active].sort((a, b) => {
+        const pd = prioridadeOrdemRow(b) - prioridadeOrdemRow(a);
+        if (pd !== 0) return pd;
+        return timeMs(a.created_at) - timeMs(b.created_at);
+      });
     case "urgente":
-      return [...active]
-        .filter((r) => resolveClassificacaoPrioridade(r.classificacao_prioridade, r.prioridade) === "emergencia")
-        .sort((a, b) => {
-          const ua = /\burg(ent)?e?\b/i.test(a.observacao ?? "") ? 1 : 0;
-          const ub = /\burg(ent)?e?\b/i.test(b.observacao ?? "") ? 1 : 0;
-          if (ub !== ua) return ub - ua;
-          return horaComparable(a.hora_marcada) - horaComparable(b.hora_marcada);
-        });
+      return [...active].sort((a, b) => {
+        const ua = /\burg(ent)?e?\b/i.test(a.observacao ?? "") ? 1 : 0;
+        const ub = /\burg(ent)?e?\b/i.test(b.observacao ?? "") ? 1 : 0;
+        if (ub !== ua) return ub - ua;
+        return horaComparable(a.hora_marcada) - horaComparable(b.hora_marcada);
+      });
     case "outros":
       return [...active].sort((a, b) => {
         if (law) {

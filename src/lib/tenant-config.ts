@@ -16,14 +16,13 @@ export type DisplayPaletteId = "red-black" | "yellow-black" | "blue-white" | "gr
 export type RegisterFormConfig = {
   showClienteNome: boolean;
   showProfissional: boolean;
-  profissionalPreferFreeText: boolean;
   showServico: boolean;
-  servicoPreferFreeText: boolean;
   showLocal: boolean;
-  localPreferFreeText: boolean;
   showHoraMarcada: boolean;
   showObservacao: boolean;
 };
+
+export type ObservacoesVisibility = "hidden" | "always";
 
 export type TvDisplayConfig = {
   footerLines: string[];
@@ -37,6 +36,7 @@ export type TvDisplayConfig = {
 export type TenantConfiguracoes = {
   queueTabs?: QueueTabEntry[];
   priorityLawEnabled?: boolean;
+  observacoesVisibility?: ObservacoesVisibility;
   registerForm?: Partial<RegisterFormConfig>;
   tvDisplay?: Partial<TvDisplayConfig>;
 };
@@ -44,6 +44,7 @@ export type TenantConfiguracoes = {
 export type ResolvedTenantConfig = {
   queueTabs: QueueTabEntry[];
   priorityLawEnabled: boolean;
+  observacoesVisibility: ObservacoesVisibility;
   registerForm: RegisterFormConfig;
   tvDisplay: TvDisplayConfig;
 };
@@ -59,11 +60,8 @@ export const DEFAULT_QUEUE_TABS: QueueTabEntry[] = [
 export const DEFAULT_REGISTER_FORM: RegisterFormConfig = {
   showClienteNome: true,
   showProfissional: true,
-  profissionalPreferFreeText: false,
   showServico: true,
-  servicoPreferFreeText: false,
   showLocal: true,
-  localPreferFreeText: false,
   showHoraMarcada: true,
   showObservacao: true,
 };
@@ -114,11 +112,8 @@ function parseRegisterForm(raw: unknown): Partial<RegisterFormConfig> | null {
   return {
     showClienteNome: b("showClienteNome"),
     showProfissional: b("showProfissional"),
-    profissionalPreferFreeText: b("profissionalPreferFreeText"),
     showServico: b("showServico"),
-    servicoPreferFreeText: b("servicoPreferFreeText"),
     showLocal: b("showLocal"),
-    localPreferFreeText: b("localPreferFreeText"),
     showHoraMarcada: b("showHoraMarcada"),
     showObservacao: b("showObservacao"),
   };
@@ -163,10 +158,13 @@ export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
 
   const rf = { ...DEFAULT_REGISTER_FORM, ...parseRegisterForm(obj.registerForm) };
   const tv = { ...DEFAULT_TV_DISPLAY, ...parseTvDisplay(obj.tvDisplay) };
+  const observacoesVisibility: ObservacoesVisibility =
+    obj.observacoesVisibility === "always" ? "always" : "hidden";
 
   return {
     queueTabs,
     priorityLawEnabled,
+    observacoesVisibility,
     registerForm: rf,
     tvDisplay: tv,
   };
@@ -176,6 +174,7 @@ export function configuracoesForSupabase(resolved: ResolvedTenantConfig): Tenant
   return {
     queueTabs: resolved.queueTabs,
     priorityLawEnabled: resolved.priorityLawEnabled,
+    observacoesVisibility: resolved.observacoesVisibility,
     registerForm: resolved.registerForm,
     tvDisplay: resolved.tvDisplay,
   };

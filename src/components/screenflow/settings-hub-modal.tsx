@@ -9,7 +9,7 @@ import {
   type QueueTabPreset,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
-import { Briefcase, ClipboardList, Layers, MapPin, Palette, Settings2, UserCheck } from "lucide-react";
+import { Briefcase, ChevronDown, ChevronUp, ClipboardList, Layers, MapPin, Palette, Settings2, UserCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
@@ -20,6 +20,7 @@ type SettingsHubModalProps = {
   supabase: SupabaseClient | null;
   tenantId: string | null;
   config: ResolvedTenantConfig;
+  initialMainTab?: MainTab;
   onConfigUpdated: (next: ResolvedTenantConfig) => void;
   onDataChanged?: () => void;
 };
@@ -34,6 +35,7 @@ export function SettingsHubModal({
   supabase,
   tenantId,
   config,
+  initialMainTab = "fluxo",
   onConfigUpdated,
   onDataChanged,
 }: SettingsHubModalProps) {
@@ -51,9 +53,21 @@ export function SettingsHubModal({
     if (open) {
       setDraft(config);
       setSaveErr(null);
-      setMainTab("fluxo");
+      setMainTab(initialMainTab);
     }
-  }, [open, config]);
+  }, [open, config, initialMainTab]);
+
+  function moveQueueTab(index: number, direction: -1 | 1) {
+    const swapIndex = index + direction;
+    if (swapIndex < 0 || swapIndex >= draft.queueTabs.length) return;
+    updateDraft((d) => {
+      const tabs = [...d.queueTabs];
+      const tmp = tabs[index]!;
+      tabs[index] = tabs[swapIndex]!;
+      tabs[swapIndex] = tmp;
+      return { ...d, queueTabs: tabs };
+    });
+  }
 
   function enforcePriorityLaw(next: ResolvedTenantConfig): ResolvedTenantConfig {
     let tabs = next.queueTabs;
@@ -135,6 +149,26 @@ export function SettingsHubModal({
                   className="flex flex-wrap items-center gap-2 rounded-md bg-zinc-50 px-2 py-1.5 dark:bg-zinc-900/60"
                 >
                   <span className="font-mono text-[9px] text-zinc-400">{idx + 1}</span>
+                  <div className="flex shrink-0 flex-col gap-0.5">
+                    <button
+                      type="button"
+                      title="Subir"
+                      disabled={idx === 0}
+                      onClick={() => moveQueueTab(idx, -1)}
+                      className="rounded border border-zinc-300 p-0.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    >
+                      <ChevronUp className="size-3" strokeWidth={2} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      title="Descer"
+                      disabled={idx === draft.queueTabs.length - 1}
+                      onClick={() => moveQueueTab(idx, 1)}
+                      className="rounded border border-zinc-300 p-0.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                    >
+                      <ChevronDown className="size-3" strokeWidth={2} aria-hidden />
+                    </button>
+                  </div>
                   <input
                     value={tab.label}
                     onChange={(e) =>
@@ -278,6 +312,34 @@ export function SettingsHubModal({
 
             <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/40">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                Observações na fila
+              </p>
+              <div className="space-y-1.5 text-[10px] text-zinc-700 dark:text-zinc-300">
+                <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                  <input
+                    type="radio"
+                    name="obs-vis"
+                    className="accent-zinc-900 dark:accent-zinc-100"
+                    checked={draft.observacoesVisibility === "hidden"}
+                    onChange={() => updateDraft((d) => ({ ...d, observacoesVisibility: "hidden" }))}
+                  />
+                  <span>Ocultar informações (padrão) — ícone de olho na fila</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                  <input
+                    type="radio"
+                    name="obs-vis"
+                    className="accent-zinc-900 dark:accent-zinc-100"
+                    checked={draft.observacoesVisibility === "always"}
+                    onChange={() => updateDraft((d) => ({ ...d, observacoesVisibility: "always" }))}
+                  />
+                  <span>Deixar observações sempre visíveis na linha</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/40">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
                 Registro inteligente (campos visíveis)
               </p>
               <div className="grid gap-1.5 text-[10px] text-zinc-700 dark:text-zinc-300">
@@ -285,11 +347,8 @@ export function SettingsHubModal({
                   [
                     ["showClienteNome", "Nome do cliente"],
                     ["showProfissional", "Profissional (lista)"],
-                    ["profissionalPreferFreeText", "Profissional (texto livre)"],
                     ["showServico", "Serviço (lista)"],
-                    ["servicoPreferFreeText", "Serviço (texto livre)"],
                     ["showLocal", "Local (lista)"],
-                    ["localPreferFreeText", "Local (texto livre)"],
                     ["showHoraMarcada", "Horário marcado"],
                     ["showObservacao", "Observações"],
                   ] as const
@@ -311,7 +370,7 @@ export function SettingsHubModal({
                 ))}
               </div>
               <p className="mt-2 text-[9px] text-zinc-500 dark:text-zinc-500">
-                Todos os campos permanecem opcionais no formulário. Texto livre é acrescentado à observação quando não houver item da lista.
+                Profissional, serviço e local usam apenas listas do cadastro base (sem texto livre).
               </p>
             </div>
 

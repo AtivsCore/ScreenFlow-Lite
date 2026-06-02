@@ -2,17 +2,19 @@
 
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
+import { stripFilaPreset } from "@/lib/fila-preset";
 import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
+import type { ObservacoesVisibility } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Plus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
+import { ObservacaoPopover } from "@/components/screenflow/observacao-popover";
 
 type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
-
 type QuickCrud = { title: string; table: string };
 
 type ClientPanelProps = {
@@ -22,6 +24,7 @@ type ClientPanelProps = {
   canMutate: boolean;
   pending: boolean;
   priorityLawEnabled: boolean;
+  observacoesVisibility: ObservacoesVisibility;
   onChamar: () => void;
   onRechamar: () => void;
   onFinalizar: () => void;
@@ -85,13 +88,14 @@ function SelectWithQuickAdd({
   );
 }
 
-export function ClientPanel({
+export const ClientPanel = memo(function ClientPanel({
   selected,
   loading,
   supabase,
   canMutate,
   pending,
   priorityLawEnabled,
+  observacoesVisibility,
   onChamar,
   onRechamar,
   onFinalizar,
@@ -104,10 +108,14 @@ export function ClientPanel({
   const [servicos, setServicos] = useState<Opt[]>([]);
   const [tvs, setTvs] = useState<Opt[]>([]);
   const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
+  const optionsLoadedRef = useRef<string | null>(null);
 
   const loadOptions = useCallback(async () => {
     if (!supabase) return;
     const tid = tenantId?.trim();
+    const cacheKey = `${tid ?? ""}`;
+    if (optionsLoadedRef.current === cacheKey) return;
+
     const [p, l, sResult, t] = await Promise.all([
       tid
         ? supabase.from("profissionais").select("id,nome,especialidade").eq("tenant_id", tid).order("nome")
@@ -122,9 +130,11 @@ export function ClientPanel({
     setLocais(((l.error ? null : l.data) as Opt[] | null) ?? []);
     setServicos(sResult.data);
     setTvs(((t.error ? null : t.data) as Opt[] | null) ?? []);
+    optionsLoadedRef.current = cacheKey;
   }, [supabase, tenantId]);
 
   useEffect(() => {
+    optionsLoadedRef.current = null;
     void loadOptions();
   }, [loadOptions]);
 
@@ -137,31 +147,39 @@ export function ClientPanel({
   const prioStyle = selected
     ? classificacaoBadgeStyle(selected.classificacao_prioridade, selected.prioridade)
     : null;
+  const observacaoText = selected ? stripFilaPreset(selected.observacao).trim() : "";
+  const observacoesAlwaysVisible = observacoesVisibility === "always";
 
   return (
     <>
       <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/50">
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
               Cliente selecionado
             </p>
             {selected ? (
-              <>
-                <p className="mt-0.5 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
+              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2">
+                <p className="truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
                   {selected.nome ?? "—"}
                 </p>
-                {priorityLawEnabled && prioStyle ? (
-                  <p className={`mt-1.5 inline-flex px-2 py-0.5 text-[10px] ${prioStyle.badge}`}>
-                    {prioStyle.label}
-                  </p>
+                {!observacoesAlwaysVisible && observacaoText ? (
+                  <ObservacaoPopover observacao={selected.observacao} className="shrink-0" />
                 ) : null}
-              </>
+                {priorityLawEnabled && prioStyle ? (
+                  <span className={`shrink-0 whitespace-nowrap px-2 py-0.5 text-[10px] ${prioStyle.badge}`}>
+                    {prioStyle.label}
+                  </span>
+                ) : null}
+              </div>
             ) : (
               <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
                 {loading ? "Carregando fila…" : "Clique em uma linha na fila para chamar."}
               </p>
             )}
+            {selected && observacoesAlwaysVisible && observacaoText ? (
+              <p className="mt-1.5 text-xs leading-snug text-zinc-600 dark:text-zinc-300">{observacaoText}</p>
+            ) : null}
           </div>
         </div>
 
@@ -264,9 +282,12 @@ export function ClientPanel({
           table={quickCrud.table}
           tenantId={tenantId}
           onClose={() => setQuickCrud(null)}
-          onSaved={() => void loadOptions()}
+          onSaved={() => {
+            optionsLoadedRef.current = null;
+            void loadOptions();
+          }}
         />
       )}
     </>
   );
-}
+});

@@ -5,6 +5,7 @@ import {
   type ClassificacaoPrioridade,
 } from "@/lib/classificacao-prioridade";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
+import { embedFilaPreset } from "@/lib/fila-preset";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
@@ -23,16 +24,8 @@ type RegistryPatientModalProps = {
   tenantId: string | null;
   tenantConfig: ResolvedTenantConfig;
   defaultStatus?: string;
-  onRegistered?: () => void;
+  onRegistered?: (meta?: { queueTabId?: string }) => void;
 };
-
-function appendObsLine(obs: string, label: string, value: string): string {
-  const v = value.trim();
-  if (!v) return obs.trim();
-  const line = `${label}: ${v}`;
-  const base = obs.trim();
-  return base ? `${base}\n${line}` : line;
-}
 
 function applyTriagemPreset(
   tab: QueueTabEntry | undefined,
@@ -79,11 +72,8 @@ export function RegistryPatientModal({
   const [nomeCliente, setNomeCliente] = useState("");
   const [triagemTabId, setTriagemTabId] = useState(defaultTriagemId);
   const [profissionalId, setProfissionalId] = useState<string>("");
-  const [profissionalLivre, setProfissionalLivre] = useState("");
   const [servicoId, setServicoId] = useState<string>("");
-  const [servicoLivre, setServicoLivre] = useState("");
   const [localId, setLocalId] = useState<string>("");
-  const [localLivre, setLocalLivre] = useState("");
   const [horaMarcada, setHoraMarcada] = useState("");
   const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>("normal");
   const [observacaoBase, setObservacaoBase] = useState("");
@@ -138,11 +128,8 @@ export function RegistryPatientModal({
     setNomeCliente("");
     setTriagemTabId(queueTabs[0]?.id ?? "");
     setProfissionalId("");
-    setProfissionalLivre("");
     setServicoId("");
-    setServicoLivre("");
     setLocalId("");
-    setLocalLivre("");
     setHoraMarcada("");
     setClassificacao("normal");
     setObservacaoBase("");
@@ -200,7 +187,7 @@ export function RegistryPatientModal({
         if (pErr && /row-level security/i.test(pErr.message)) {
           const viaApi = await submitViaApi(nome, buildAtendimentoPayload(null));
           if (viaApi.ok) {
-            onRegistered?.();
+            onRegistered?.({ queueTabId: triagemTabId });
             onClose();
             setBusy(false);
             return;
@@ -216,19 +203,8 @@ export function RegistryPatientModal({
     }
 
     function buildAtendimentoPayload(pacienteIdValue: string | null): Record<string, unknown> {
-      let observacao = observacaoBase.trim();
-      if (triagemTab) {
-        observacao = appendObsLine(observacao, triagemLabel, triagemTab.label);
-      }
-      if (rf.profissionalPreferFreeText && profissionalLivre.trim()) {
-        observacao = appendObsLine(observacao, "Profissional", profissionalLivre);
-      }
-      if (rf.servicoPreferFreeText && servicoLivre.trim()) {
-        observacao = appendObsLine(observacao, "Serviço", servicoLivre);
-      }
-      if (rf.localPreferFreeText && localLivre.trim()) {
-        observacao = appendObsLine(observacao, "Local", localLivre);
-      }
+      const userObs = observacaoBase.trim();
+      const filaPreset = triagemTab?.preset ?? "ordem";
 
       let finalClassificacao: ClassificacaoPrioridade = classificacao;
       if (law && triagemTab) {
@@ -241,21 +217,13 @@ export function RegistryPatientModal({
         tenant_id: effectiveTenantId,
         prioridade: law ? prioridadeBooleanFromClassificacao(finalClassificacao) : false,
         classificacao_prioridade: law ? finalClassificacao : "normal",
-        observacao: observacao.trim() || null,
+        observacao: embedFilaPreset(userObs || null, filaPreset),
         status: defaultStatus,
       };
 
-      if (rf.showProfissional && profissionalId && !(rf.profissionalPreferFreeText && profissionalLivre.trim())) {
-        payload.profissional_id = profissionalId;
-      }
-
-      if (rf.showServico && servicoId && !(rf.servicoPreferFreeText && servicoLivre.trim())) {
-        payload.especialidade_id = servicoId;
-      }
-
-      if (rf.showLocal && localId && !(rf.localPreferFreeText && localLivre.trim())) {
-        payload.local_id = localId;
-      }
+      if (rf.showProfissional && profissionalId) payload.profissional_id = profissionalId;
+      if (rf.showServico && servicoId) payload.especialidade_id = servicoId;
+      if (rf.showLocal && localId) payload.local_id = localId;
 
       const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
       if (wantsHora && horaMarcada.trim()) {
@@ -275,7 +243,7 @@ export function RegistryPatientModal({
       if (/row-level security/i.test(aErr.message)) {
         const viaApi = await submitViaApi("", buildAtendimentoPayload(pacienteId));
         if (viaApi.ok) {
-          onRegistered?.();
+          onRegistered?.({ queueTabId: triagemTabId });
           onClose();
           setBusy(false);
           return;
@@ -288,7 +256,7 @@ export function RegistryPatientModal({
       return;
     }
 
-    onRegistered?.();
+    onRegistered?.({ queueTabId: triagemTabId });
     onClose();
     setBusy(false);
   }
@@ -297,11 +265,8 @@ export function RegistryPatientModal({
     rf.showClienteNome ||
     queueTabs.length > 0 ||
     rf.showProfissional ||
-    rf.profissionalPreferFreeText ||
     rf.showServico ||
-    rf.servicoPreferFreeText ||
     rf.showLocal ||
-    rf.localPreferFreeText ||
     rf.showHoraMarcada ||
     law ||
     rf.showObservacao;
@@ -361,18 +326,6 @@ export function RegistryPatientModal({
           </label>
         ) : null}
 
-        {rf.profissionalPreferFreeText ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Profissional (texto livre)
-            <input
-              value={profissionalLivre}
-              onChange={(e) => setProfissionalLivre(e.target.value)}
-              placeholder="Nome manual"
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
-          </label>
-        ) : null}
-
         {rf.showServico ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
             Serviço
@@ -391,17 +344,6 @@ export function RegistryPatientModal({
           </label>
         ) : null}
 
-        {rf.servicoPreferFreeText ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Serviço (texto livre)
-            <input
-              value={servicoLivre}
-              onChange={(e) => setServicoLivre(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
-          </label>
-        ) : null}
-
         {rf.showLocal ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
             Local / ponto de atendimento
@@ -417,17 +359,6 @@ export function RegistryPatientModal({
                 </option>
               ))}
             </select>
-          </label>
-        ) : null}
-
-        {rf.localPreferFreeText ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Local (texto livre)
-            <input
-              value={localLivre}
-              onChange={(e) => setLocalLivre(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
           </label>
         ) : null}
 
