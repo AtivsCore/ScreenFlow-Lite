@@ -13,7 +13,6 @@ import {
   type AtendimentoLite,
   type AtendimentoLiteNested,
   STATUS_UPDATE,
-  filterAndSortQueue,
   countActiveByQueueTab,
   isFinalizado,
   mapAtendimentosNestedToFlat,
@@ -222,22 +221,9 @@ export default function Home() {
     [tenantConfig]
   );
 
-  const activeQueueTab = useMemo(
-    () => visibleQueueTabs.find((t) => t.id === queueTabId) ?? visibleQueueTabs[0] ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" },
-    [visibleQueueTabs, queueTabId]
-  );
-
   const tabCounts = useMemo(
     () => countActiveByQueueTab(rows, visibleQueueTabs),
     [rows, visibleQueueTabs]
-  );
-
-  const displayRows = useMemo(
-    () =>
-      filterAndSortQueue(rows, activeQueueTab, {
-        priorityLawEnabled: tenantConfig.priorityLawEnabled,
-      }),
-    [rows, activeQueueTab, tenantConfig.priorityLawEnabled]
   );
 
   const selected = useMemo(
@@ -640,7 +626,7 @@ export default function Home() {
 
         <main className="min-h-0 flex-1 overflow-hidden p-3">
           <QueueSection
-            displayRows={displayRows}
+            rows={rows}
             queueTabs={visibleQueueTabs}
             tabCounts={tabCounts}
             queueTabId={queueTabId}
