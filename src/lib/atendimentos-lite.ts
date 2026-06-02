@@ -1,6 +1,9 @@
 import { SERVICES_TABLE } from "@/lib/db-tables";
 import { prioridadeSortWeight } from "@/lib/classificacao-prioridade";
-import { rowMatchesQueueTab } from "@/lib/fila-preset";
+import { rowMatchesQueueTab, rowMatchesQueueTabEntry } from "@/lib/fila-preset";
+import type { CadastroValores } from "@/lib/cadastro-valores";
+import { hydrateCadastroValores } from "@/lib/cadastro-valores";
+import type { QueueTabEntry } from "@/lib/tenant-config";
 import { formatProfissionalLabel } from "@/lib/profissionais-display";
 
 /** Linha de `public.atendimentos_lite` (formato plano usado na UI) */
@@ -18,6 +21,7 @@ export type AtendimentoLite = {
   classificacao_prioridade: string | null;
   observacao: string | null;
   excluir_do_fechamento: boolean | null;
+  cadastro_valores?: CadastroValores | null;
   created_at: string | null;
   nome: string | null;
   profissionalNome: string | null;
@@ -40,6 +44,7 @@ export type AtendimentoLiteNested = {
   classificacao_prioridade?: string | null;
   observacao: string | null;
   excluir_do_fechamento?: boolean | null;
+  cadastro_valores?: CadastroValores | null;
   created_at: string | null;
   pacientes?: { nome: string | null } | { nome: string | null }[] | null;
   profissionais?:
@@ -93,8 +98,20 @@ function servicoNomeFromNested(row: AtendimentoLiteNested): string | null {
 }
 
 /** Converte o retorno do join embutido para o modelo plano da tabela */
-export function mapAtendimentoNestedToFlat(row: AtendimentoLiteNested): AtendimentoLite {
+export function mapAtendimentoNestedToFlat(
+  row: AtendimentoLiteNested,
+  categories?: import("@/lib/tenant-config").CadastroCategoryEntry[]
+): AtendimentoLite {
   const prof = profissionalRel(row.profissionais);
+  const cadastro_valores = hydrateCadastroValores(
+    row.cadastro_valores,
+    categories ?? [],
+    {
+      profissional_id: row.profissional_id ?? prof.id,
+      local_id: row.local_id,
+      especialidade_id: row.especialidade_id,
+    }
+  );
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -109,6 +126,7 @@ export function mapAtendimentoNestedToFlat(row: AtendimentoLiteNested): Atendime
     classificacao_prioridade: row.classificacao_prioridade ?? null,
     observacao: row.observacao,
     excluir_do_fechamento: row.excluir_do_fechamento ?? false,
+    cadastro_valores,
     created_at: row.created_at,
     nome: nomeRelacionamento(row.pacientes),
     profissionalNome: prof.displayNome ?? prof.nome,
@@ -132,9 +150,10 @@ export function applyServicoLookup(
 
 export function mapAtendimentosNestedToFlat(
   nested: AtendimentoLiteNested[],
-  servicoLookup?: Map<string, string | null>
+  servicoLookup?: Map<string, string | null>,
+  categories?: import("@/lib/tenant-config").CadastroCategoryEntry[]
 ): AtendimentoLite[] {
-  const flat = nested.map(mapAtendimentoNestedToFlat);
+  const flat = nested.map((r) => mapAtendimentoNestedToFlat(r, categories));
   return servicoLookup ? applyServicoLookup(flat, servicoLookup) : flat;
 }
 
@@ -160,15 +179,15 @@ export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
 /** Contagem de registros ativos por aba (chave = tab.id). */
 export function countActiveByQueueTab(
   rows: AtendimentoLite[],
-  tabIds: { id: string; preset: QueueTabId }[]
+  tabs: Pick<QueueTabEntry, "id" | "preset">[]
 ): Record<string, number> {
   const active = rows.filter(isActiveQueueRow);
   const counts: Record<string, number> = {};
-  for (const tab of tabIds) {
+  for (const tab of tabs) {
     if (tab.preset === "todos") {
       counts[tab.id] = active.length;
     } else {
-      counts[tab.id] = active.filter((r) => rowMatchesQueueTab(r, tab.preset)).length;
+      counts[tab.id] = active.filter((r) => rowMatchesQueueTabEntry(r, tab)).length;
     }
   }
   return counts;
@@ -229,15 +248,16 @@ export type QueueSortOptions = {
  */
 export function filterAndSortQueue(
   rows: AtendimentoLite[],
-  tab: QueueTabId,
+  tab: Pick<QueueTabEntry, "id" | "preset">,
   options?: QueueSortOptions
 ): AtendimentoLite[] {
+  const preset = tab.preset;
   const law = options?.priorityLawEnabled !== false;
   const active =
-    tab === "todos"
+    preset === "todos"
       ? rows.filter(isActiveQueueRow)
-      : rows.filter(isActiveQueueRow).filter((r) => rowMatchesQueueTab(r, tab));
-  switch (tab) {
+      : rows.filter(isActiveQueueRow).filter((r) => rowMatchesQueueTabEntry(r, tab));
+  switch (preset) {
     case "todos":
       return [...active].sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
     case "ordem":

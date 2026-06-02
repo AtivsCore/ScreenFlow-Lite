@@ -1,10 +1,12 @@
 import type { QueueTabId } from "@/lib/atendimentos-lite";
 import { resolveClassificacaoPrioridade } from "@/lib/classificacao-prioridade";
+import type { QueueTabEntry } from "@/lib/tenant-config";
 
-/** Remove todas as tags `__sf_fila:...__` (início ou corpo do texto). */
-const FILA_TAG_GLOBAL = /__sf_fila:[a-z]+__/gi;
+/** Remove todas as tags `__sf_fila:...__` (presets e abas customizadas). */
+const FILA_TAG_GLOBAL = /__sf_fila:[^\s_]+(?::[^\s_]+)?__/gi;
 
 const MARKER_PARSE = /^__sf_fila:([a-z]+)__(?:\r?\n|$)/i;
+const TAB_MARKER_PARSE = /^__sf_fila:tab:([a-z0-9-]+)__(?:\r?\n|$)/i;
 
 const VALID_PRESETS = new Set<QueueTabId>([
   "todos",
@@ -31,18 +33,33 @@ export function stripFilaPreset(observacao: string | null | undefined): string {
   return formatObservacaoForDisplay(observacao);
 }
 
-/** Incorpora preset da aba no início da observação (metadado interno, oculto na UI). */
-export function embedFilaPreset(observacao: string | null | undefined, preset: QueueTabId): string | null {
+/** Incorpora metadado de aba (preset ou id único da aba). */
+export function embedFilaPreset(
+  observacao: string | null | undefined,
+  preset: QueueTabId,
+  tabId?: string
+): string | null {
   if (preset === "todos") preset = "ordem";
   const userText = formatObservacaoForDisplay(observacao);
-  const marker = `__sf_fila:${preset}__`;
+  const marker = tabId ? `__sf_fila:tab:${tabId}__` : `__sf_fila:${preset}__`;
   if (!userText) return marker;
   return `${marker}\n${userText}`;
+}
+
+/** Lê id da aba gravado na observação (segmentos customizados). */
+export function parseFilaTabId(observacao: string | null | undefined): string | null {
+  if (!observacao) return null;
+  const trimmed = observacao.trimStart();
+  const m = TAB_MARKER_PARSE.exec(trimmed);
+  if (m?.[1]) return m[1];
+  const inline = observacao.match(/__sf_fila:tab:([a-z0-9-]+)__/i);
+  return inline?.[1] ?? null;
 }
 
 /** Lê preset gravado na observação. */
 export function parseFilaPreset(observacao: string | null | undefined): QueueTabId | null {
   if (!observacao) return null;
+  if (parseFilaTabId(observacao)) return "outros";
   const m = MARKER_PARSE.exec(observacao.trimStart());
   if (!m?.[1]) {
     const inline = observacao.match(/__sf_fila:([a-z]+)__/i);
@@ -63,6 +80,9 @@ type RowForPreset = {
 
 /** Resolve em qual aba o registro pertence (marker explícito ou inferência legada). */
 export function resolveRowFilaPreset(row: RowForPreset): QueueTabId {
+  const tabId = parseFilaTabId(row.observacao);
+  if (tabId) return "outros";
+
   const fromMarker = parseFilaPreset(row.observacao);
   if (fromMarker) return fromMarker;
 
@@ -77,4 +97,12 @@ export function resolveRowFilaPreset(row: RowForPreset): QueueTabId {
 export function rowMatchesQueueTab(row: RowForPreset, tab: QueueTabId): boolean {
   if (tab === "todos") return true;
   return resolveRowFilaPreset(row) === tab;
+}
+
+/** Filtro exclusivo por entrada de aba (suporta marcador por tab.id). */
+export function rowMatchesQueueTabEntry(row: RowForPreset, tab: Pick<QueueTabEntry, "id" | "preset">): boolean {
+  if (tab.preset === "todos") return true;
+  const tabId = parseFilaTabId(row.observacao);
+  if (tabId) return tabId === tab.id;
+  return rowMatchesQueueTab(row, tab.preset);
 }

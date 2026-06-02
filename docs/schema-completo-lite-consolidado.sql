@@ -213,6 +213,9 @@ CREATE TABLE IF NOT EXISTS public.atendimentos_lite (
 
 ALTER TABLE public.atendimentos_lite ADD COLUMN IF NOT EXISTS classificacao_prioridade text NOT NULL DEFAULT 'normal';
 ALTER TABLE public.atendimentos_lite ADD COLUMN IF NOT EXISTS excluir_do_fechamento boolean NOT NULL DEFAULT false;
+ALTER TABLE public.atendimentos_lite ADD COLUMN IF NOT EXISTS cadastro_valores jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS segmento_definido text;
 
 DO $$
 BEGIN

@@ -1,5 +1,6 @@
 "use client";
 
+import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valores";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
@@ -31,6 +32,7 @@ type ClientPanelProps = {
   onFinalizar: () => void;
   onLimpar: () => void;
   onPatch: (patch: {
+    cadastro_valores?: CadastroValores;
     profissional_id?: string | null;
     local_id?: string | null;
     especialidade_id?: string | null;
@@ -109,6 +111,7 @@ export const ClientPanel = memo(function ClientPanel({
   const [locais, setLocais] = useState<Opt[]>([]);
   const [servicos, setServicos] = useState<Opt[]>([]);
   const [tvs, setTvs] = useState<Opt[]>([]);
+  const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
   const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
   const optionsLoadedRef = useRef<string | null>(null);
 
@@ -121,53 +124,39 @@ export const ClientPanel = memo(function ClientPanel({
     setQuickCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) });
   }
 
-  function renderCategoryField(cat: CadastroCategoryEntry) {
+  function optionsFor(cat: CadastroCategoryEntry): Opt[] {
     switch (cat.tableKey) {
-      case "locais":
-        return (
-          <SelectWithQuickAdd
-            key={cat.id}
-            label={cat.label}
-            value={localValue}
-            options={locais}
-            disabled={selectDisabled}
-            quickAddDisabled={quickAddDisabled}
-            onChange={(v) => void onPatch({ local_id: v || null })}
-            onQuickAdd={() => openCrudForCategory(cat)}
-          />
-        );
       case "profissionais":
-        return (
-          <SelectWithQuickAdd
-            key={cat.id}
-            label={cat.label}
-            value={profissionalValue}
-            options={profissionais.map((p) => ({
-              id: p.id,
-              nome: formatProfissionalLabel(p),
-            }))}
-            disabled={selectDisabled}
-            quickAddDisabled={quickAddDisabled}
-            onChange={(v) => void onPatch({ profissional_id: v || null })}
-            onQuickAdd={() => openCrudForCategory(cat)}
-          />
-        );
+        return profissionais.map((p) => ({ id: p.id, nome: formatProfissionalLabel(p) }));
+      case "locais":
+        return locais;
       case "servicos":
-        return (
-          <SelectWithQuickAdd
-            key={cat.id}
-            label={cat.label}
-            value={servicoValue}
-            options={servicos}
-            disabled={selectDisabled}
-            quickAddDisabled={quickAddDisabled}
-            onChange={(v) => void onPatch({ especialidade_id: v || null })}
-            onQuickAdd={() => openCrudForCategory(cat)}
-          />
-        );
+        return servicos;
       default:
-        return null;
+        return [];
     }
+  }
+
+  function patchCategoryValue(categoryId: string, value: string) {
+    const next = { ...categoryValues, [categoryId]: value };
+    setCategoryValues(next);
+    const payload = buildCadastroPayload(next, cadastroCategories);
+    void onPatch(payload);
+  }
+
+  function renderCategoryField(cat: CadastroCategoryEntry) {
+    return (
+      <SelectWithQuickAdd
+        key={cat.id}
+        label={cat.label}
+        value={categoryValues[cat.id] ?? ""}
+        options={optionsFor(cat)}
+        disabled={selectDisabled}
+        quickAddDisabled={quickAddDisabled}
+        onChange={(v) => patchCategoryValue(cat.id, v)}
+        onQuickAdd={() => openCrudForCategory(cat)}
+      />
+    );
   }
 
   const loadOptions = useCallback(async () => {
@@ -198,9 +187,20 @@ export const ClientPanel = memo(function ClientPanel({
     void loadOptions();
   }, [loadOptions]);
 
-  const profissionalValue = selected?.profissional_id ?? "";
-  const localValue = selected?.local_id ?? "";
-  const servicoValue = selected?.especialidade_id ?? "";
+  useEffect(() => {
+    if (!selected) {
+      setCategoryValues({});
+      return;
+    }
+    const vals = selected.cadastro_valores ?? {};
+    const next: Record<string, string> = {};
+    for (const cat of enabledCategories) {
+      const v = vals[cat.id];
+      if (v) next[cat.id] = v;
+    }
+    setCategoryValues(next);
+  }, [selected?.id, selected?.cadastro_valores, enabledCategories]);
+
   const tvValue = selected?.tv_id ?? "";
   const selectDisabled = !selected || !canMutate || pending;
   const quickAddDisabled = !supabase;

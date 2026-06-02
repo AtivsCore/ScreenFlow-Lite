@@ -6,6 +6,7 @@ import {
 } from "@/lib/classificacao-prioridade";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { embedFilaPreset } from "@/lib/fila-preset";
+import { buildCadastroPayload } from "@/lib/cadastro-valores";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
@@ -63,64 +64,30 @@ export function RegistryPatientModal({
   );
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
-    switch (cat.tableKey) {
-      case "profissionais":
-        return (
-          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {cat.label}
-            <select
-              value={profissionalId}
-              onChange={(e) => setProfissionalId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            >
-              <option value="">—</option>
-              {profissionais.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {formatProfissionalLabel(m)}
-                </option>
-              ))}
-            </select>
-          </label>
-        );
-      case "servicos":
-        return (
-          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {cat.label}
-            <select
-              value={servicoId}
-              onChange={(e) => setServicoId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            >
-              <option value="">—</option>
-              {servicos.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nome ?? m.id}
-                </option>
-              ))}
-            </select>
-          </label>
-        );
-      case "locais":
-        return (
-          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {cat.label}
-            <select
-              value={localId}
-              onChange={(e) => setLocalId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            >
-              <option value="">—</option>
-              {locais.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nome ?? m.id}
-                </option>
-              ))}
-            </select>
-          </label>
-        );
-      default:
-        return null;
-    }
+    const options =
+      cat.tableKey === "profissionais"
+        ? profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }))
+        : cat.tableKey === "locais"
+          ? locais.map((m) => ({ id: m.id, label: m.nome ?? m.id }))
+          : servicos.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
+
+    return (
+      <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        {cat.label}
+        <select
+          value={formValues[cat.id] ?? ""}
+          onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+        >
+          <option value="">—</option>
+          {options.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
   }
 
   const [error, setError] = useState<string | null>(null);
@@ -136,9 +103,7 @@ export function RegistryPatientModal({
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [triagemTabId, setTriagemTabId] = useState(defaultTriagemId);
-  const [profissionalId, setProfissionalId] = useState<string>("");
-  const [servicoId, setServicoId] = useState<string>("");
-  const [localId, setLocalId] = useState<string>("");
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [horaMarcada, setHoraMarcada] = useState("");
   const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>("normal");
   const [observacaoBase, setObservacaoBase] = useState("");
@@ -192,9 +157,7 @@ export function RegistryPatientModal({
     if (!open) return;
     setNomeCliente("");
     setTriagemTabId(queueTabs[0]?.id ?? "");
-    setProfissionalId("");
-    setServicoId("");
-    setLocalId("");
+    setFormValues({});
     setHoraMarcada("");
     setClassificacao("normal");
     setObservacaoBase("");
@@ -277,24 +240,17 @@ export function RegistryPatientModal({
         else if (triagemTab.preset === "urgente") finalClassificacao = "emergencia";
       }
 
+      const cadastroPayload = buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
+
       const payload: Record<string, unknown> = {
         paciente_id: pacienteIdValue,
         tenant_id: effectiveTenantId,
         prioridade: law ? prioridadeBooleanFromClassificacao(finalClassificacao) : false,
         classificacao_prioridade: law ? finalClassificacao : "normal",
-        observacao: embedFilaPreset(userObs || null, filaPreset),
+        observacao: embedFilaPreset(userObs || null, filaPreset, triagemTab?.id),
         status: defaultStatus,
+        ...cadastroPayload,
       };
-
-      if (enabledCategories.some((c) => c.tableKey === "profissionais") && profissionalId) {
-        payload.profissional_id = profissionalId;
-      }
-      if (enabledCategories.some((c) => c.tableKey === "servicos") && servicoId) {
-        payload.especialidade_id = servicoId;
-      }
-      if (enabledCategories.some((c) => c.tableKey === "locais") && localId) {
-        payload.local_id = localId;
-      }
 
       const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
       if (wantsHora && horaMarcada.trim()) {

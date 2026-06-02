@@ -6,6 +6,8 @@ import { QueueSection } from "@/components/screenflow/queue-section";
 import { RegistryPatientModal } from "@/components/screenflow/registry-patient-modal";
 import { SettingsHubModal } from "@/components/screenflow/settings-hub-modal";
 import { TvStrip } from "@/components/screenflow/tv-strip";
+import { buildCadastroLookups, type CadastroLookups } from "@/lib/cadastro-valores";
+import { SegmentConfigModal } from "@/components/screenflow/segment-config-modal";
 import { EditAtendimentoModal } from "@/components/screenflow/edit-atendimento-modal";
 import {
   type AtendimentoLite,
@@ -42,6 +44,8 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"fluxo" | "geral" | "cadastros">("fluxo");
   const [registryOpen, setRegistryOpen] = useState(false);
+  const [segmentOpen, setSegmentOpen] = useState(false);
+  const [segmentoDefinido, setSegmentoDefinido] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<AtendimentoLite | null>(null);
   const [, startTransition] = useTransition();
 
@@ -49,6 +53,11 @@ export default function Home() {
   const [tvRows, setTvRows] = useState<{ id: string; nome: string | null }[]>([]);
   const [tvIdx, setTvIdx] = useState(0);
   const [tvAuto, setTvAuto] = useState(false);
+  const [cadastroLookups, setCadastroLookups] = useState<CadastroLookups>({
+    profissionais: new Map(),
+    locais: new Map(),
+    servicos: new Map(),
+  });
 
   useEffect(() => {
     if (!supabase || envMissing) return;
@@ -135,13 +144,14 @@ export default function Home() {
     let cancelled = false;
     void supabase
       .from("tenants")
-      .select("configuracoes")
+      .select("configuracoes, segmento_definido")
       .eq("id", effectiveTenantId)
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) console.warn("[ScreenFlow] tenants.configuracoes:", error.message);
         if (data?.configuracoes != null) setTenantConfig(mergeTenantConfig(data.configuracoes));
+        setSegmentoDefinido((data as { segmento_definido?: string | null } | null)?.segmento_definido ?? null);
       });
     return () => {
       cancelled = true;
@@ -159,10 +169,10 @@ export default function Home() {
     [tenantConfig]
   );
 
-  const queuePreset = useMemo(() => {
-    const tab = visibleQueueTabs.find((t) => t.id === queueTabId);
-    return tab?.preset ?? "ordem";
-  }, [visibleQueueTabs, queueTabId]);
+  const activeQueueTab = useMemo(
+    () => visibleQueueTabs.find((t) => t.id === queueTabId) ?? visibleQueueTabs[0] ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" },
+    [visibleQueueTabs, queueTabId]
+  );
 
   const tabCounts = useMemo(
     () => countActiveByQueueTab(rows, visibleQueueTabs),
@@ -170,8 +180,11 @@ export default function Home() {
   );
 
   const displayRows = useMemo(
-    () => filterAndSortQueue(rows, queuePreset, { priorityLawEnabled: tenantConfig.priorityLawEnabled }),
-    [rows, queuePreset, tenantConfig.priorityLawEnabled]
+    () =>
+      filterAndSortQueue(rows, activeQueueTab, {
+        priorityLawEnabled: tenantConfig.priorityLawEnabled,
+      }),
+    [rows, activeQueueTab, tenantConfig.priorityLawEnabled]
   );
 
   const selected = useMemo(
@@ -190,6 +203,29 @@ export default function Home() {
     setSettingsOpen(true);
   }, []);
 
+  useEffect(() => {
+    if (!supabase || !effectiveTenantId) return;
+    let cancelled = false;
+    void (async () => {
+      const [p, l, s] = await Promise.all([
+        supabase.from("profissionais").select("id,nome,especialidade").eq("tenant_id", effectiveTenantId).order("nome"),
+        supabase.from("locais").select("id,nome").eq("tenant_id", effectiveTenantId).order("nome"),
+        fetchServicos(supabase, effectiveTenantId),
+      ]);
+      if (cancelled) return;
+      setCadastroLookups(
+        buildCadastroLookups(
+          (p.data as { id: string; nome: string | null; especialidade?: string | null }[] | null) ?? [],
+          (l.data as { id: string; nome: string | null }[] | null) ?? [],
+          s.data
+        )
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, effectiveTenantId, tenantConfig.cadastroCategories]);
+
   const openGeneralSettings = useCallback(() => {
     setSettingsInitialTab("geral");
     setSettingsOpen(true);
@@ -207,7 +243,7 @@ export default function Home() {
       servicos?: { id: string; nome: string | null }[]
     ) => {
       const lookup = servicos ? buildServicoLookup(servicos) : undefined;
-      setRows(mapAtendimentosNestedToFlat(nested, lookup));
+      setRows(mapAtendimentosNestedToFlat(nested, lookup, tenantConfig.cadastroCategories));
     };
 
     const fetchServicosClient = async (): Promise<{ id: string; nome: string | null }[]> => {
@@ -279,6 +315,7 @@ export default function Home() {
         "prioridade",
         "classificacao_prioridade",
         "observacao",
+        "cadastro_valores",
         "excluir_do_fechamento",
         "created_at",
         "pacientes ( nome )",
@@ -317,7 +354,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [supabase, apiProbeDone, effectiveTenantId]);
+  }, [supabase, apiProbeDone, effectiveTenantId, tenantConfig.cadastroCategories]);
 
   useEffect(() => {
     if (!sessionReady) return;
@@ -367,6 +404,7 @@ export default function Home() {
         observacao?: string | null;
         local_id?: string | null;
         especialidade_id?: string | null;
+        cadastro_valores?: Record<string, string | null>;
         tv_id?: string | null;
         prioridade?: boolean;
         classificacao_prioridade?: string;
@@ -395,6 +433,7 @@ export default function Home() {
       observacao?: string | null;
       local_id?: string | null;
       especialidade_id?: string | null;
+      cadastro_valores?: Record<string, string | null>;
       tv_id?: string | null;
     }) => {
       if (!selectedId) return;
@@ -486,6 +525,7 @@ export default function Home() {
   return (
     <div className="flex h-[100dvh] min-h-0 w-full flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <AppSidebar
+        onOpenSegment={() => setSegmentOpen(true)}
         onOpenSettings={openGeneralSettings}
         onSignOut={() => void supabase?.auth.signOut()}
       />
@@ -550,6 +590,8 @@ export default function Home() {
             onQueueTabId={setQueueTabId}
             priorityLawEnabled={tenantConfig.priorityLawEnabled}
             observacoesVisibility={tenantConfig.observacoesVisibility}
+            cadastroCategories={tenantConfig.cadastroCategories}
+            cadastroLookups={cadastroLookups}
             selectedId={selectedId}
             onSelectId={handleSelectId}
             loading={loading}
@@ -561,6 +603,21 @@ export default function Home() {
           />
         </main>
       </div>
+
+      <SegmentConfigModal
+        open={segmentOpen}
+        onClose={() => setSegmentOpen(false)}
+        supabase={supabase}
+        tenantId={effectiveTenantId}
+        segmentoDefinido={segmentoDefinido}
+        config={tenantConfig}
+        onConfigUpdated={(c) => {
+          setTenantConfig(c);
+          const first = resolveVisibleQueueTabs(c)[0]?.id;
+          if (first) setQueueTabId(first);
+          void refreshRows();
+        }}
+      />
 
       <SettingsHubModal
         open={settingsOpen}

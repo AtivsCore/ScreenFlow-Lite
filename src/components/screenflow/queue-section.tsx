@@ -3,8 +3,9 @@
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 import { formatCreatedAt, formatHoraMarcada } from "@/lib/atendimentos-lite";
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
-import type { ObservacoesVisibility } from "@/lib/tenant-config";
-import type { QueueTabEntry } from "@/lib/tenant-config";
+import type { CadastroLookups } from "@/lib/cadastro-valores";
+import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
+import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Pencil, Plus, Trash2, UserPlus } from "lucide-react";
 import { memo, useState } from "react";
@@ -23,6 +24,8 @@ type QueueRowProps = {
   isSel: boolean;
   priorityLawEnabled: boolean;
   observacoesAlwaysVisible: boolean;
+  cadastroCategories: CadastroCategoryEntry[];
+  cadastroLookups: CadastroLookups;
   deleting: string | null;
   onSelectId: (id: string) => void;
   onEditRow: (row: AtendimentoLite) => void;
@@ -34,6 +37,8 @@ const QueueRow = memo(function QueueRow({
   isSel,
   priorityLawEnabled,
   observacoesAlwaysVisible,
+  cadastroCategories,
+  cadastroLookups,
   deleting,
   onSelectId,
   onEditRow,
@@ -81,7 +86,19 @@ const QueueRow = memo(function QueueRow({
           )}
         </div>
       </td>
-      <td className="truncate px-2 py-1.5 text-zinc-700 dark:text-zinc-300">{row.profissionalNome ?? "—"}</td>
+      {cadastroCategories.map((cat) => {
+        const label = resolveCategoryDisplayLabel(
+          cat.id,
+          row.cadastro_valores ?? {},
+          cadastroLookups,
+          cadastroCategories
+        );
+        return (
+          <td key={cat.id} className="max-w-[8rem] truncate px-2 py-1.5 text-zinc-700 dark:text-zinc-300">
+            {label ?? "—"}
+          </td>
+        );
+      })}
       <td className={`truncate px-2 py-1.5 ${statusStyle(row.status)}`}>{row.status ?? "—"}</td>
       <td className="px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
         <button
@@ -117,6 +134,8 @@ type QueueSectionProps = {
   onQueueTabId: (id: string) => void;
   priorityLawEnabled: boolean;
   observacoesVisibility: ObservacoesVisibility;
+  cadastroCategories: CadastroCategoryEntry[];
+  cadastroLookups: CadastroLookups;
   selectedId: string | null;
   onSelectId: (id: string) => void;
   loading: boolean;
@@ -136,6 +155,8 @@ export function QueueSection({
   onQueueTabId,
   priorityLawEnabled,
   observacoesVisibility,
+  cadastroCategories,
+  cadastroLookups,
   selectedId,
   onSelectId,
   loading,
@@ -146,8 +167,9 @@ export function QueueSection({
   onEditRow,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
+  const enabledCategories = cadastroCategories.filter((c) => c.enabled);
   const observacoesAlwaysVisible = observacoesVisibility === "always";
-  const colSpan = 6;
+  const colSpan = 4 + enabledCategories.length;
 
   async function handleDelete(row: AtendimentoLite) {
     if (!supabase || !confirm(`Excluir registro de “${row.nome ?? "cliente"}”?`)) return;
@@ -223,7 +245,11 @@ export function QueueSection({
               <th className="w-[100px] px-2 py-1.5">Chegada</th>
               <th className="w-[110px] px-2 py-1.5">Horário marc.</th>
               <th className="min-w-[180px] px-2 py-1.5">Cliente</th>
-              <th className="min-w-[90px] px-2 py-1.5">Profissional</th>
+              {enabledCategories.map((cat) => (
+                <th key={cat.id} className="min-w-[80px] max-w-[8rem] px-2 py-1.5">
+                  {cat.label}
+                </th>
+              ))}
               <th className="min-w-[70px] px-2 py-1.5">Status</th>
               <th className="w-[72px] px-2 py-1.5 text-right">Ações</th>
             </tr>
@@ -251,6 +277,8 @@ export function QueueSection({
                   isSel={row.id === selectedId}
                   priorityLawEnabled={priorityLawEnabled}
                   observacoesAlwaysVisible={observacoesAlwaysVisible}
+                  cadastroCategories={enabledCategories}
+                  cadastroLookups={cadastroLookups}
                   deleting={deleting}
                   onSelectId={onSelectId}
                   onEditRow={onEditRow}

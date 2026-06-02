@@ -76,6 +76,7 @@ export type TenantConfiguracoes = {
   priorityLawEnabled?: boolean;
   observacoesVisibility?: ObservacoesVisibility;
   cadastroCategories?: CadastroCategoryEntry[];
+  segmentoAplicado?: string;
   registerForm?: Partial<RegisterFormConfig>;
   tvDisplay?: Partial<TvDisplayConfig>;
 };
@@ -86,6 +87,7 @@ export type ResolvedTenantConfig = {
   priorityLawEnabled: boolean;
   observacoesVisibility: ObservacoesVisibility;
   cadastroCategories: CadastroCategoryEntry[];
+  segmentoAplicado: string | null;
   registerForm: RegisterFormConfig;
   tvDisplay: TvDisplayConfig;
 };
@@ -249,6 +251,10 @@ export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
   const tv = { ...DEFAULT_TV_DISPLAY, ...parseTvDisplay(obj.tvDisplay) };
   const observacoesVisibility: ObservacoesVisibility =
     obj.observacoesVisibility === "always" ? "always" : "hidden";
+  const segmentoAplicado =
+    typeof obj.segmentoAplicado === "string" && obj.segmentoAplicado.trim()
+      ? obj.segmentoAplicado.trim()
+      : null;
 
   return {
     queueTabs,
@@ -256,6 +262,7 @@ export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
     priorityLawEnabled,
     observacoesVisibility,
     cadastroCategories,
+    segmentoAplicado,
     registerForm: rf,
     tvDisplay: tv,
   };
@@ -268,6 +275,7 @@ export function configuracoesForSupabase(resolved: ResolvedTenantConfig): Tenant
     priorityLawEnabled: resolved.priorityLawEnabled,
     observacoesVisibility: resolved.observacoesVisibility,
     cadastroCategories: resolved.cadastroCategories,
+    segmentoAplicado: resolved.segmentoAplicado ?? undefined,
     registerForm: resolved.registerForm,
     tvDisplay: resolved.tvDisplay,
   };

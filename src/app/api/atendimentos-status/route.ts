@@ -15,7 +15,8 @@ type Body = {
   especialidade_id?: string | null;
   tv_id?: string | null;
   observacao?: string | null;
-        prioridade?: boolean;
+  cadastro_valores?: Record<string, string | null>;
+  prioridade?: boolean;
         classificacao_prioridade?: string;
   excluir_do_fechamento?: boolean;
 };
@@ -43,6 +44,7 @@ export async function POST(req: Request) {
   if (body.especialidade_id !== undefined) payload.especialidade_id = body.especialidade_id;
   if (body.tv_id !== undefined) payload.tv_id = body.tv_id;
   if (body.observacao !== undefined) payload.observacao = body.observacao;
+  if (body.cadastro_valores !== undefined) payload.cadastro_valores = body.cadastro_valores;
   if (typeof body.prioridade === "boolean") payload.prioridade = body.prioridade;
   if (typeof body.classificacao_prioridade === "string" && body.classificacao_prioridade.trim()) {
     payload.classificacao_prioridade = body.classificacao_prioridade.trim();
