@@ -6,24 +6,24 @@ import {
   resolveClassificacaoPrioridade,
   type ClassificacaoPrioridade,
 } from "@/lib/classificacao-prioridade";
+import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-valores";
 import { formatObservacaoForDisplay, embedObservacaoForQueueTab, resolveRowQueueTabId } from "@/lib/fila-preset";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { fetchServicos } from "@/lib/fetch-servicos";
-import type { QueueTabEntry } from "@/lib/tenant-config";
+import type { QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
-type Opt = { id: string; nome: string | null };
+type OptRow = { id: string; nome: string | null };
 
 type EditAtendimentoModalProps = {
   open: boolean;
   row: AtendimentoLite | null;
   onClose: () => void;
   supabase: SupabaseClient | null;
-  priorityLawEnabled: boolean;
-  queueTabs: QueueTabEntry[];
+  tenantConfig: ResolvedTenantConfig;
   onSaved: () => void;
 };
 
@@ -31,25 +31,70 @@ type FormProps = {
   row: AtendimentoLite;
   onClose: () => void;
   supabase: SupabaseClient;
-  priorityLawEnabled: boolean;
-  queueTabs: QueueTabEntry[];
+  tenantConfig: ResolvedTenantConfig;
   onSaved: () => void;
 };
 
-function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, queueTabs, onSaved }: FormProps) {
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function applyTriagemPreset(
+  tab: QueueTabEntry | undefined,
+  classificacao: ClassificacaoPrioridade,
+  setClassificacao: (c: ClassificacaoPrioridade) => void
+): ClassificacaoPrioridade {
+  if (!tab) return classificacao;
+  switch (tab.preset) {
+    case "prioridade":
+      setClassificacao("prioritario");
+      return "prioritario";
+    case "urgente":
+      setClassificacao("emergencia");
+      return "emergencia";
+    default:
+      return classificacao;
+  }
+}
+
+function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: FormProps) {
+  const rf = tenantConfig.registerForm;
+  const law = tenantConfig.priorityLawEnabled;
+  const queueTabs = tenantConfig.queueTabs;
+  const enabledCategories = useMemo(
+    () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
+    [tenantConfig.cadastroCategories]
+  );
+
   const initialTriagemTabId = resolveRowQueueTabId(row, queueTabs) || queueTabs[0]?.id || "";
+  const initialFormValues = useMemo(() => {
+    const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
+      profissional_id: row.profissional_id,
+      local_id: row.local_id,
+      especialidade_id: row.especialidade_id,
+    });
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(hydrated)) {
+      if (v) out[k] = v;
+    }
+    return out;
+  }, [row, tenantConfig.cadastroCategories]);
+
   const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
-  const [nome, setNome] = useState(row.nome ?? "");
-  const [profissionalId, setProfissionalId] = useState(row.profissional_id ?? "");
-  const [localId, setLocalId] = useState(row.local_id ?? "");
-  const [servicoId, setServicoId] = useState(row.especialidade_id ?? "");
+  const [nomeCliente, setNomeCliente] = useState(row.nome ?? "");
+  const [formValues, setFormValues] = useState<Record<string, string>>(initialFormValues);
+  const [horaMarcada, setHoraMarcada] = useState(() => toDatetimeLocal(row.hora_marcada));
   const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>(() =>
     resolveClassificacaoPrioridade(row.classificacao_prioridade, row.prioridade)
   );
-  const [observacao, setObservacao] = useState(() => formatObservacaoForDisplay(row.observacao));
+  const [observacaoBase, setObservacaoBase] = useState(() => formatObservacaoForDisplay(row.observacao));
   const [profissionais, setProfissionais] = useState<ProfissionalRow[]>([]);
-  const [locais, setLocais] = useState<Opt[]>([]);
-  const [servicos, setServicos] = useState<Opt[]>([]);
+  const [locais, setLocais] = useState<OptRow[]>([]);
+  const [servicos, setServicos] = useState<OptRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -69,14 +114,10 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, queue
       const locQuery = tid
         ? supabase.from("locais").select("id,nome").eq("tenant_id", tid).order("nome")
         : supabase.from("locais").select("id,nome").order("nome");
-      const [p, l, sResult] = await Promise.all([
-        profQuery,
-        locQuery,
-        fetchServicos(supabase, row.tenant_id),
-      ]);
+      const [p, l, sResult] = await Promise.all([profQuery, locQuery, fetchServicos(supabase, row.tenant_id)]);
       if (cancelled) return;
       setProfissionais((p.data as ProfissionalRow[] | null) ?? []);
-      setLocais((l.data as Opt[] | null) ?? []);
+      setLocais((l.data as OptRow[] | null) ?? []);
       setServicos(sResult.data);
     })();
     return () => {
@@ -84,13 +125,51 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, queue
     };
   }, [supabase, row.tenant_id]);
 
+  function handleTriagemChange(tabId: string) {
+    setTriagemTabId(tabId);
+    const tab = queueTabs.find((t) => t.id === tabId);
+    if (law && tab) {
+      applyTriagemPreset(tab, classificacao, setClassificacao);
+    }
+  }
+
+  function renderCategoryField(cat: (typeof enabledCategories)[number]) {
+    const options =
+      cat.tableKey === "profissionais"
+        ? profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }))
+        : cat.tableKey === "locais"
+          ? locais.map((m) => ({ id: m.id, label: m.nome ?? m.id }))
+          : servicos.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
+
+    return (
+      <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+        {cat.label}
+        <select
+          value={formValues[cat.id] ?? ""}
+          onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+        >
+          <option value="">—</option>
+          {options.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
 
     if (row.paciente_id) {
-      const { error: pe } = await supabase.from("pacientes").update({ nome: nome.trim() || "" }).eq("id", row.paciente_id);
+      const { error: pe } = await supabase
+        .from("pacientes")
+        .update({ nome: nomeCliente.trim() || "" })
+        .eq("id", row.paciente_id);
       if (pe) {
         setError(pe.message);
         setBusy(false);
@@ -98,15 +177,30 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, queue
       }
     }
 
+    let finalClassificacao: ClassificacaoPrioridade = classificacao;
+    if (law && triagemTab) {
+      if (triagemTab.preset === "prioridade") finalClassificacao = "prioritario";
+      else if (triagemTab.preset === "urgente") finalClassificacao = "emergencia";
+    }
+
+    const cadastroPayload = buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
+
     const patch: Record<string, unknown> = {
-      profissional_id: profissionalId || null,
-      local_id: localId || null,
-      especialidade_id: servicoId || null,
-      observacao: embedObservacaoForQueueTab(observacao.trim() || null, triagemTab),
+      ...cadastroPayload,
+      observacao: embedObservacaoForQueueTab(observacaoBase.trim() || null, triagemTab),
     };
-    if (priorityLawEnabled) {
-      patch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
-      patch.classificacao_prioridade = classificacao;
+
+    if (law) {
+      patch.prioridade = prioridadeBooleanFromClassificacao(finalClassificacao);
+      patch.classificacao_prioridade = finalClassificacao;
+    }
+
+    const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
+    if (wantsHora && horaMarcada.trim()) {
+      const d = new Date(horaMarcada);
+      patch.hora_marcada = Number.isNaN(d.getTime()) ? horaMarcada.trim() : d.toISOString();
+    } else if (triagemTab?.preset === "encaixe") {
+      patch.hora_marcada = null;
     }
 
     const { error: ae } = await supabase.from("atendimentos_lite").update(patch).eq("id", row.id);
@@ -122,14 +216,29 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, queue
     setBusy(false);
   }
 
+  const visibleFields =
+    rf.showClienteNome ||
+    queueTabs.length > 0 ||
+    enabledCategories.length > 0 ||
+    rf.showHoraMarcada ||
+    triagemTab?.preset === "hora" ||
+    law ||
+    rf.showObservacao;
+
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      {!visibleFields && (
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          Nenhum campo visível nas configurações. Ative campos em Configurações → Geral.
+        </p>
+      )}
+
       {queueTabs.length > 0 ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           {triagemLabel}
           <select
             value={triagemTabId}
-            onChange={(e) => setTriagemTabId(e.target.value)}
+            onChange={(e) => handleTriagemChange(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
           >
             {queueTabs.map((t) => (
@@ -141,77 +250,47 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, queue
         </label>
       ) : null}
 
-      <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-        Nome do cliente
-        <input
-          value={nome}
-          onChange={(e) => setNome(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-          disabled={!row.paciente_id}
-        />
-      </label>
+      {rf.showClienteNome ? (
+        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Nome do cliente
+          <input
+            value={nomeCliente}
+            onChange={(e) => setNomeCliente(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            disabled={!row.paciente_id}
+          />
+        </label>
+      ) : null}
 
-      <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-        Profissional
-        <select
-          value={profissionalId}
-          onChange={(e) => setProfissionalId(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-        >
-          <option value="">—</option>
-          {profissionais.map((m) => (
-            <option key={m.id} value={m.id}>
-              {formatProfissionalLabel(m)}
-            </option>
-          ))}
-        </select>
-      </label>
+      {enabledCategories.map((cat) => renderCategoryField(cat))}
 
-      <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-        Local / ponto de atendimento
-        <select
-          value={localId}
-          onChange={(e) => setLocalId(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-        >
-          <option value="">—</option>
-          {locais.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.nome ?? m.id}
-            </option>
-          ))}
-        </select>
-      </label>
+      {(rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
+        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Horário marcado
+          <input
+            type="datetime-local"
+            value={horaMarcada}
+            onChange={(e) => setHoraMarcada(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+          />
+        </label>
+      ) : null}
 
-      <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-        Serviço
-        <select
-          value={servicoId}
-          onChange={(e) => setServicoId(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-        >
-          <option value="">—</option>
-          {servicos.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.nome ?? m.id}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {priorityLawEnabled ? (
+      {law ? (
         <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
       ) : null}
 
-      <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-        Observação
-        <textarea
-          value={observacao}
-          onChange={(e) => setObservacao(e.target.value)}
-          rows={3}
-          className="mt-1 w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-        />
-      </label>
+      {rf.showObservacao ? (
+        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Observações
+          <textarea
+            value={observacaoBase}
+            onChange={(e) => setObservacaoBase(e.target.value)}
+            rows={3}
+            className="mt-1 w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+          />
+        </label>
+      ) : null}
 
       {error && (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
@@ -235,8 +314,7 @@ export function EditAtendimentoModal({
   row,
   onClose,
   supabase,
-  priorityLawEnabled,
-  queueTabs,
+  tenantConfig,
   onSaved,
 }: EditAtendimentoModalProps) {
   return (
@@ -246,8 +324,7 @@ export function EditAtendimentoModal({
           key={row.id}
           row={row}
           supabase={supabase}
-          priorityLawEnabled={priorityLawEnabled}
-          queueTabs={queueTabs}
+          tenantConfig={tenantConfig}
           onClose={onClose}
           onSaved={onSaved}
         />

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { PostgrestError } from "@supabase/supabase-js";
 import { DefinirEmailCliente } from "@/components/admin-lite/definir-email-cliente";
+import { DefinirSegmentoCliente } from "@/components/admin-lite/definir-segmento-cliente";
 import { GerarLinkAcessoButton } from "@/components/admin-lite/gerar-link-acesso";
 import { TenantStatusActions } from "@/components/admin-lite/tenant-status-actions";
 import { createAdminClient } from "@/lib/supabase-admin";
@@ -35,7 +36,7 @@ export default async function ClienteLiteDetailPage({
   const supabase = createAdminClient();
   const { data: row, error } = await supabase
     .from("tenants")
-    .select("id, nome, slug, plano, status, licenca_key, created_at")
+    .select("id, nome, slug, plano, status, licenca_key, created_at, segmento_definido")
     .eq("id", id)
     .single();
 
@@ -151,6 +152,15 @@ export default async function ClienteLiteDetailPage({
               <dt style={{ color: "#64748b", margin: 0 }}>Email do usuário</dt>
               <dd style={{ margin: 0, color: "#e2e8f0" }}>
                 {userEmail !== null && userEmail.length > 0 ? userEmail : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt style={{ color: "#64748b", margin: 0 }}>Segmento</dt>
+              <dd style={{ margin: 0 }}>
+                <DefinirSegmentoCliente
+                  tenantId={row.id}
+                  initialSegmentoDefinido={(row as { segmento_definido?: string | null }).segmento_definido ?? null}
+                />
               </dd>
             </div>
           </dl>

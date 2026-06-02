@@ -37,7 +37,7 @@ const PRESETS: QueueTabPreset[] = ["ordem", "hora", "encaixe", "prioridade", "ur
 
 const TABLE_KEY_LABELS: Record<CadastroTableKey, string> = {
   profissionais: "Equipe / profissionais",
-  locais: "Locais / pontos",
+  locais: "Locais",
   servicos: "Serviços",
 };
 

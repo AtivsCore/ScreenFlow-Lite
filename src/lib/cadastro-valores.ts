@@ -10,6 +10,54 @@ export type CadastroLookups = {
   servicos: Map<string, string>;
 };
 
+/** Contexto legado da linha para fallback de exibição (joins e FKs). */
+export type CadastroLegacyContext = {
+  profissional_id?: string | null;
+  local_id?: string | null;
+  especialidade_id?: string | null;
+  profissionalNome?: string | null;
+  localNome?: string | null;
+  servicoNome?: string | null;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function legacyIdForTableKey(key: CadastroTableKey, legacy?: CadastroLegacyContext): string | null {
+  if (!legacy) return null;
+  if (key === "profissionais") return legacy.profissional_id?.trim() || null;
+  if (key === "locais") return legacy.local_id?.trim() || null;
+  return legacy.especialidade_id?.trim() || null;
+}
+
+function legacyNomeForTableKey(key: CadastroTableKey, legacy?: CadastroLegacyContext): string | null {
+  if (!legacy) return null;
+  if (key === "profissionais") return legacy.profissionalNome?.trim() || null;
+  if (key === "locais") return legacy.localNome?.trim() || null;
+  return legacy.servicoNome?.trim() || null;
+}
+
+function resolveEntityLabel(
+  tableKey: CadastroTableKey,
+  entityId: string,
+  lookups: CadastroLookups,
+  profRows?: ProfissionalRow[]
+): string | null {
+  switch (tableKey) {
+    case "profissionais": {
+      const fromMap = lookups.profissionais.get(entityId);
+      if (fromMap) return fromMap;
+      const row = profRows?.find((p) => p.id === entityId);
+      return row ? formatProfissionalLabel(row) : null;
+    }
+    case "locais":
+      return lookups.locais.get(entityId) ?? null;
+    case "servicos":
+      return lookups.servicos.get(entityId) ?? null;
+    default:
+      return null;
+  }
+}
+
 export function emptyCadastroValores(): CadastroValores {
   return {};
 }
@@ -49,6 +97,9 @@ export function hydrateCadastroValores(
     const cats = enabled.filter((c) => c.tableKey === key);
     for (const cat of cats) {
       if (!out[cat.id]) out[cat.id] = legacyId;
+    }
+    if (cats.length === 1 && legacyId) {
+      out[cats[0]!.id] = legacyId;
     }
   }
   return out;
@@ -101,38 +152,45 @@ export function resolveCategoryDisplayLabel(
   valores: CadastroValores,
   lookups: CadastroLookups,
   categories: CadastroCategoryEntry[],
-  profRows?: ProfissionalRow[]
+  profRows?: ProfissionalRow[],
+  legacy?: CadastroLegacyContext
 ): string | null {
-  const id = valores[categoryId];
-  if (!id) return null;
   const cat = categories.find((c) => c.id === categoryId);
   if (!cat) return null;
-  switch (cat.tableKey) {
-    case "profissionais": {
-      const fromMap = lookups.profissionais.get(id);
-      if (fromMap) return fromMap;
-      const row = profRows?.find((p) => p.id === id);
-      return row ? formatProfissionalLabel(row) : id;
-    }
-    case "locais":
-      return lookups.locais.get(id) ?? id;
-    case "servicos":
-      return lookups.servicos.get(id) ?? id;
-    default:
-      return id;
+
+  let entityId = valores[categoryId]?.trim() || null;
+  if (!entityId) {
+    entityId = legacyIdForTableKey(cat.tableKey, legacy);
   }
+  if (!entityId) return null;
+
+  const fromLookup = resolveEntityLabel(cat.tableKey, entityId, lookups, profRows);
+  if (fromLookup) return fromLookup;
+
+  const legId = legacyIdForTableKey(cat.tableKey, legacy);
+  const legNome = legacyNomeForTableKey(cat.tableKey, legacy);
+  if (legId && legNome && entityId === legId) return legNome;
+  if (legId && legNome) {
+    const legLabel = resolveEntityLabel(cat.tableKey, legId, lookups, profRows);
+    if (legLabel) return legLabel;
+    return legNome;
+  }
+
+  if (UUID_RE.test(entityId)) return null;
+  return entityId;
 }
 
 export function buildCadastroDisplayMap(
   valores: CadastroValores,
   categories: CadastroCategoryEntry[],
   lookups: CadastroLookups,
-  profRows?: ProfissionalRow[]
+  profRows?: ProfissionalRow[],
+  legacy?: CadastroLegacyContext
 ): Record<string, string | null> {
   const enabled = categories.filter((c) => c.enabled);
   const out: Record<string, string | null> = {};
   for (const cat of enabled) {
-    out[cat.id] = resolveCategoryDisplayLabel(cat.id, valores, lookups, categories, profRows);
+    out[cat.id] = resolveCategoryDisplayLabel(cat.id, valores, lookups, categories, profRows, legacy);
   }
   return out;
 }
@@ -145,8 +203,8 @@ export function buildCadastroLookups(
   const profMap = new Map<string, string>();
   for (const p of profissionais) profMap.set(p.id, formatProfissionalLabel(p));
   const locMap = new Map<string, string>();
-  for (const l of locais) if (l.nome) locMap.set(l.id, l.nome);
+  for (const l of locais) locMap.set(l.id, l.nome?.trim() || "—");
   const servMap = new Map<string, string>();
-  for (const s of servicos) if (s.nome) servMap.set(s.id, s.nome);
+  for (const s of servicos) servMap.set(s.id, s.nome?.trim() || "—");
   return { profissionais: profMap, locais: locMap, servicos: servMap };
 }

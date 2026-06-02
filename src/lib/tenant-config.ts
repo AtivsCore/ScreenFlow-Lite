@@ -16,7 +16,7 @@ export type CadastroCategoryEntry = {
 
 export const DEFAULT_CADASTRO_CATEGORIES: CadastroCategoryEntry[] = [
   { id: "cat-profissionais", label: "Equipe (profissionais)", enabled: true, tableKey: "profissionais" },
-  { id: "cat-locais", label: "Locais / pontos de atendimento", enabled: true, tableKey: "locais" },
+  { id: "cat-locais", label: "Locais", enabled: true, tableKey: "locais" },
   { id: "cat-servicos", label: "Serviços", enabled: true, tableKey: "servicos" },
 ];
 

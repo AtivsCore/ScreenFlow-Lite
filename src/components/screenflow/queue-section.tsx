@@ -91,7 +91,16 @@ const QueueRow = memo(function QueueRow({
           cat.id,
           row.cadastro_valores ?? {},
           cadastroLookups,
-          cadastroCategories
+          cadastroCategories,
+          undefined,
+          {
+            profissional_id: row.profissional_id,
+            local_id: row.local_id,
+            especialidade_id: row.especialidade_id,
+            profissionalNome: row.profissionalNome,
+            localNome: row.localNome,
+            servicoNome: row.servicoNome,
+          }
         );
         return (
           <td key={cat.id} className="max-w-[8rem] truncate px-2 py-1.5 text-zinc-700 dark:text-zinc-300">

@@ -700,8 +700,7 @@ export default function Home() {
         row={editRow}
         onClose={() => setEditRow(null)}
         supabase={supabase}
-        priorityLawEnabled={tenantConfig.priorityLawEnabled}
-        queueTabs={tenantConfig.queueTabs}
+        tenantConfig={tenantConfig}
         onSaved={() => void refreshRows()}
       />
     </div>
