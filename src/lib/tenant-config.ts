@@ -26,6 +26,14 @@ export const TODOS_QUEUE_TAB: QueueTabEntry = {
   label: "Todos",
 };
 
+export function restoreDefaultCadastroCategories(): CadastroCategoryEntry[] {
+  return DEFAULT_CADASTRO_CATEGORIES.map((c) => ({ ...c }));
+}
+
+export function restoreDefaultQueueTabs(): QueueTabEntry[] {
+  return DEFAULT_QUEUE_TABS.map((t) => ({ ...t }));
+}
+
 export function cadastroCategoryCrudTable(cat: CadastroCategoryEntry): string {
   return cat.tableKey === "servicos" ? SERVICES_CRUD_TABLE : cat.tableKey;
 }

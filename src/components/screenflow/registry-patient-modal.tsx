@@ -11,7 +11,7 @@ import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
@@ -61,11 +61,67 @@ export function RegistryPatientModal({
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
   );
-  const labelFor = useCallback(
-    (key: "profissionais" | "locais" | "servicos", fallback: string) =>
-      enabledCategories.find((c) => c.tableKey === key)?.label ?? fallback,
-    [enabledCategories]
-  );
+
+  function renderCategoryField(cat: (typeof enabledCategories)[number]) {
+    switch (cat.tableKey) {
+      case "profissionais":
+        return (
+          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {cat.label}
+            <select
+              value={profissionalId}
+              onChange={(e) => setProfissionalId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            >
+              <option value="">—</option>
+              {profissionais.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {formatProfissionalLabel(m)}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      case "servicos":
+        return (
+          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {cat.label}
+            <select
+              value={servicoId}
+              onChange={(e) => setServicoId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            >
+              <option value="">—</option>
+              {servicos.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome ?? m.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      case "locais":
+        return (
+          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {cat.label}
+            <select
+              value={localId}
+              onChange={(e) => setLocalId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            >
+              <option value="">—</option>
+              {locais.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome ?? m.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      default:
+        return null;
+    }
+  }
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -230,9 +286,15 @@ export function RegistryPatientModal({
         status: defaultStatus,
       };
 
-      if (rf.showProfissional && profissionalId) payload.profissional_id = profissionalId;
-      if (rf.showServico && servicoId) payload.especialidade_id = servicoId;
-      if (rf.showLocal && localId) payload.local_id = localId;
+      if (enabledCategories.some((c) => c.tableKey === "profissionais") && profissionalId) {
+        payload.profissional_id = profissionalId;
+      }
+      if (enabledCategories.some((c) => c.tableKey === "servicos") && servicoId) {
+        payload.especialidade_id = servicoId;
+      }
+      if (enabledCategories.some((c) => c.tableKey === "locais") && localId) {
+        payload.local_id = localId;
+      }
 
       const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
       if (wantsHora && horaMarcada.trim()) {
@@ -273,9 +335,7 @@ export function RegistryPatientModal({
   const visibleFields =
     rf.showClienteNome ||
     queueTabs.length > 0 ||
-    rf.showProfissional ||
-    rf.showServico ||
-    rf.showLocal ||
+    enabledCategories.length > 0 ||
     rf.showHoraMarcada ||
     law ||
     rf.showObservacao;
@@ -317,59 +377,7 @@ export function RegistryPatientModal({
           </label>
         ) : null}
 
-        {rf.showProfissional ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {labelFor("profissionais", "Profissional")}
-            <select
-              value={profissionalId}
-              onChange={(e) => setProfissionalId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            >
-              <option value="">—</option>
-              {profissionais.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {formatProfissionalLabel(m)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-
-        {rf.showServico ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {labelFor("servicos", "Serviço")}
-            <select
-              value={servicoId}
-              onChange={(e) => setServicoId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            >
-              <option value="">—</option>
-              {servicos.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nome ?? m.id}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-
-        {rf.showLocal ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {labelFor("locais", "Local / ponto de atendimento")}
-            <select
-              value={localId}
-              onChange={(e) => setLocalId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            >
-              <option value="">—</option>
-              {locais.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nome ?? m.id}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        {enabledCategories.map((cat) => renderCategoryField(cat))}
 
         {(rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">

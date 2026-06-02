@@ -117,15 +117,58 @@ export const ClientPanel = memo(function ClientPanel({
     [cadastroCategories]
   );
 
-  const labelFor = useCallback(
-    (key: CadastroCategoryEntry["tableKey"], fallback: string) =>
-      enabledCategories.find((c) => c.tableKey === key)?.label ?? fallback,
-    [enabledCategories]
-  );
+  function openCrudForCategory(cat: CadastroCategoryEntry) {
+    setQuickCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) });
+  }
 
-  const showProf = enabledCategories.some((c) => c.tableKey === "profissionais");
-  const showLoc = enabledCategories.some((c) => c.tableKey === "locais");
-  const showServ = enabledCategories.some((c) => c.tableKey === "servicos");
+  function renderCategoryField(cat: CadastroCategoryEntry) {
+    switch (cat.tableKey) {
+      case "locais":
+        return (
+          <SelectWithQuickAdd
+            key={cat.id}
+            label={cat.label}
+            value={localValue}
+            options={locais}
+            disabled={selectDisabled}
+            quickAddDisabled={quickAddDisabled}
+            onChange={(v) => void onPatch({ local_id: v || null })}
+            onQuickAdd={() => openCrudForCategory(cat)}
+          />
+        );
+      case "profissionais":
+        return (
+          <SelectWithQuickAdd
+            key={cat.id}
+            label={cat.label}
+            value={profissionalValue}
+            options={profissionais.map((p) => ({
+              id: p.id,
+              nome: formatProfissionalLabel(p),
+            }))}
+            disabled={selectDisabled}
+            quickAddDisabled={quickAddDisabled}
+            onChange={(v) => void onPatch({ profissional_id: v || null })}
+            onQuickAdd={() => openCrudForCategory(cat)}
+          />
+        );
+      case "servicos":
+        return (
+          <SelectWithQuickAdd
+            key={cat.id}
+            label={cat.label}
+            value={servicoValue}
+            options={servicos}
+            disabled={selectDisabled}
+            quickAddDisabled={quickAddDisabled}
+            onChange={(v) => void onPatch({ especialidade_id: v || null })}
+            onQuickAdd={() => openCrudForCategory(cat)}
+          />
+        );
+      default:
+        return null;
+    }
+  }
 
   const loadOptions = useCallback(async () => {
     if (!supabase) return;
@@ -168,12 +211,6 @@ export const ClientPanel = memo(function ClientPanel({
   const observacoesAlwaysVisible = observacoesVisibility === "always";
   const hasObs = !!observacaoText;
 
-  function openCrudFor(tableKey: CadastroCategoryEntry["tableKey"]) {
-    const cat = enabledCategories.find((c) => c.tableKey === tableKey);
-    if (!cat) return;
-    setQuickCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) });
-  }
-
   return (
     <>
       <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/50">
@@ -212,45 +249,8 @@ export const ClientPanel = memo(function ClientPanel({
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {showLoc ? (
-            <SelectWithQuickAdd
-              label={labelFor("locais", "Local / ponto de atendimento")}
-              value={localValue}
-              options={locais}
-              disabled={selectDisabled}
-              quickAddDisabled={quickAddDisabled}
-              onChange={(v) => void onPatch({ local_id: v || null })}
-              onQuickAdd={() => openCrudFor("locais")}
-            />
-          ) : null}
-
-          {showProf ? (
-            <SelectWithQuickAdd
-              label={labelFor("profissionais", "Profissional")}
-              value={profissionalValue}
-              options={profissionais.map((p) => ({
-                id: p.id,
-                nome: formatProfissionalLabel(p),
-              }))}
-              disabled={selectDisabled}
-              quickAddDisabled={quickAddDisabled}
-              onChange={(v) => void onPatch({ profissional_id: v || null })}
-              onQuickAdd={() => openCrudFor("profissionais")}
-            />
-          ) : null}
-
-          {showServ ? (
-            <SelectWithQuickAdd
-              label={labelFor("servicos", "Serviço")}
-              value={servicoValue}
-              options={servicos}
-              disabled={selectDisabled}
-              quickAddDisabled={quickAddDisabled}
-              onChange={(v) => void onPatch({ especialidade_id: v || null })}
-              onQuickAdd={() => openCrudFor("servicos")}
-            />
-          ) : null}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]">
+          {enabledCategories.map((cat) => renderCategoryField(cat))}
 
           <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
             TV

@@ -7,6 +7,8 @@ import {
   configuracoesForSupabase,
   MAX_CADASTRO_CATEGORIES,
   queueTabTypeLabel,
+  restoreDefaultCadastroCategories,
+  restoreDefaultQueueTabs,
   syncRegisterFormFromCategories,
   type CadastroCategoryEntry,
   type CadastroTableKey,
@@ -120,7 +122,8 @@ export function SettingsHubModal({
 
   function patchCadastroCategories(mut: (cats: CadastroCategoryEntry[]) => CadastroCategoryEntry[]) {
     updateDraft((d) => {
-      const cadastroCategories = mut(d.cadastroCategories).slice(0, MAX_CADASTRO_CATEGORIES);
+      const next = mut(d.cadastroCategories);
+      const cadastroCategories = next.slice(0, MAX_CADASTRO_CATEGORIES);
       return {
         ...d,
         cadastroCategories,
@@ -178,15 +181,29 @@ export function SettingsHubModal({
 
         {mainTab === "fluxo" && (
           <div className="space-y-3">
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Edite rótulos, remova vistas ou adicione novas (cada aba usa um tipo de ordenação da fila).
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Edite rótulos, remova vistas ou adicione novas (cada aba usa um tipo de ordenação da fila).
+              </p>
+              <button
+                type="button"
+                className="shrink-0 rounded-lg border border-zinc-300 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                onClick={() =>
+                  updateDraft((d) => ({
+                    ...d,
+                    queueTabs: restoreDefaultQueueTabs(),
+                  }))
+                }
+              >
+                Restaurar Padrão
+              </button>
+            </div>
 
             <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/60">
               <div>
                 <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">Ativar aba &quot;Todos&quot;</p>
                 <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                  Exibe uma vista com todos os pacientes ativos, independentemente da aba de preset.
+                  Exibe uma vista com todos os registros ativos, independentemente da aba de preset.
                 </p>
               </div>
               <input
@@ -542,10 +559,21 @@ export function SettingsHubModal({
 
         {mainTab === "cadastros" && (
           <div className="space-y-3">
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Cadastros opcionais para listas na recepção e no registro inteligente. Até{" "}
-              {MAX_CADASTRO_CATEGORIES} categorias.
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Cadastros opcionais para listas na recepção e no registro inteligente. Até{" "}
+                {MAX_CADASTRO_CATEGORIES} categorias.
+              </p>
+              <button
+                type="button"
+                className="shrink-0 rounded-lg border border-zinc-300 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                onClick={() =>
+                  patchCadastroCategories(() => restoreDefaultCadastroCategories())
+                }
+              >
+                Restaurar Padrão
+              </button>
+            </div>
 
             <ul className="max-h-64 space-y-2 overflow-auto rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
               {draft.cadastroCategories.map((cat, idx) => {
@@ -643,7 +671,8 @@ export function SettingsHubModal({
               <button
                 type="button"
                 className="w-full rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-[11px] font-semibold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-900/60"
-                onClick={() =>
+                onClick={() => {
+                  if (draft.cadastroCategories.length >= MAX_CADASTRO_CATEGORIES) return;
                   patchCadastroCategories((cats) => [
                     ...cats,
                     {
@@ -652,12 +681,16 @@ export function SettingsHubModal({
                       enabled: true,
                       tableKey: "profissionais",
                     },
-                  ])
-                }
+                  ]);
+                }}
               >
                 + Adicionar categoria
               </button>
-            ) : null}
+            ) : (
+              <p className="text-center text-[10px] text-zinc-500 dark:text-zinc-400">
+                Limite de {MAX_CADASTRO_CATEGORIES} categorias atingido.
+              </p>
+            )}
 
             <button
               type="button"
