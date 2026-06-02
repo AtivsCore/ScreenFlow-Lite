@@ -378,8 +378,12 @@ export default function Home() {
 
       const [atendRes, servicos] = await Promise.all([
         (effectiveTenantId
-          ? supabase.from("atendimentos_lite").select(atendimentosSelect).eq("tenant_id", effectiveTenantId)
-          : supabase.from("atendimentos_lite").select(atendimentosSelect)),
+          ? supabase
+              .from("atendimentos_lite")
+              .select(atendimentosSelect)
+              .eq("tenant_id", effectiveTenantId)
+              .order("created_at", { ascending: true })
+          : supabase.from("atendimentos_lite").select(atendimentosSelect).order("created_at", { ascending: true })),
         fetchServicosClient(),
       ]);
 
@@ -474,10 +478,10 @@ export default function Home() {
         setLoadError(j.message || `Atualização via servidor: HTTP ${r.status}`);
         return false;
       }
-      await refreshRows();
+      applyLocalPatch(id, patch as Record<string, unknown>);
       return true;
     },
-    [refreshRows]
+    [applyLocalPatch]
   );
 
   const patchAtendimento = useCallback(
@@ -532,9 +536,9 @@ export default function Home() {
 
       try {
         if (supabase) {
+          applyLocalPatch(selectedId, { status });
           const { error } = await supabase.from("atendimentos_lite").update({ status }).eq("id", selectedId);
           if (!error) {
-            await refreshRows();
             if (options?.clearSelection) setSelectedId(null);
             return;
           }

@@ -1,5 +1,4 @@
 import { SERVICES_TABLE } from "@/lib/db-tables";
-import { prioridadeSortWeight } from "@/lib/classificacao-prioridade";
 import { rowMatchesQueueTab, rowMatchesQueueTabEntry } from "@/lib/fila-preset";
 import type { CadastroValores } from "@/lib/cadastro-valores";
 import { hydrateCadastroValores } from "@/lib/cadastro-valores";
@@ -193,10 +192,6 @@ export function countActiveByQueueTab(
   return counts;
 }
 
-function prioridadeOrdemRow(row: AtendimentoLite): number {
-  return prioridadeSortWeight(row.classificacao_prioridade, row.prioridade);
-}
-
 /** ms desde epoch; fallback +inf para ordenar por último */
 export function timeMs(raw: string | null | undefined): number {
   if (!raw) return Number.POSITIVE_INFINITY;
@@ -234,75 +229,32 @@ export function isActiveQueueRow(row: AtendimentoLite): boolean {
 }
 
 export type QueueSortOptions = {
-  /** Quando false, ordenação “Ordem de Chegada” ignora campo de prioridade. */
+  /** @deprecated Ordenação da fila é sempre por ordem de chegada (created_at). */
   priorityLawEnabled?: boolean;
 };
 
+/** Ordem fixa de chegada: created_at asc, desempate por id (estável ao mudar status). */
+export function compareQueueArrivalOrder(a: AtendimentoLite, b: AtendimentoLite): number {
+  const tc = timeMs(a.created_at) - timeMs(b.created_at);
+  if (tc !== 0) return tc;
+  return a.id.localeCompare(b.id);
+}
+
 /**
  * Filtra finalizados e aplica ordenação da aba.
- * — Ordem: prioridade desc, depois created_at asc.
- * — Hora: horários marcados primeiro, ordenados pelo mais próximo do momento atual; sem hora vão ao fim.
- * — Encaixe: sem hora_marcada.
- * — Prioridade: só prioritários.
- * — Urgente: prioritários; “urgente” no texto da observação antes; depois horário marcado.
+ * Posição fixa por ordem de chegada (`created_at`, desempate `id`) — mudança de status não reordena.
  */
 export function filterAndSortQueue(
   rows: AtendimentoLite[],
   tab: Pick<QueueTabEntry, "id" | "preset">,
-  options?: QueueSortOptions
+  _options?: QueueSortOptions
 ): AtendimentoLite[] {
   const preset = tab.preset;
-  const law = options?.priorityLawEnabled !== false;
   const active =
     preset === "todos"
       ? rows.filter(isActiveQueueRow)
       : rows.filter(isActiveQueueRow).filter((r) => rowMatchesQueueTabEntry(r, tab));
-  switch (preset) {
-    case "todos":
-      return [...active].sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
-    case "ordem":
-      return [...active].sort((a, b) => {
-        if (law) {
-          const pd = prioridadeOrdemRow(b) - prioridadeOrdemRow(a);
-          if (pd !== 0) return pd;
-        }
-        return timeMs(a.created_at) - timeMs(b.created_at);
-      });
-    case "hora": {
-      const withHora = active.filter((r) => r.hora_marcada);
-      const noHora = active.filter((r) => !r.hora_marcada);
-      const sortedHora = [...withHora].sort(
-        (a, b) => distanceFromNowMs(a.hora_marcada) - distanceFromNowMs(b.hora_marcada)
-      );
-      const tail = [...noHora].sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
-      return [...sortedHora, ...tail];
-    }
-    case "encaixe":
-      return [...active].sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
-    case "prioridade":
-      return [...active].sort((a, b) => {
-        const pd = prioridadeOrdemRow(b) - prioridadeOrdemRow(a);
-        if (pd !== 0) return pd;
-        return timeMs(a.created_at) - timeMs(b.created_at);
-      });
-    case "urgente":
-      return [...active].sort((a, b) => {
-        const ua = /\burg(ent)?e?\b/i.test(a.observacao ?? "") ? 1 : 0;
-        const ub = /\burg(ent)?e?\b/i.test(b.observacao ?? "") ? 1 : 0;
-        if (ub !== ua) return ub - ua;
-        return horaComparable(a.hora_marcada) - horaComparable(b.hora_marcada);
-      });
-    case "outros":
-      return [...active].sort((a, b) => {
-        if (law) {
-          const pd = prioridadeOrdemRow(b) - prioridadeOrdemRow(a);
-          if (pd !== 0) return pd;
-        }
-        return timeMs(a.created_at) - timeMs(b.created_at);
-      });
-    default:
-      return active;
-  }
+  return [...active].sort(compareQueueArrivalOrder);
 }
 
 export function formatHoraMarcada(value: string | null): string {

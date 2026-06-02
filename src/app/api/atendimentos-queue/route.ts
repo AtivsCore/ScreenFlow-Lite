@@ -45,7 +45,7 @@ export async function GET(request: Request) {
   };
 
   const tenantFilter = `tenant_id=eq.${encodeURIComponent(tenantId)}`;
-  const endpoint = `${url}/rest/v1/atendimentos_lite?${tenantFilter}&select=${encodeURIComponent(ATENDIMENTOS_LITE_REST_SELECT)}`;
+  const endpoint = `${url}/rest/v1/atendimentos_lite?${tenantFilter}&select=${encodeURIComponent(ATENDIMENTOS_LITE_REST_SELECT)}&order=created_at.asc`;
 
   try {
     const [atendRes, servicosResult] = await Promise.all([
