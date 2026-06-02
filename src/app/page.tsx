@@ -624,7 +624,7 @@ export default function Home() {
           />
         </header>
 
-        <main className="min-h-0 flex-1 overflow-hidden p-3">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
           <QueueSection
             rows={rows}
             queueTabs={visibleQueueTabs}

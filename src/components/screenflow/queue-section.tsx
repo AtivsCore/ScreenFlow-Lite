@@ -97,7 +97,7 @@ const KanbanCard = memo(function KanbanCard({
           onSelectId(row.id);
         }
       }}
-      className={`group cursor-pointer border-l-2 bg-white px-2 py-1 text-left transition hover:bg-zinc-50/90 dark:bg-zinc-900 dark:hover:bg-zinc-800/40 ${
+      className={`group cursor-pointer border-l-2 bg-white px-2 py-1.5 text-left transition hover:bg-zinc-50/90 dark:bg-zinc-900 dark:hover:bg-zinc-800/40 ${
         isSel
           ? "border-l-orange-500 bg-orange-50/30 dark:bg-orange-950/15"
           : "border-l-zinc-300 dark:border-l-zinc-600"
@@ -356,7 +356,7 @@ export function QueueSection({
   return (
     <div
       id={id}
-      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
     >
       <div className="shrink-0 border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -498,14 +498,14 @@ export function QueueSection({
             Nenhuma coluna de fluxo configurada.
           </p>
         ) : (
-          <div className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-x-auto overflow-y-hidden pb-0.5 sf-scroll-y-hidden">
+          <div className="flex h-0 min-h-0 min-w-0 flex-1 gap-2 overflow-x-auto overflow-y-hidden pb-0.5 sf-scroll-y-hidden">
             {kanbanColumns.map((tab) => {
               const cards = columnRows[tab.id] ?? [];
               const count = tabCounts[tab.id] ?? cards.length;
               return (
                 <section
                   key={tab.id}
-                  className="flex h-full w-[248px] min-w-[248px] max-w-[248px] shrink-0 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950/40"
+                  className="flex h-full min-h-0 w-[248px] min-w-[248px] max-w-[248px] shrink-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50"
                 >
                   <header className="z-[1] shrink-0 border-y border-zinc-200 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800/80">
                     <div className="flex items-center justify-between gap-1">
@@ -521,11 +521,11 @@ export function QueueSection({
                     </div>
                   </header>
 
-                  <div className="sf-scroll-y-hidden min-h-0 flex-1 overflow-y-auto bg-white dark:bg-zinc-900">
+                  <div className="sf-scroll-y-hidden h-0 min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-zinc-100 p-1 dark:bg-zinc-900/60">
                     {cards.length === 0 ? (
                       <p className="py-6 text-center text-[9px] text-zinc-400 dark:text-zinc-500">—</p>
                     ) : (
-                      <div className="divide-y divide-zinc-200/90 dark:divide-zinc-700/80">
+                      <div className="flex flex-col gap-1">
                         {cards.map((row) => (
                           <KanbanCard
                             key={row.id}
