@@ -566,7 +566,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+    <div className="flex h-[100dvh] min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <AppSidebar
         onOpenSegment={() => setSegmentOpen(true)}
         onOpenSettings={openGeneralSettings}
@@ -624,7 +624,7 @@ export default function Home() {
           />
         </header>
 
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3">
           <QueueSection
             rows={rows}
             queueTabs={visibleQueueTabs}

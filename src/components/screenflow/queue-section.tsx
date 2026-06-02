@@ -498,14 +498,14 @@ export function QueueSection({
             Nenhuma coluna de fluxo configurada.
           </p>
         ) : (
-          <div className="flex h-0 min-h-0 min-w-0 flex-1 gap-2 overflow-x-auto overflow-y-hidden pb-0.5 sf-scroll-y-hidden">
+          <div className="flex h-0 min-h-0 min-w-0 flex-1 gap-2 overflow-hidden">
             {kanbanColumns.map((tab) => {
               const cards = columnRows[tab.id] ?? [];
               const count = tabCounts[tab.id] ?? cards.length;
               return (
                 <section
                   key={tab.id}
-                  className="flex h-full min-h-0 w-[248px] min-w-[248px] max-w-[248px] shrink-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50"
+                  className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50"
                 >
                   <header className="z-[1] shrink-0 border-y border-zinc-200 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800/80">
                     <div className="flex items-center justify-between gap-1">
