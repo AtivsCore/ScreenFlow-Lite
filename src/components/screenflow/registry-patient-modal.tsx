@@ -11,7 +11,7 @@ import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Modal } from "@/components/ui/modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
@@ -57,6 +57,15 @@ export function RegistryPatientModal({
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
   const queueTabs = tenantConfig.queueTabs;
+  const enabledCategories = useMemo(
+    () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
+    [tenantConfig.cadastroCategories]
+  );
+  const labelFor = useCallback(
+    (key: "profissionais" | "locais" | "servicos", fallback: string) =>
+      enabledCategories.find((c) => c.tableKey === key)?.label ?? fallback,
+    [enabledCategories]
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -310,7 +319,7 @@ export function RegistryPatientModal({
 
         {rf.showProfissional ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Profissional
+            {labelFor("profissionais", "Profissional")}
             <select
               value={profissionalId}
               onChange={(e) => setProfissionalId(e.target.value)}
@@ -328,7 +337,7 @@ export function RegistryPatientModal({
 
         {rf.showServico ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Serviço
+            {labelFor("servicos", "Serviço")}
             <select
               value={servicoId}
               onChange={(e) => setServicoId(e.target.value)}
@@ -346,7 +355,7 @@ export function RegistryPatientModal({
 
         {rf.showLocal ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Local / ponto de atendimento
+            {labelFor("locais", "Local / ponto de atendimento")}
             <select
               value={localId}
               onChange={(e) => setLocalId(e.target.value)}

@@ -44,10 +44,13 @@ export function CrudEntityModal({
   );
 
   const isProfissionais = table === "profissionais";
+  const isLocais = table === "locais";
   const needsServicesResolve = table === SERVICES_CRUD_TABLE || isServicesTableCandidate(table);
+  const needsReorder = needsServicesResolve || isLocais;
 
   const [effectiveTable, setEffectiveTable] = useState(table);
   const [rows, setRows] = useState<(BaseRow | ServicoRow | ProfissionalRow)[]>([]);
+  const [ordemSupported, setOrdemSupported] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nome, setNome] = useState("");
@@ -57,6 +60,7 @@ export function CrudEntityModal({
   useEffect(() => {
     if (!open) return;
     setEffectiveTable(table);
+    setOrdemSupported(true);
     setNome("");
     setEspecialidade("");
   }, [open, table]);
@@ -102,14 +106,27 @@ export function CrudEntityModal({
 
     const selectCols = isProfissionais
       ? "id,nome,especialidade"
-      : needsServicesResolve
+      : needsReorder && ordemSupported
         ? "id,nome,ordem"
         : "id,nome";
 
     let query = supabase.from(tbl).select(selectCols).eq("tenant_id", effectiveTenantId);
-    query = needsServicesResolve ? query.order("ordem").order("nome") : query.order("nome");
+    if (needsReorder && ordemSupported) {
+      query = query.order("ordem").order("nome");
+    } else {
+      query = query.order("nome");
+    }
 
     const { data, error: err } = await query;
+
+    if (err && needsReorder && ordemSupported && /ordem/i.test(err.message)) {
+      setOrdemSupported(false);
+      setLoading(false);
+      queueMicrotask(() => {
+        void load();
+      });
+      return;
+    }
 
     if (err) {
       setError(err.message);
@@ -119,7 +136,7 @@ export function CrudEntityModal({
       setRows(((data as unknown) as (BaseRow | ServicoRow | ProfissionalRow)[] | null) ?? []);
     }
     setLoading(false);
-  }, [supabase, table, open, effectiveTenantId, needsServicesResolve, ensureTable, isProfissionais]);
+  }, [supabase, table, open, effectiveTenantId, needsServicesResolve, needsReorder, ordemSupported, ensureTable, isProfissionais]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -171,7 +188,7 @@ export function CrudEntityModal({
       if (esp) payload.especialidade = esp;
     }
 
-    if (needsServicesResolve) {
+    if (needsReorder && ordemSupported) {
       const maxOrdem = rows.reduce((max, r) => {
         const o = "ordem" in r && typeof r.ordem === "number" ? r.ordem : 0;
         return Math.max(max, o);
@@ -199,7 +216,7 @@ export function CrudEntityModal({
           ...(isProfissionais && especialidade.trim()
             ? { especialidade: especialidade.trim() }
             : {}),
-          ...(needsServicesResolve ? { ordem: payload.ordem } : {}),
+          ...(needsReorder && ordemSupported ? { ordem: payload.ordem } : {}),
         });
         if (viaApi.ok) {
           setNome("");
@@ -236,8 +253,8 @@ export function CrudEntityModal({
     setBusy(false);
   }
 
-  async function moveServico(index: number, direction: -1 | 1) {
-    if (!supabase || !needsServicesResolve) return;
+  async function moveRow(index: number, direction: -1 | 1) {
+    if (!supabase || !needsReorder || !ordemSupported) return;
     const swapIndex = index + direction;
     if (swapIndex < 0 || swapIndex >= rows.length) return;
 
@@ -325,13 +342,13 @@ export function CrudEntityModal({
             >
               <span className="min-w-0 flex-1 truncate">{rowLabel(r)}</span>
               <div className="flex shrink-0 items-center gap-1">
-                {needsServicesResolve ? (
+                {needsReorder && ordemSupported ? (
                   <>
                     <button
                       type="button"
                       title="Subir"
                       disabled={busy || index === 0}
-                      onClick={() => void moveServico(index, -1)}
+                      onClick={() => void moveRow(index, -1)}
                       className="rounded border border-zinc-300 p-0.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
                     >
                       <ChevronUp className="size-3.5" strokeWidth={2} aria-hidden />
@@ -340,7 +357,7 @@ export function CrudEntityModal({
                       type="button"
                       title="Descer"
                       disabled={busy || index === rows.length - 1}
-                      onClick={() => void moveServico(index, 1)}
+                      onClick={() => void moveRow(index, 1)}
                       className="rounded border border-zinc-300 p-0.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
                     >
                       <ChevronDown className="size-3.5" strokeWidth={2} aria-hidden />

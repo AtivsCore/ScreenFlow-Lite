@@ -1,5 +1,34 @@
 import type { QueueTabId } from "@/lib/atendimentos-lite";
 import { QUEUE_TAB_LABELS } from "@/lib/atendimentos-lite";
+import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
+
+export const TODOS_TAB_ID = "tab-todos";
+export const MAX_CADASTRO_CATEGORIES = 5;
+
+export type CadastroTableKey = "profissionais" | "locais" | "servicos";
+
+export type CadastroCategoryEntry = {
+  id: string;
+  label: string;
+  enabled: boolean;
+  tableKey: CadastroTableKey;
+};
+
+export const DEFAULT_CADASTRO_CATEGORIES: CadastroCategoryEntry[] = [
+  { id: "cat-profissionais", label: "Equipe (profissionais)", enabled: true, tableKey: "profissionais" },
+  { id: "cat-locais", label: "Locais / pontos de atendimento", enabled: true, tableKey: "locais" },
+  { id: "cat-servicos", label: "Serviços", enabled: true, tableKey: "servicos" },
+];
+
+export const TODOS_QUEUE_TAB: QueueTabEntry = {
+  id: TODOS_TAB_ID,
+  preset: "todos",
+  label: "Todos",
+};
+
+export function cadastroCategoryCrudTable(cat: CadastroCategoryEntry): string {
+  return cat.tableKey === "servicos" ? SERVICES_CRUD_TABLE : cat.tableKey;
+}
 
 export type QueueTabPreset = QueueTabId;
 
@@ -35,16 +64,20 @@ export type TvDisplayConfig = {
 
 export type TenantConfiguracoes = {
   queueTabs?: QueueTabEntry[];
+  showTodosTab?: boolean;
   priorityLawEnabled?: boolean;
   observacoesVisibility?: ObservacoesVisibility;
+  cadastroCategories?: CadastroCategoryEntry[];
   registerForm?: Partial<RegisterFormConfig>;
   tvDisplay?: Partial<TvDisplayConfig>;
 };
 
 export type ResolvedTenantConfig = {
   queueTabs: QueueTabEntry[];
+  showTodosTab: boolean;
   priorityLawEnabled: boolean;
   observacoesVisibility: ObservacoesVisibility;
+  cadastroCategories: CadastroCategoryEntry[];
   registerForm: RegisterFormConfig;
   tvDisplay: TvDisplayConfig;
 };
@@ -87,8 +120,17 @@ function parseQueueTabs(raw: unknown): QueueTabEntry[] | null {
     const label = typeof item.label === "string" ? item.label.trim() : "";
     const customTypeLabel =
       typeof item.customTypeLabel === "string" ? item.customTypeLabel.trim() : undefined;
-    const presets: QueueTabPreset[] = ["ordem", "hora", "encaixe", "prioridade", "urgente", "outros"];
+    const presets: QueueTabPreset[] = [
+      "todos",
+      "ordem",
+      "hora",
+      "encaixe",
+      "prioridade",
+      "urgente",
+      "outros",
+    ];
     if (!id || !label || !presets.includes(preset)) continue;
+    if (preset === "todos") continue;
     out.push({
       id,
       preset,
@@ -144,10 +186,47 @@ function parseTvDisplay(raw: unknown): Partial<TvDisplayConfig> | null {
   return { footerLines, colorPalette, backgroundImageDataUrl, qrTargetUrl };
 }
 
+function parseCadastroCategories(raw: unknown): CadastroCategoryEntry[] | null {
+  if (!Array.isArray(raw)) return null;
+  const keys: CadastroTableKey[] = ["profissionais", "locais", "servicos"];
+  const out: CadastroCategoryEntry[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const label = typeof item.label === "string" ? item.label.trim() : "";
+    const tableKey = item.tableKey as CadastroTableKey;
+    const enabled = typeof item.enabled === "boolean" ? item.enabled : true;
+    if (!id || !label || !keys.includes(tableKey)) continue;
+    out.push({ id, label, enabled, tableKey });
+  }
+  return out.length ? out.slice(0, MAX_CADASTRO_CATEGORIES) : null;
+}
+
+export function syncRegisterFormFromCategories(
+  categories: CadastroCategoryEntry[],
+  rf: RegisterFormConfig
+): RegisterFormConfig {
+  const on = (key: CadastroTableKey) => categories.some((c) => c.enabled && c.tableKey === key);
+  return {
+    ...rf,
+    showProfissional: on("profissionais"),
+    showLocal: on("locais"),
+    showServico: on("servicos"),
+  };
+}
+
+/** Abas visíveis na fila (inclui "Todos" virtual quando ativo). */
+export function resolveVisibleQueueTabs(config: ResolvedTenantConfig): QueueTabEntry[] {
+  const base = config.queueTabs.filter((t) => t.preset !== "todos");
+  return config.showTodosTab ? [TODOS_QUEUE_TAB, ...base] : base;
+}
+
 /** Mescla JSON salvo no Supabase com defaults seguros */
 export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
   const obj = isRecord(raw) ? raw : {};
   let queueTabs = parseQueueTabs(obj.queueTabs) ?? DEFAULT_QUEUE_TABS;
+  queueTabs = queueTabs.filter((t) => t.preset !== "todos");
+  const showTodosTab = typeof obj.showTodosTab === "boolean" ? obj.showTodosTab : true;
   const priorityLawEnabled =
     typeof obj.priorityLawEnabled === "boolean" ? obj.priorityLawEnabled : true;
 
@@ -156,15 +235,19 @@ export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
     if (queueTabs.length === 0) queueTabs = [{ id: "tab-ordem", preset: "ordem", label: "Ordem de Chegada" }];
   }
 
-  const rf = { ...DEFAULT_REGISTER_FORM, ...parseRegisterForm(obj.registerForm) };
+  const cadastroCategories = parseCadastroCategories(obj.cadastroCategories) ?? DEFAULT_CADASTRO_CATEGORIES;
+  const rfBase = { ...DEFAULT_REGISTER_FORM, ...parseRegisterForm(obj.registerForm) };
+  const rf = syncRegisterFormFromCategories(cadastroCategories, rfBase);
   const tv = { ...DEFAULT_TV_DISPLAY, ...parseTvDisplay(obj.tvDisplay) };
   const observacoesVisibility: ObservacoesVisibility =
     obj.observacoesVisibility === "always" ? "always" : "hidden";
 
   return {
     queueTabs,
+    showTodosTab,
     priorityLawEnabled,
     observacoesVisibility,
+    cadastroCategories,
     registerForm: rf,
     tvDisplay: tv,
   };
@@ -173,8 +256,10 @@ export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
 export function configuracoesForSupabase(resolved: ResolvedTenantConfig): TenantConfiguracoes {
   return {
     queueTabs: resolved.queueTabs,
+    showTodosTab: resolved.showTodosTab,
     priorityLawEnabled: resolved.priorityLawEnabled,
     observacoesVisibility: resolved.observacoesVisibility,
+    cadastroCategories: resolved.cadastroCategories,
     registerForm: resolved.registerForm,
     tvDisplay: resolved.tvDisplay,
   };

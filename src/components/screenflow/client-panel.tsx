@@ -1,17 +1,17 @@
 "use client";
 
-import type { AtendimentoLite } from "@/lib/atendimentos-lite";
-import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
-import { stripFilaPreset } from "@/lib/fila-preset";
-import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
+import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
-import type { ObservacoesVisibility } from "@/lib/tenant-config";
+import type { CadastroCategoryEntry, ObservacoesVisibility } from "@/lib/tenant-config";
+import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Plus } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import { ObservacaoPopover } from "@/components/screenflow/observacao-popover";
+import type { AtendimentoLite } from "@/lib/atendimentos-lite";
+import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 
 type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
@@ -25,6 +25,7 @@ type ClientPanelProps = {
   pending: boolean;
   priorityLawEnabled: boolean;
   observacoesVisibility: ObservacoesVisibility;
+  cadastroCategories: CadastroCategoryEntry[];
   onChamar: () => void;
   onRechamar: () => void;
   onFinalizar: () => void;
@@ -96,6 +97,7 @@ export const ClientPanel = memo(function ClientPanel({
   pending,
   priorityLawEnabled,
   observacoesVisibility,
+  cadastroCategories,
   onChamar,
   onRechamar,
   onFinalizar,
@@ -109,6 +111,21 @@ export const ClientPanel = memo(function ClientPanel({
   const [tvs, setTvs] = useState<Opt[]>([]);
   const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
   const optionsLoadedRef = useRef<string | null>(null);
+
+  const enabledCategories = useMemo(
+    () => cadastroCategories.filter((c) => c.enabled),
+    [cadastroCategories]
+  );
+
+  const labelFor = useCallback(
+    (key: CadastroCategoryEntry["tableKey"], fallback: string) =>
+      enabledCategories.find((c) => c.tableKey === key)?.label ?? fallback,
+    [enabledCategories]
+  );
+
+  const showProf = enabledCategories.some((c) => c.tableKey === "profissionais");
+  const showLoc = enabledCategories.some((c) => c.tableKey === "locais");
+  const showServ = enabledCategories.some((c) => c.tableKey === "servicos");
 
   const loadOptions = useCallback(async () => {
     if (!supabase) return;
@@ -147,75 +164,93 @@ export const ClientPanel = memo(function ClientPanel({
   const prioStyle = selected
     ? classificacaoBadgeStyle(selected.classificacao_prioridade, selected.prioridade)
     : null;
-  const observacaoText = selected ? stripFilaPreset(selected.observacao).trim() : "";
+  const observacaoText = selected ? formatObservacaoForDisplay(selected.observacao) : "";
   const observacoesAlwaysVisible = observacoesVisibility === "always";
+  const hasObs = !!observacaoText;
+
+  function openCrudFor(tableKey: CadastroCategoryEntry["tableKey"]) {
+    const cat = enabledCategories.find((c) => c.tableKey === tableKey);
+    if (!cat) return;
+    setQuickCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) });
+  }
 
   return (
     <>
       <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/50">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-              Cliente selecionado
-            </p>
+        <div className="min-h-[3.5rem]">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Cliente selecionado
+          </p>
+          <div className="mt-1 flex min-h-[1.75rem] min-w-0 items-center gap-2">
             {selected ? (
-              <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2">
-                <p className="truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
+              <>
+                <p className="shrink-0 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
                   {selected.nome ?? "—"}
                 </p>
-                {!observacoesAlwaysVisible && observacaoText ? (
+                {observacoesAlwaysVisible && hasObs ? (
+                  <span
+                    className="min-w-0 max-w-[45%] truncate text-xs text-zinc-600 dark:text-zinc-300"
+                    title={observacaoText}
+                  >
+                    {observacaoText}
+                  </span>
+                ) : null}
+                {!observacoesAlwaysVisible && hasObs ? (
                   <ObservacaoPopover observacao={selected.observacao} className="shrink-0" />
                 ) : null}
                 {priorityLawEnabled && prioStyle ? (
-                  <span className={`shrink-0 whitespace-nowrap px-2 py-0.5 text-[10px] ${prioStyle.badge}`}>
+                  <span className={`ml-auto shrink-0 whitespace-nowrap px-2 py-0.5 text-[10px] ${prioStyle.badge}`}>
                     {prioStyle.label}
                   </span>
                 ) : null}
-              </div>
+              </>
             ) : (
-              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 {loading ? "Carregando fila…" : "Clique em uma linha na fila para chamar."}
               </p>
             )}
-            {selected && observacoesAlwaysVisible && observacaoText ? (
-              <p className="mt-1.5 text-xs leading-snug text-zinc-600 dark:text-zinc-300">{observacaoText}</p>
-            ) : null}
           </div>
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <SelectWithQuickAdd
-            label="Local / ponto de atendimento"
-            value={localValue}
-            options={locais}
-            disabled={selectDisabled}
-            quickAddDisabled={quickAddDisabled}
-            onChange={(v) => void onPatch({ local_id: v || null })}
-            onQuickAdd={() => setQuickCrud({ title: "Locais / pontos de atendimento", table: "locais" })}
-          />
+          {showLoc ? (
+            <SelectWithQuickAdd
+              label={labelFor("locais", "Local / ponto de atendimento")}
+              value={localValue}
+              options={locais}
+              disabled={selectDisabled}
+              quickAddDisabled={quickAddDisabled}
+              onChange={(v) => void onPatch({ local_id: v || null })}
+              onQuickAdd={() => openCrudFor("locais")}
+            />
+          ) : null}
 
-          <SelectWithQuickAdd
-            label="Profissional"
-            value={profissionalValue}
-            options={profissionais.map((p) => ({
-              id: p.id,
-              nome: formatProfissionalLabel(p),
-            }))}
-            disabled={selectDisabled}
-            quickAddDisabled={quickAddDisabled}
-            onChange={(v) => void onPatch({ profissional_id: v || null })}
-            onQuickAdd={() => setQuickCrud({ title: "Equipe (profissionais)", table: "profissionais" })}
-          />
+          {showProf ? (
+            <SelectWithQuickAdd
+              label={labelFor("profissionais", "Profissional")}
+              value={profissionalValue}
+              options={profissionais.map((p) => ({
+                id: p.id,
+                nome: formatProfissionalLabel(p),
+              }))}
+              disabled={selectDisabled}
+              quickAddDisabled={quickAddDisabled}
+              onChange={(v) => void onPatch({ profissional_id: v || null })}
+              onQuickAdd={() => openCrudFor("profissionais")}
+            />
+          ) : null}
 
-          <SelectWithQuickAdd
-            label="Serviço"
-            value={servicoValue}
-            options={servicos}
-            disabled={selectDisabled}
-            quickAddDisabled={quickAddDisabled}
-            onChange={(v) => void onPatch({ especialidade_id: v || null })}
-            onQuickAdd={() => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE })}
-          />
+          {showServ ? (
+            <SelectWithQuickAdd
+              label={labelFor("servicos", "Serviço")}
+              value={servicoValue}
+              options={servicos}
+              disabled={selectDisabled}
+              quickAddDisabled={quickAddDisabled}
+              onChange={(v) => void onPatch({ especialidade_id: v || null })}
+              onQuickAdd={() => openCrudFor("servicos")}
+            />
+          ) : null}
 
           <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
             TV

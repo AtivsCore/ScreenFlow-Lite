@@ -6,6 +6,7 @@ import {
   resolveClassificacaoPrioridade,
   type ClassificacaoPrioridade,
 } from "@/lib/classificacao-prioridade";
+import { formatObservacaoForDisplay, embedFilaPreset, resolveRowFilaPreset } from "@/lib/fila-preset";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -40,8 +41,7 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
   const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>(() =>
     resolveClassificacaoPrioridade(row.classificacao_prioridade, row.prioridade)
   );
-  const [observacao, setObservacao] = useState(row.observacao ?? "");
-  const [excluirFechamento, setExcluirFechamento] = useState(row.excluir_do_fechamento === true);
+  const [observacao, setObservacao] = useState(() => formatObservacaoForDisplay(row.observacao));
   const [profissionais, setProfissionais] = useState<ProfissionalRow[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
   const [servicos, setServicos] = useState<Opt[]>([]);
@@ -87,12 +87,12 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
       }
     }
 
+    const filaPreset = resolveRowFilaPreset(row);
     const patch: Record<string, unknown> = {
       profissional_id: profissionalId || null,
       local_id: localId || null,
       especialidade_id: servicoId || null,
-      observacao: observacao.trim() || null,
-      excluir_do_fechamento: excluirFechamento,
+      observacao: embedFilaPreset(observacao.trim() || null, filaPreset),
     };
     if (priorityLawEnabled) {
       patch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
@@ -175,16 +175,6 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
       {priorityLawEnabled ? (
         <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
       ) : null}
-
-      <label className="flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400">
-        <input
-          type="checkbox"
-          checked={excluirFechamento}
-          onChange={(e) => setExcluirFechamento(e.target.checked)}
-          className="rounded border-zinc-400"
-        />
-        Excluir do fechamento diário (não enviar à planilha)
-      </label>
 
       <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
         Observação

@@ -12,13 +12,14 @@ import {
   type AtendimentoLiteNested,
   STATUS_UPDATE,
   filterAndSortQueue,
+  countActiveByQueueTab,
   isFinalizado,
   mapAtendimentosNestedToFlat,
 } from "@/lib/atendimentos-lite";
 import { buildServicoLookup } from "@/lib/atendimentos-rest";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { isNetworkLikeFetchFailure } from "@/lib/supabase";
-import { mergeTenantConfig, type ResolvedTenantConfig } from "@/lib/tenant-config";
+import { mergeTenantConfig, resolveVisibleQueueTabs, type ResolvedTenantConfig } from "@/lib/tenant-config";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
@@ -148,14 +149,25 @@ export default function Home() {
   }, [supabase, effectiveTenantId]);
 
   useEffect(() => {
-    const ids = tenantConfig.queueTabs.map((t) => t.id);
+    const visible = resolveVisibleQueueTabs(tenantConfig);
+    const ids = visible.map((t) => t.id);
     if (ids.length && !ids.includes(queueTabId)) setQueueTabId(ids[0]!);
-  }, [tenantConfig.queueTabs, queueTabId]);
+  }, [tenantConfig, queueTabId]);
+
+  const visibleQueueTabs = useMemo(
+    () => resolveVisibleQueueTabs(tenantConfig),
+    [tenantConfig]
+  );
 
   const queuePreset = useMemo(() => {
-    const tab = tenantConfig.queueTabs.find((t) => t.id === queueTabId);
+    const tab = visibleQueueTabs.find((t) => t.id === queueTabId);
     return tab?.preset ?? "ordem";
-  }, [tenantConfig.queueTabs, queueTabId]);
+  }, [visibleQueueTabs, queueTabId]);
+
+  const tabCounts = useMemo(
+    () => countActiveByQueueTab(rows, visibleQueueTabs),
+    [rows, visibleQueueTabs]
+  );
 
   const displayRows = useMemo(
     () => filterAndSortQueue(rows, queuePreset, { priorityLawEnabled: tenantConfig.priorityLawEnabled }),
@@ -509,6 +521,7 @@ export default function Home() {
             pending={pending}
             priorityLawEnabled={tenantConfig.priorityLawEnabled}
             observacoesVisibility={tenantConfig.observacoesVisibility}
+            cadastroCategories={tenantConfig.cadastroCategories}
             tenantId={effectiveTenantId}
             onChamar={() => void updateStatus(STATUS_UPDATE.chamar)}
             onRechamar={() => void updateStatus(STATUS_UPDATE.rechamar)}
@@ -531,7 +544,8 @@ export default function Home() {
         <main className="min-h-0 flex-1 overflow-hidden p-3">
           <QueueSection
             displayRows={displayRows}
-            queueTabs={tenantConfig.queueTabs}
+            queueTabs={visibleQueueTabs}
+            tabCounts={tabCounts}
             queueTabId={queueTabId}
             onQueueTabId={setQueueTabId}
             priorityLawEnabled={tenantConfig.priorityLawEnabled}

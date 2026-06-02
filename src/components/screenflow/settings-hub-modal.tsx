@@ -1,11 +1,15 @@
 "use client";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { QUEUE_TAB_LABELS } from "@/lib/atendimentos-lite";
 import {
+  cadastroCategoryCrudTable,
   configuracoesForSupabase,
+  MAX_CADASTRO_CATEGORIES,
   queueTabTypeLabel,
+  syncRegisterFormFromCategories,
+  type CadastroCategoryEntry,
+  type CadastroTableKey,
   type QueueTabPreset,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
@@ -28,6 +32,18 @@ type SettingsHubModalProps = {
 type MainTab = "fluxo" | "geral" | "cadastros";
 
 const PRESETS: QueueTabPreset[] = ["ordem", "hora", "encaixe", "prioridade", "urgente", "outros"];
+
+const TABLE_KEY_LABELS: Record<CadastroTableKey, string> = {
+  profissionais: "Equipe / profissionais",
+  locais: "Locais / pontos",
+  servicos: "Serviços",
+};
+
+const TABLE_KEY_ICONS = {
+  profissionais: UserCheck,
+  locais: MapPin,
+  servicos: Briefcase,
+} as const;
 
 export function SettingsHubModal({
   open,
@@ -102,6 +118,29 @@ export function SettingsHubModal({
     setDraft((d) => enforcePriorityLaw(mut(d)));
   }
 
+  function patchCadastroCategories(mut: (cats: CadastroCategoryEntry[]) => CadastroCategoryEntry[]) {
+    updateDraft((d) => {
+      const cadastroCategories = mut(d.cadastroCategories).slice(0, MAX_CADASTRO_CATEGORIES);
+      return {
+        ...d,
+        cadastroCategories,
+        registerForm: syncRegisterFormFromCategories(cadastroCategories, d.registerForm),
+      };
+    });
+  }
+
+  function moveCadastroCategory(index: number, direction: -1 | 1) {
+    const swapIndex = index + direction;
+    if (swapIndex < 0 || swapIndex >= draft.cadastroCategories.length) return;
+    patchCadastroCategories((cats) => {
+      const next = [...cats];
+      const tmp = next[index]!;
+      next[index] = next[swapIndex]!;
+      next[swapIndex] = tmp;
+      return next;
+    });
+  }
+
   const footerText = draft.tvDisplay.footerLines.join("\n");
 
   return (
@@ -142,6 +181,22 @@ export function SettingsHubModal({
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
               Edite rótulos, remova vistas ou adicione novas (cada aba usa um tipo de ordenação da fila).
             </p>
+
+            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/60">
+              <div>
+                <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">Ativar aba &quot;Todos&quot;</p>
+                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                  Exibe uma vista com todos os pacientes ativos, independentemente da aba de preset.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                className="size-4 accent-zinc-900 dark:accent-zinc-100"
+                checked={draft.showTodosTab}
+                onChange={(e) => updateDraft((d) => ({ ...d, showTodosTab: e.target.checked }))}
+              />
+            </label>
+
             <ul className="max-h-52 space-y-2 overflow-auto rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
               {draft.queueTabs.map((tab, idx) => (
                 <li
@@ -486,33 +541,131 @@ export function SettingsHubModal({
         )}
 
         {mainTab === "cadastros" && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Cadastros opcionais para listas na recepção e no registro inteligente.
+              Cadastros opcionais para listas na recepção e no registro inteligente. Até{" "}
+              {MAX_CADASTRO_CATEGORIES} categorias.
             </p>
+
+            <ul className="max-h-64 space-y-2 overflow-auto rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+              {draft.cadastroCategories.map((cat, idx) => {
+                const Icon = TABLE_KEY_ICONS[cat.tableKey];
+                return (
+                  <li
+                    key={cat.id}
+                    className="flex flex-wrap items-center gap-2 rounded-md bg-zinc-50 px-2 py-1.5 dark:bg-zinc-900/60"
+                  >
+                    <div className="flex shrink-0 flex-col gap-0.5">
+                      <button
+                        type="button"
+                        title="Subir"
+                        disabled={idx === 0}
+                        onClick={() => moveCadastroCategory(idx, -1)}
+                        className="rounded border border-zinc-300 p-0.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      >
+                        <ChevronUp className="size-3" strokeWidth={2} aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        title="Descer"
+                        disabled={idx === draft.cadastroCategories.length - 1}
+                        onClick={() => moveCadastroCategory(idx, 1)}
+                        className="rounded border border-zinc-300 p-0.5 text-zinc-600 hover:bg-zinc-100 disabled:opacity-30 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      >
+                        <ChevronDown className="size-3" strokeWidth={2} aria-hidden />
+                      </button>
+                    </div>
+                    <Icon className="size-4 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
+                    <input
+                      value={cat.label}
+                      onChange={(e) =>
+                        patchCadastroCategories((cats) =>
+                          cats.map((c) => (c.id === cat.id ? { ...c, label: e.target.value } : c))
+                        )
+                      }
+                      className="min-w-[8rem] flex-1 rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+                    />
+                    <select
+                      value={cat.tableKey}
+                      onChange={(e) =>
+                        patchCadastroCategories((cats) =>
+                          cats.map((c) =>
+                            c.id === cat.id ? { ...c, tableKey: e.target.value as CadastroTableKey } : c
+                          )
+                        )
+                      }
+                      className="rounded border border-zinc-200 bg-white px-1.5 py-1 text-[10px] dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+                    >
+                      {(Object.keys(TABLE_KEY_LABELS) as CadastroTableKey[]).map((key) => (
+                        <option key={key} value={key}>
+                          {TABLE_KEY_LABELS[key]}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="flex shrink-0 items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-400">
+                      <input
+                        type="checkbox"
+                        className="size-3.5 accent-zinc-900 dark:accent-zinc-100"
+                        checked={cat.enabled}
+                        onChange={(e) =>
+                          patchCadastroCategories((cats) =>
+                            cats.map((c) => (c.id === cat.id ? { ...c, enabled: e.target.checked } : c))
+                          )
+                        }
+                      />
+                      Ativo
+                    </label>
+                    <button
+                      type="button"
+                      className="shrink-0 text-[10px] font-medium text-zinc-700 hover:underline dark:text-zinc-300"
+                      onClick={() =>
+                        setCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) })
+                      }
+                    >
+                      Gerenciar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={draft.cadastroCategories.length <= 1}
+                      className="shrink-0 text-[10px] font-medium text-red-600 hover:underline disabled:opacity-30 dark:text-red-400"
+                      onClick={() =>
+                        patchCadastroCategories((cats) => cats.filter((c) => c.id !== cat.id))
+                      }
+                    >
+                      Excluir
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {draft.cadastroCategories.length < MAX_CADASTRO_CATEGORIES ? (
+              <button
+                type="button"
+                className="w-full rounded-lg border border-dashed border-zinc-300 px-3 py-2 text-[11px] font-semibold text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-900/60"
+                onClick={() =>
+                  patchCadastroCategories((cats) => [
+                    ...cats,
+                    {
+                      id: crypto.randomUUID(),
+                      label: "Nova categoria",
+                      enabled: true,
+                      tableKey: "profissionais",
+                    },
+                  ])
+                }
+              >
+                + Adicionar categoria
+              </button>
+            ) : null}
+
             <button
               type="button"
-              onClick={() => setCrud({ title: "Equipe (profissionais)", table: "profissionais" })}
-              className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-left text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:bg-zinc-800"
+              disabled={saving}
+              onClick={() => void persist(draft)}
+              className="w-full rounded-lg bg-zinc-900 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
             >
-              <UserCheck className="size-5 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
-              Equipe (profissionais)
-            </button>
-            <button
-              type="button"
-              onClick={() => setCrud({ title: "Locais / pontos de atendimento", table: "locais" })}
-              className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-left text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:bg-zinc-800"
-            >
-              <MapPin className="size-5 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
-              Locais
-            </button>
-            <button
-              type="button"
-              onClick={() => setCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE })}
-              className="flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-left text-sm font-medium text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-100 dark:hover:bg-zinc-800"
-            >
-              <Briefcase className="size-5 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden />
-              Serviços
+              {saving ? "Salvando…" : "Salvar cadastros base"}
             </button>
           </div>
         )}

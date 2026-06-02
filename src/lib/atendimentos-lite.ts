@@ -145,9 +145,10 @@ export const STATUS_UPDATE = {
   finalizar: "Finalizado",
 } as const;
 
-export type QueueTabId = "ordem" | "hora" | "encaixe" | "prioridade" | "urgente" | "outros";
+export type QueueTabId = "todos" | "ordem" | "hora" | "encaixe" | "prioridade" | "urgente" | "outros";
 
 export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
+  todos: "Todos",
   ordem: "Ordem de Chegada",
   hora: "Hora Marcada",
   encaixe: "Encaixe",
@@ -155,6 +156,23 @@ export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
   urgente: "Urgente",
   outros: "Outros",
 };
+
+/** Contagem de registros ativos por aba (chave = tab.id). */
+export function countActiveByQueueTab(
+  rows: AtendimentoLite[],
+  tabIds: { id: string; preset: QueueTabId }[]
+): Record<string, number> {
+  const active = rows.filter(isActiveQueueRow);
+  const counts: Record<string, number> = {};
+  for (const tab of tabIds) {
+    if (tab.preset === "todos") {
+      counts[tab.id] = active.length;
+    } else {
+      counts[tab.id] = active.filter((r) => rowMatchesQueueTab(r, tab.preset)).length;
+    }
+  }
+  return counts;
+}
 
 function prioridadeOrdemRow(row: AtendimentoLite): number {
   return prioridadeSortWeight(row.classificacao_prioridade, row.prioridade);
@@ -215,8 +233,13 @@ export function filterAndSortQueue(
   options?: QueueSortOptions
 ): AtendimentoLite[] {
   const law = options?.priorityLawEnabled !== false;
-  const active = rows.filter(isActiveQueueRow).filter((r) => rowMatchesQueueTab(r, tab));
+  const active =
+    tab === "todos"
+      ? rows.filter(isActiveQueueRow)
+      : rows.filter(isActiveQueueRow).filter((r) => rowMatchesQueueTab(r, tab));
   switch (tab) {
+    case "todos":
+      return [...active].sort((a, b) => timeMs(a.created_at) - timeMs(b.created_at));
     case "ordem":
       return [...active].sort((a, b) => {
         if (law) {

@@ -112,6 +112,7 @@ type QueueSectionProps = {
   id?: string;
   displayRows: AtendimentoLite[];
   queueTabs: QueueTabEntry[];
+  tabCounts?: Record<string, number>;
   queueTabId: string;
   onQueueTabId: (id: string) => void;
   priorityLawEnabled: boolean;
@@ -130,6 +131,7 @@ export function QueueSection({
   id = "sf-queue",
   displayRows,
   queueTabs,
+  tabCounts = {},
   queueTabId,
   onQueueTabId,
   priorityLawEnabled,
@@ -190,7 +192,11 @@ export function QueueSection({
           role="tablist"
           aria-label="Vistas da fila"
         >
-          {queueTabs.map((t) => (
+          {queueTabs.map((t) => {
+            const count = tabCounts[t.id];
+            const label =
+              typeof count === "number" ? `${t.label} (${count})` : t.label;
+            return (
             <button
               key={t.id}
               type="button"
@@ -203,9 +209,10 @@ export function QueueSection({
                   : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
               }`}
             >
-              {t.label}
+              {label}
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
 

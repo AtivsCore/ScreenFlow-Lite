@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS public.locais (
 );
 
 ALTER TABLE public.locais ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.locais ADD COLUMN IF NOT EXISTS ordem integer NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_locais_tenant_nome
   ON public.locais (tenant_id, nome);
