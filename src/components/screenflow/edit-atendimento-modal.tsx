@@ -6,11 +6,12 @@ import {
   resolveClassificacaoPrioridade,
   type ClassificacaoPrioridade,
 } from "@/lib/classificacao-prioridade";
-import { formatObservacaoForDisplay, embedFilaPreset, resolveRowFilaPreset } from "@/lib/fila-preset";
+import { formatObservacaoForDisplay, embedObservacaoForQueueTab, resolveRowQueueTabId } from "@/lib/fila-preset";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { fetchServicos } from "@/lib/fetch-servicos";
+import type { QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
@@ -22,6 +23,7 @@ type EditAtendimentoModalProps = {
   onClose: () => void;
   supabase: SupabaseClient | null;
   priorityLawEnabled: boolean;
+  queueTabs: QueueTabEntry[];
   onSaved: () => void;
 };
 
@@ -30,10 +32,13 @@ type FormProps = {
   onClose: () => void;
   supabase: SupabaseClient;
   priorityLawEnabled: boolean;
+  queueTabs: QueueTabEntry[];
   onSaved: () => void;
 };
 
-function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSaved }: FormProps) {
+function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, queueTabs, onSaved }: FormProps) {
+  const initialTriagemTabId = resolveRowQueueTabId(row, queueTabs) || queueTabs[0]?.id || "";
+  const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
   const [nome, setNome] = useState(row.nome ?? "");
   const [profissionalId, setProfissionalId] = useState(row.profissional_id ?? "");
   const [localId, setLocalId] = useState(row.local_id ?? "");
@@ -47,6 +52,12 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
   const [servicos, setServicos] = useState<Opt[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const triagemTab = useMemo(
+    () => queueTabs.find((t) => t.id === triagemTabId) ?? queueTabs[0],
+    [queueTabs, triagemTabId]
+  );
+  const triagemLabel = triagemTab?.label ?? "Entrada na fila";
 
   useEffect(() => {
     let cancelled = false;
@@ -87,12 +98,11 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
       }
     }
 
-    const filaPreset = resolveRowFilaPreset(row);
     const patch: Record<string, unknown> = {
       profissional_id: profissionalId || null,
       local_id: localId || null,
       especialidade_id: servicoId || null,
-      observacao: embedFilaPreset(observacao.trim() || null, filaPreset),
+      observacao: embedObservacaoForQueueTab(observacao.trim() || null, triagemTab),
     };
     if (priorityLawEnabled) {
       patch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
@@ -114,6 +124,23 @@ function EditAtendimentoForm({ row, onClose, supabase, priorityLawEnabled, onSav
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      {queueTabs.length > 0 ? (
+        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          {triagemLabel}
+          <select
+            value={triagemTabId}
+            onChange={(e) => setTriagemTabId(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+          >
+            {queueTabs.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
       <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
         Nome do cliente
         <input
@@ -209,6 +236,7 @@ export function EditAtendimentoModal({
   onClose,
   supabase,
   priorityLawEnabled,
+  queueTabs,
   onSaved,
 }: EditAtendimentoModalProps) {
   return (
@@ -219,6 +247,7 @@ export function EditAtendimentoModal({
           row={row}
           supabase={supabase}
           priorityLawEnabled={priorityLawEnabled}
+          queueTabs={queueTabs}
           onClose={onClose}
           onSaved={onSaved}
         />

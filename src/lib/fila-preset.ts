@@ -78,6 +78,31 @@ type RowForPreset = {
   prioridade: boolean | null;
 };
 
+/** Resolve id da aba configurada para a linha (marker ou inferência por preset). */
+export function resolveRowQueueTabId(
+  row: RowForPreset,
+  queueTabs: Pick<QueueTabEntry, "id" | "preset">[]
+): string {
+  const fromMarker = parseFilaTabId(row.observacao);
+  if (fromMarker) {
+    const hit = queueTabs.find((t) => t.id === fromMarker);
+    if (hit) return hit.id;
+  }
+  const preset = resolveRowFilaPreset(row);
+  const byPreset = queueTabs.find((t) => t.preset === preset);
+  if (byPreset) return byPreset.id;
+  return queueTabs[0]?.id ?? "";
+}
+
+/** Grava observação com o mesmo marcador usado no modal de novo registro. */
+export function embedObservacaoForQueueTab(
+  observacao: string | null | undefined,
+  tab: Pick<QueueTabEntry, "id" | "preset"> | undefined
+): string | null {
+  const preset = tab?.preset === "todos" ? "ordem" : (tab?.preset ?? "ordem");
+  return embedFilaPreset(observacao, preset, tab?.id);
+}
+
 /** Resolve em qual aba o registro pertence (marker explícito ou inferência legada). */
 export function resolveRowFilaPreset(row: RowForPreset): QueueTabId {
   const tabId = parseFilaTabId(row.observacao);

@@ -21,7 +21,8 @@ import {
 import { buildServicoLookup } from "@/lib/atendimentos-rest";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { isNetworkLikeFetchFailure } from "@/lib/supabase";
-import { mergeTenantConfig, resolveVisibleQueueTabs, type ResolvedTenantConfig } from "@/lib/tenant-config";
+import { mergeTenantConfig, configuracoesForSupabase, resolveVisibleQueueTabs, type ResolvedTenantConfig } from "@/lib/tenant-config";
+import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
@@ -46,6 +47,8 @@ export default function Home() {
   const [registryOpen, setRegistryOpen] = useState(false);
   const [segmentOpen, setSegmentOpen] = useState(false);
   const [segmentoDefinido, setSegmentoDefinido] = useState<string | null>(null);
+  const [tenantMetaLoaded, setTenantMetaLoaded] = useState(false);
+  const [segmentBootstrapAttempted, setSegmentBootstrapAttempted] = useState(false);
   const [editRow, setEditRow] = useState<AtendimentoLite | null>(null);
   const [, startTransition] = useTransition();
 
@@ -141,6 +144,8 @@ export default function Home() {
 
   useEffect(() => {
     if (!supabase || !effectiveTenantId) return;
+    setTenantMetaLoaded(false);
+    setSegmentBootstrapAttempted(false);
     let cancelled = false;
     void supabase
       .from("tenants")
@@ -152,11 +157,59 @@ export default function Home() {
         if (error) console.warn("[ScreenFlow] tenants.configuracoes:", error.message);
         if (data?.configuracoes != null) setTenantConfig(mergeTenantConfig(data.configuracoes));
         setSegmentoDefinido((data as { segmento_definido?: string | null } | null)?.segmento_definido ?? null);
+        setTenantMetaLoaded(true);
       });
     return () => {
       cancelled = true;
     };
   }, [supabase, effectiveTenantId]);
+
+  useEffect(() => {
+    if (!supabase || !effectiveTenantId || !tenantMetaLoaded || segmentBootstrapAttempted) return;
+
+    const presetId = shouldAutoApplySegmentPreset(tenantConfig, segmentoDefinido);
+    if (!presetId) {
+      setSegmentBootstrapAttempted(true);
+      return;
+    }
+
+    setSegmentBootstrapAttempted(true);
+    let cancelled = false;
+    void (async () => {
+      const patch = applySegmentPreset(presetId);
+      const next: ResolvedTenantConfig = {
+        ...tenantConfig,
+        queueTabs: patch.queueTabs,
+        cadastroCategories: patch.cadastroCategories,
+        registerForm: patch.registerForm,
+        segmentoAplicado: patch.segmentoAplicado,
+      };
+      const payload = configuracoesForSupabase(next);
+      const { error: saveErr } = await supabase
+        .from("tenants")
+        .update({ configuracoes: payload })
+        .eq("id", effectiveTenantId);
+      if (cancelled) return;
+      if (saveErr) {
+        console.warn("[ScreenFlow] auto segment preset:", saveErr.message);
+      } else {
+        setTenantConfig(next);
+        const visible = resolveVisibleQueueTabs(next);
+        if (visible.length) setQueueTabId(visible[0]!.id);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    supabase,
+    effectiveTenantId,
+    tenantMetaLoaded,
+    segmentBootstrapAttempted,
+    tenantConfig,
+    segmentoDefinido,
+  ]);
 
   useEffect(() => {
     const visible = resolveVisibleQueueTabs(tenantConfig);
@@ -648,6 +701,7 @@ export default function Home() {
         onClose={() => setEditRow(null)}
         supabase={supabase}
         priorityLawEnabled={tenantConfig.priorityLawEnabled}
+        queueTabs={tenantConfig.queueTabs}
         onSaved={() => void refreshRows()}
       />
     </div>

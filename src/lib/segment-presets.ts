@@ -342,17 +342,58 @@ const ALIAS_TO_ID: Record<string, SegmentPresetId> = {
   "clinicas e consultorios": "clinicas_consultorios",
   "clínicas e consultórios": "clinicas_consultorios",
   ambulancias: "ambulancias",
+  ambulancia: "ambulancias",
   cozinhas: "cozinhas",
   ti_reparo: "ti_reparo",
   docas: "docas",
   aviacao_mro: "aviacao_mro",
   oficinas_auto: "oficinas_auto",
+  oficinas: "oficinas_auto",
   advocacia: "advocacia",
   saloes_beleza: "saloes_beleza",
   cartorios: "cartorios",
   coworkings: "coworkings",
   blank: "blank",
 };
+
+function categoriesMatchFactory(a: CadastroCategoryEntry[], b: CadastroCategoryEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((item, i) => {
+    const other = b[i];
+    return (
+      other &&
+      item.id === other.id &&
+      item.label === other.label &&
+      item.tableKey === other.tableKey &&
+      item.enabled === other.enabled
+    );
+  });
+}
+
+function queueTabsMatchFactory(a: QueueTabEntry[], b: QueueTabEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((item, i) => {
+    const other = b[i];
+    return other && item.id === other.id && item.preset === other.preset && item.label === other.label;
+  });
+}
+
+/** Config ainda no padrão de fábrica (clínica), sem segmento aplicado. */
+export function isConfigAtFactoryDefault(config: ResolvedTenantConfig): boolean {
+  if (config.segmentoAplicado) return false;
+  return (
+    categoriesMatchFactory(config.cadastroCategories, DEFAULT_CADASTRO_CATEGORIES) &&
+    queueTabsMatchFactory(config.queueTabs, DEFAULT_QUEUE_TABS)
+  );
+}
+
+/** Cadastros ou abas vazias, ou ainda no default inicial. */
+export function isConfigEmptyOrDefault(config: ResolvedTenantConfig): boolean {
+  if (config.segmentoAplicado) return false;
+  if (config.cadastroCategories.length === 0) return true;
+  if (config.queueTabs.length === 0) return true;
+  return isConfigAtFactoryDefault(config);
+}
 
 /** Normaliza valor vindo do painel Master (`segmento_definido`). */
 export function normalizeSegmentPresetId(raw: string | null | undefined): SegmentPresetId {
@@ -386,6 +427,19 @@ export function applySegmentPreset(presetId: SegmentPresetId): Pick<
     registerForm: { ...preset.registerForm },
     segmentoAplicado: preset.id,
   };
+}
+
+/** Auto-aplica preset licenciado pelo Master quando o tenant ainda está no default. */
+export function shouldAutoApplySegmentPreset(
+  config: ResolvedTenantConfig,
+  segmentoDefinido: string | null | undefined
+): SegmentPresetId | null {
+  if (!segmentoDefinido?.trim()) return null;
+  const presetId = normalizeSegmentPresetId(segmentoDefinido);
+  if (presetId === "blank") return null;
+  if (config.segmentoAplicado === presetId) return null;
+  if (!isConfigEmptyOrDefault(config)) return null;
+  return presetId;
 }
 
 /** Preset clínica (retrocompatível com defaults). */
