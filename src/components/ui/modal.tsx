@@ -53,7 +53,7 @@ export function Modal({ open, title, onClose, children, widthClassName = "max-w-
             Fechar
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+        <div className="sf-scroll-y min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
       </div>
     </div>
   );

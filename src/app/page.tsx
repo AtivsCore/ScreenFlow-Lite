@@ -20,6 +20,7 @@ import { fetchServicos } from "@/lib/fetch-servicos";
 import { isNetworkLikeFetchFailure } from "@/lib/supabase";
 import { mergeTenantConfig, type ResolvedTenantConfig } from "@/lib/tenant-config";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
+import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -77,8 +78,20 @@ export default function Home() {
   const tenantIdFromRows = useMemo(() => rows.find((r) => r.tenant_id)?.tenant_id ?? null, [rows]);
 
   const [fallbackTenantId, setFallbackTenantId] = useState<string | null>(null);
+  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
 
-  const effectiveTenantId = tenantIdFromRows ?? ENV_TENANT_ID ?? fallbackTenantId;
+  const effectiveTenantId = sessionTenantId ?? tenantIdFromRows ?? ENV_TENANT_ID ?? fallbackTenantId;
+
+  useEffect(() => {
+    if (!supabase || !sessionReady) return;
+    let cancelled = false;
+    void fetchSessionTenantId(supabase).then((tid) => {
+      if (!cancelled) setSessionTenantId(tid);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, sessionReady]);
 
   useEffect(() => {
     if (!supabase || !sessionReady) return;

@@ -24,3 +24,21 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
+
+.sf-scroll-y {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(161 161 170 / 0.35) transparent;
+}
+
+.sf-scroll-y::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sf-scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sf-scroll-y::-webkit-scrollbar-thumb {
+  background: rgb(161 161 170 / 0.35);
+  border-radius: 9999px;
+}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { servicesTableCandidates, SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { fetchServicosRest } from "@/lib/fetch-servicos";
-import { resolveDefaultTenantId } from "@/lib/tenant-id";
+import { resolveTenantForUser } from "@/lib/session-tenant";
 import {
   createSupabaseClientSafe,
   finalizeSupabasePublicPair,
@@ -18,9 +18,6 @@ const ALLOWED_TABLES = new Set([
   SERVICES_CRUD_TABLE,
   ...servicesTableCandidates(),
 ]);
-
-const RLS_FIX_HINT =
-  "Execute docs/supabase-lite-rls-cadastros-fix.sql no SQL Editor do projeto Supabase Lite (não use o banco Pro).";
 
 type Body = {
   table?: string;
@@ -61,7 +58,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Supabase não configurado no servidor." }, { status: 503 });
   }
 
-  const tenantId = body.tenantId?.trim() || resolveDefaultTenantId();
+  const accessToken = pickAccessToken(req);
+  if (!accessToken) {
+    return NextResponse.json({ ok: false, message: "Sessão ausente (Bearer token)." }, { status: 401 });
+  }
+
+  const userClient = createClient(url, anonKey, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+  });
+  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  if (userErr || !userData.user) {
+    return NextResponse.json({ ok: false, message: "Sessão inválida ou expirada." }, { status: 401 });
+  }
+
+  const tenantId = await resolveTenantForUser(userClient, userData.user.id, body.tenantId);
 
   let targetTable = table;
   if (table === SERVICES_CRUD_TABLE || servicesTableCandidates().includes(table)) {
@@ -78,19 +88,6 @@ export async function POST(req: Request) {
       );
     }
     targetTable = discovered.table;
-  }
-
-  const accessToken = pickAccessToken(req);
-  if (!accessToken) {
-    return NextResponse.json({ ok: false, message: "Sessão ausente (Bearer token)." }, { status: 401 });
-  }
-
-  const userClient = createClient(url, anonKey, {
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-  });
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !userData.user) {
-    return NextResponse.json({ ok: false, message: "Sessão inválida ou expirada." }, { status: 401 });
   }
 
   const payload: Record<string, unknown> = { nome, tenant_id: tenantId };
@@ -133,9 +130,7 @@ export async function POST(req: Request) {
   return NextResponse.json(
     {
       ok: false,
-      message: isRls
-        ? `${userInsertErr.message} — ${RLS_FIX_HINT}`
-        : userInsertErr.message,
+      message: userInsertErr.message,
     },
     { status: isRls ? 403 : 400 }
   );

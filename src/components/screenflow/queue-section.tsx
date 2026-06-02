@@ -8,7 +8,7 @@ import {
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 import type { QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Pencil, Trash2, UserPlus } from "lucide-react";
+import { Pencil, Plus, Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 
 function statusStyle(status: string | null): string {
@@ -65,12 +65,7 @@ export function QueueSection({
     <div id={id} className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <div className="shrink-0 border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">Fila em tempo real</h2>
-            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-              Finalizados ocultos • Supabase Realtime
-            </p>
-          </div>
+          <h2 className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">Fila em tempo real</h2>
           <button
             type="button"
             onClick={onRegisterClick}
@@ -81,27 +76,38 @@ export function QueueSection({
           </button>
         </div>
 
-        <div
-          className="mt-2 flex gap-0.5 overflow-x-auto pb-0.5"
-          role="tablist"
-          aria-label="Vistas da fila"
-        >
-          {queueTabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={queueTabId === t.id}
-              onClick={() => onQueueTabId(t.id)}
-              className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium transition ${
-                queueTabId === t.id
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="mt-2 flex items-center gap-1">
+          <div
+            className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto pb-0.5"
+            role="tablist"
+            aria-label="Vistas da fila"
+          >
+            {queueTabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={queueTabId === t.id}
+                onClick={() => onQueueTabId(t.id)}
+                className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                  queueTabId === t.id
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            title="Novo registro"
+            aria-label="Novo registro"
+            onClick={onRegisterClick}
+            className="flex size-7 shrink-0 items-center justify-center rounded-md border border-zinc-300 text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            <Plus className="size-4" strokeWidth={2} aria-hidden />
+          </button>
         </div>
       </div>
 

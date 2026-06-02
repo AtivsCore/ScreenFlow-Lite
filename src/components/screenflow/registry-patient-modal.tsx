@@ -6,6 +6,7 @@ import {
 } from "@/lib/classificacao-prioridade";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
+import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
@@ -64,9 +65,13 @@ export function RegistryPatientModal({
   const law = tenantConfig.priorityLawEnabled;
   const queueTabs = tenantConfig.queueTabs;
 
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
+
   const effectiveTenantId = useMemo(
-    () => tenantId?.trim() || resolveDefaultTenantId(),
-    [tenantId]
+    () => sessionTenantId ?? (tenantId?.trim() || resolveDefaultTenantId()),
+    [sessionTenantId, tenantId]
   );
 
   const defaultTriagemId = queueTabs[0]?.id ?? "";
@@ -86,8 +91,6 @@ export function RegistryPatientModal({
   const [profissionais, setProfissionais] = useState<ProfissionalRow[]>([]);
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [locais, setLocais] = useState<OptRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const triagemTab = useMemo(
     () => queueTabs.find((t) => t.id === triagemTabId) ?? queueTabs[0],
@@ -95,6 +98,17 @@ export function RegistryPatientModal({
   );
 
   const triagemLabel = triagemTab?.label ?? "Entrada na fila";
+
+  useEffect(() => {
+    if (!open || !supabase) return;
+    let cancelled = false;
+    void fetchSessionTenantId(supabase).then((tid) => {
+      if (!cancelled) setSessionTenantId(tid);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, supabase]);
 
   useEffect(() => {
     if (!open || !supabase) return;
@@ -143,6 +157,31 @@ export function RegistryPatientModal({
     }
   }
 
+  async function submitViaApi(
+    pacienteNome: string,
+    atendimentoPayload: Record<string, unknown>
+  ): Promise<{ ok: boolean; message?: string }> {
+    if (!supabase) return { ok: false, message: "Supabase indisponível." };
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) return { ok: false, message: "Sessão ausente." };
+
+    const res = await fetch("/api/register-atendimento", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        tenantId: effectiveTenantId,
+        pacienteNome: pacienteNome || null,
+        atendimento: atendimentoPayload,
+      }),
+    });
+    const json = (await res.json()) as { ok?: boolean; message?: string };
+    return { ok: !!res.ok && !!json.ok, message: json.message };
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!supabase) return;
@@ -158,65 +197,93 @@ export function RegistryPatientModal({
         .select("id")
         .single();
       if (pErr || !pRow) {
-        setError(pErr?.message ?? "Falha ao criar cliente.");
+        if (pErr && /row-level security/i.test(pErr.message)) {
+          const viaApi = await submitViaApi(nome, buildAtendimentoPayload(null));
+          if (viaApi.ok) {
+            onRegistered?.();
+            onClose();
+            setBusy(false);
+            return;
+          }
+          setError(viaApi.message ?? pErr.message);
+        } else {
+          setError(pErr?.message ?? "Falha ao criar cliente.");
+        }
         setBusy(false);
         return;
       }
       pacienteId = (pRow as { id: string }).id;
     }
 
-    let observacao = observacaoBase.trim();
-    if (triagemTab) {
-      observacao = appendObsLine(observacao, triagemLabel, triagemTab.label);
-    }
-    if (rf.profissionalPreferFreeText && profissionalLivre.trim()) {
-      observacao = appendObsLine(observacao, "Profissional", profissionalLivre);
-    }
-    if (rf.servicoPreferFreeText && servicoLivre.trim()) {
-      observacao = appendObsLine(observacao, "Serviço", servicoLivre);
-    }
-    if (rf.localPreferFreeText && localLivre.trim()) {
-      observacao = appendObsLine(observacao, "Local", localLivre);
+    function buildAtendimentoPayload(pacienteIdValue: string | null): Record<string, unknown> {
+      let observacao = observacaoBase.trim();
+      if (triagemTab) {
+        observacao = appendObsLine(observacao, triagemLabel, triagemTab.label);
+      }
+      if (rf.profissionalPreferFreeText && profissionalLivre.trim()) {
+        observacao = appendObsLine(observacao, "Profissional", profissionalLivre);
+      }
+      if (rf.servicoPreferFreeText && servicoLivre.trim()) {
+        observacao = appendObsLine(observacao, "Serviço", servicoLivre);
+      }
+      if (rf.localPreferFreeText && localLivre.trim()) {
+        observacao = appendObsLine(observacao, "Local", localLivre);
+      }
+
+      let finalClassificacao: ClassificacaoPrioridade = classificacao;
+      if (law && triagemTab) {
+        if (triagemTab.preset === "prioridade") finalClassificacao = "prioritario";
+        else if (triagemTab.preset === "urgente") finalClassificacao = "emergencia";
+      }
+
+      const payload: Record<string, unknown> = {
+        paciente_id: pacienteIdValue,
+        tenant_id: effectiveTenantId,
+        prioridade: law ? prioridadeBooleanFromClassificacao(finalClassificacao) : false,
+        classificacao_prioridade: law ? finalClassificacao : "normal",
+        observacao: observacao.trim() || null,
+        status: defaultStatus,
+      };
+
+      if (rf.showProfissional && profissionalId && !(rf.profissionalPreferFreeText && profissionalLivre.trim())) {
+        payload.profissional_id = profissionalId;
+      }
+
+      if (rf.showServico && servicoId && !(rf.servicoPreferFreeText && servicoLivre.trim())) {
+        payload.especialidade_id = servicoId;
+      }
+
+      if (rf.showLocal && localId && !(rf.localPreferFreeText && localLivre.trim())) {
+        payload.local_id = localId;
+      }
+
+      const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
+      if (wantsHora && horaMarcada.trim()) {
+        const d = new Date(horaMarcada);
+        payload.hora_marcada = Number.isNaN(d.getTime()) ? horaMarcada.trim() : d.toISOString();
+      } else if (triagemTab?.preset === "encaixe") {
+        payload.hora_marcada = null;
+      }
+
+      return payload;
     }
 
-    let finalClassificacao: ClassificacaoPrioridade = classificacao;
-    if (law && triagemTab) {
-      if (triagemTab.preset === "prioridade") finalClassificacao = "prioritario";
-      else if (triagemTab.preset === "urgente") finalClassificacao = "emergencia";
-    }
-
-    const payload: Record<string, unknown> = {
-      paciente_id: pacienteId,
-      tenant_id: effectiveTenantId,
-      prioridade: law ? prioridadeBooleanFromClassificacao(finalClassificacao) : false,
-      classificacao_prioridade: law ? finalClassificacao : "normal",
-      observacao: observacao.trim() || null,
-      status: defaultStatus,
-    };
-
-    if (rf.showProfissional && profissionalId && !(rf.profissionalPreferFreeText && profissionalLivre.trim())) {
-      payload.profissional_id = profissionalId;
-    }
-
-    if (rf.showServico && servicoId && !(rf.servicoPreferFreeText && servicoLivre.trim())) {
-      payload.especialidade_id = servicoId;
-    }
-
-    if (rf.showLocal && localId && !(rf.localPreferFreeText && localLivre.trim())) {
-      payload.local_id = localId;
-    }
-
-    const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
-    if (wantsHora && horaMarcada.trim()) {
-      const d = new Date(horaMarcada);
-      payload.hora_marcada = Number.isNaN(d.getTime()) ? horaMarcada.trim() : d.toISOString();
-    } else if (triagemTab?.preset === "encaixe") {
-      payload.hora_marcada = null;
-    }
+    const payload = buildAtendimentoPayload(pacienteId);
 
     const { error: aErr } = await supabase.from("atendimentos_lite").insert(payload);
     if (aErr) {
-      setError(aErr.message);
+      if (/row-level security/i.test(aErr.message)) {
+        const viaApi = await submitViaApi("", buildAtendimentoPayload(pacienteId));
+        if (viaApi.ok) {
+          onRegistered?.();
+          onClose();
+          setBusy(false);
+          return;
+        }
+        setError(viaApi.message ?? aErr.message);
+      } else {
+        setError(aErr.message);
+      }
       setBusy(false);
       return;
     }
@@ -241,7 +308,7 @@ export function RegistryPatientModal({
 
   return (
     <Modal open={open} title="Novo registro" onClose={onClose} widthClassName="max-w-md">
-      <form onSubmit={handleSubmit} className="flex max-h-[70vh] flex-col gap-3 overflow-y-auto pr-1">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         {!visibleFields && (
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
             Nenhum campo visível nas configurações. Ative campos em Configurações → Geral.

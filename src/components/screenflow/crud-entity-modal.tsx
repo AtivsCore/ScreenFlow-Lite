@@ -8,6 +8,7 @@ import {
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { resolveServicesTableName } from "@/lib/fetch-servicos";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
+import { fetchSessionTenantId } from "@/lib/session-tenant";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -26,9 +27,6 @@ type CrudEntityModalProps = {
   onSaved?: () => void;
 };
 
-const RLS_HINT =
-  "Execute docs/supabase-lite-rls-cadastros-fix.sql no SQL Editor do projeto Supabase Lite (não use o banco Pro).";
-
 export function CrudEntityModal({
   open,
   onClose,
@@ -38,9 +36,11 @@ export function CrudEntityModal({
   tenantId,
   onSaved,
 }: CrudEntityModalProps) {
+  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
+
   const effectiveTenantId = useMemo(
-    () => tenantId?.trim() || resolveDefaultTenantId(),
-    [tenantId]
+    () => sessionTenantId ?? (tenantId?.trim() || resolveDefaultTenantId()),
+    [sessionTenantId, tenantId]
   );
 
   const isProfissionais = table === "profissionais";
@@ -60,6 +60,17 @@ export function CrudEntityModal({
     setNome("");
     setEspecialidade("");
   }, [open, table]);
+
+  useEffect(() => {
+    if (!open || !supabase) return;
+    let cancelled = false;
+    void fetchSessionTenantId(supabase).then((tid) => {
+      if (!cancelled) setSessionTenantId(tid);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, supabase]);
 
   const ensureTable = useCallback(async (): Promise<string | null> => {
     if (!supabase) return null;
@@ -198,7 +209,7 @@ export function CrudEntityModal({
           setBusy(false);
           return;
         }
-        setError(`${viaApi.message ?? err.message} — ${RLS_HINT}`);
+        setError(viaApi.message ?? err.message);
         setBusy(false);
         return;
       }
@@ -304,9 +315,7 @@ export function CrudEntityModal({
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-700">
         {loading && <p className="p-4 text-xs text-zinc-500">Carregando…</p>}
         {!loading && rows.length === 0 && (
-          <p className="p-4 text-xs text-zinc-500">
-            Nenhum registro ({effectiveTable}). Se RLS bloquear, rode {RLS_HINT}
-          </p>
+          <p className="p-4 text-xs text-zinc-500">Nenhum registro encontrado.</p>
         )}
         <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
           {rows.map((r, index) => (
