@@ -84,6 +84,7 @@ const KanbanCard = memo(function KanbanCard({
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
     : null;
   const statusLabel = normalizeQueueStatusLabel(row.status);
+  const clientName = row.nome?.trim() || "—";
 
   return (
     <article
@@ -96,67 +97,60 @@ const KanbanCard = memo(function KanbanCard({
           onSelectId(row.id);
         }
       }}
-      className={`cursor-pointer rounded-md border bg-white p-4 text-left shadow-sm transition hover:border-zinc-300 dark:bg-zinc-900 ${
+      className={`group cursor-pointer border-l-2 bg-white px-2 py-1 text-left transition hover:bg-zinc-50/90 dark:bg-zinc-900 dark:hover:bg-zinc-800/40 ${
         isSel
-          ? "border-orange-500 ring-1 ring-orange-500/25 dark:border-orange-400"
-          : "border-zinc-200 dark:border-zinc-700"
+          ? "border-l-orange-500 bg-orange-50/30 dark:bg-orange-950/15"
+          : "border-l-zinc-300 dark:border-l-zinc-600"
       }`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-bold uppercase tracking-wide text-zinc-900 dark:text-zinc-100">
-          {row.nome ?? "—"}
+      <div className="flex items-center justify-between gap-1">
+        <p
+          title={clientName !== "—" ? clientName : undefined}
+          className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase leading-none tracking-wide text-zinc-900 dark:text-zinc-100"
+        >
+          {clientName}
         </p>
         {priorityLawEnabled && prioStyle ? (
-          <span className={`shrink-0 whitespace-nowrap text-[10px] ${prioStyle.badge}`}>
+          <span className={`shrink-0 scale-[0.8] whitespace-nowrap ${prioStyle.badge}`}>
             {prioStyle.label}
           </span>
         ) : null}
       </div>
 
-      <div className="mt-2 space-y-1 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400">
-        {meta.profissional ? (
-          <p className="truncate">
-            <span className="text-zinc-400 dark:text-zinc-500">Prof.</span> {meta.profissional}
-          </p>
-        ) : null}
-        {meta.local ? (
-          <p className="truncate">
-            <span className="text-zinc-400 dark:text-zinc-500">Local</span> {meta.local}
-          </p>
-        ) : null}
-        {meta.servico ? (
-          <p className="truncate font-medium uppercase tracking-wide text-zinc-600 dark:text-zinc-300">
-            {meta.servico}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="mt-3 border-t border-dotted border-zinc-300 pt-2.5 dark:border-zinc-600">
-        <div className="flex items-center justify-between gap-2">
-          <span className={`text-[10px] font-semibold uppercase tracking-wide ${queueStatusStyle(statusLabel)}`}>
+      <div className="mt-0.5 flex items-center justify-between gap-1">
+        <div className="min-w-0 flex-1">
+          {meta.servico ? (
+            <p
+              className="truncate text-[9px] uppercase leading-tight tracking-wide text-zinc-500 dark:text-zinc-400"
+              title={meta.servico}
+            >
+              {meta.servico}
+            </p>
+          ) : null}
+          <span className={`text-[9px] font-semibold uppercase leading-none tracking-wide ${queueStatusStyle(statusLabel)}`}>
             {statusLabel}
           </span>
-          <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              title="Editar"
-              className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-blue-600 dark:hover:text-blue-400"
-              onClick={() => onEditRow(row)}
-            >
-              <Pencil className="size-4" strokeWidth={1.75} />
-              <span className="sr-only">Editar</span>
-            </button>
-            <button
-              type="button"
-              title="Excluir"
-              disabled={deleting === row.id}
-              className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
-              onClick={() => onDelete(row)}
-            >
-              <Trash2 className="size-4" strokeWidth={1.75} />
-              <span className="sr-only">Excluir</span>
-            </button>
-          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            title="Editar"
+            className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-blue-600 dark:hover:text-blue-400"
+            onClick={() => onEditRow(row)}
+          >
+            <Pencil className="size-3" strokeWidth={1.75} />
+            <span className="sr-only">Editar</span>
+          </button>
+          <button
+            type="button"
+            title="Excluir"
+            disabled={deleting === row.id}
+            className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+            onClick={() => onDelete(row)}
+          >
+            <Trash2 className="size-3" strokeWidth={1.75} />
+            <span className="sr-only">Excluir</span>
+          </button>
         </div>
       </div>
     </article>
@@ -452,7 +446,7 @@ export function QueueSection({
         ) : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2">
         {loading ? (
           <p className="flex flex-1 items-center justify-center text-xs text-zinc-500">Carregando registros…</p>
         ) : viewMode === "list" ? (
@@ -504,43 +498,48 @@ export function QueueSection({
             Nenhuma coluna de fluxo configurada.
           </p>
         ) : (
-          <div className="flex min-h-0 flex-1 gap-5 overflow-x-auto pb-2 sf-scroll-y-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-x-auto overflow-y-hidden pb-0.5 sf-scroll-y-hidden">
             {kanbanColumns.map((tab) => {
               const cards = columnRows[tab.id] ?? [];
               const count = tabCounts[tab.id] ?? cards.length;
               return (
                 <section
                   key={tab.id}
-                  className="flex w-[300px] min-w-[290px] shrink-0 flex-col overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950/40"
+                  className="flex h-full w-[248px] min-w-[248px] max-w-[248px] shrink-0 flex-col overflow-hidden bg-zinc-50 dark:bg-zinc-950/40"
                 >
-                  <header className="z-[1] shrink-0 border-b border-zinc-200 bg-zinc-100/90 px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-800/90">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="truncate text-[10px] font-bold uppercase tracking-wide text-zinc-700 dark:text-zinc-200">
+                  <header className="z-[1] shrink-0 border-y border-zinc-200 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800/80">
+                    <div className="flex items-center justify-between gap-1">
+                      <h3
+                        className="truncate text-[9px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
+                        title={tab.label}
+                      >
                         {tab.label}
                       </h3>
-                      <span className="shrink-0 rounded border border-zinc-300 bg-white px-1.5 py-0.5 font-mono text-[10px] font-semibold text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300">
+                      <span className="shrink-0 font-mono text-[9px] font-semibold leading-none text-zinc-500 dark:text-zinc-400">
                         {count}
                       </span>
                     </div>
                   </header>
 
-                  <div className="sf-scroll-y-hidden flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">
+                  <div className="sf-scroll-y-hidden min-h-0 flex-1 overflow-y-auto bg-white dark:bg-zinc-900">
                     {cards.length === 0 ? (
-                      <p className="py-8 text-center text-[10px] text-zinc-400 dark:text-zinc-500">—</p>
+                      <p className="py-6 text-center text-[9px] text-zinc-400 dark:text-zinc-500">—</p>
                     ) : (
-                      cards.map((row) => (
-                        <KanbanCard
-                          key={row.id}
-                          row={row}
-                          isSel={row.id === selectedId}
-                          priorityLawEnabled={priorityLawEnabled}
-                          meta={resolveKanbanMeta(row, enabledCategories, cadastroLookups)}
-                          deleting={deleting}
-                          onSelectId={onSelectId}
-                          onEditRow={onEditRow}
-                          onDelete={(r) => void handleDelete(r)}
-                        />
-                      ))
+                      <div className="divide-y divide-zinc-200/90 dark:divide-zinc-700/80">
+                        {cards.map((row) => (
+                          <KanbanCard
+                            key={row.id}
+                            row={row}
+                            isSel={row.id === selectedId}
+                            priorityLawEnabled={priorityLawEnabled}
+                            meta={resolveKanbanMeta(row, enabledCategories, cadastroLookups)}
+                            deleting={deleting}
+                            onSelectId={onSelectId}
+                            onEditRow={onEditRow}
+                            onDelete={(r) => void handleDelete(r)}
+                          />
+                        ))}
+                      </div>
                     )}
                   </div>
                 </section>
