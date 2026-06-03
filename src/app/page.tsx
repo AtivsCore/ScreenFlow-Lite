@@ -4,6 +4,8 @@ import { ClientPanel } from "@/components/screenflow/client-panel";
 import { AppSidebar } from "@/components/screenflow/app-sidebar";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import { KeyboardShortcutsModal } from "@/components/screenflow/keyboard-shortcuts-modal";
+import { FinalizeConfirmModal } from "@/components/screenflow/finalize-confirm-modal";
+import { ProUpgradeModal } from "@/components/screenflow/pro-upgrade-modal";
 import { ReportsModal } from "@/components/screenflow/reports-modal";
 import { QueueSection, type QueueViewMode } from "@/components/screenflow/queue-section";
 import { RegistryPatientModal } from "@/components/screenflow/registry-patient-modal";
@@ -60,6 +62,8 @@ export default function Home() {
   const [showNotesInline, setShowNotesInline] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [quickCrud, setQuickCrud] = useState<{ title: string; table: string } | null>(null);
   const [, startTransition] = useTransition();
 
@@ -631,7 +635,7 @@ export default function Home() {
         if (canMutate) void updateStatus(STATUS_UPDATE.rechamar);
       },
       onFinalizar: () => {
-        if (canMutate) void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
+        if (canMutate && selectedId) setFinalizeOpen(true);
       },
       onLimpar: () => setSelectedId(null),
       onNovoRegistro: () => setRegistryOpen(true),
@@ -641,7 +645,7 @@ export default function Home() {
       onCrudLocais: () => setQuickCrud({ title: "Locais", table: "locais" }),
       onCrudServicos: () => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE }),
     }),
-    [canMutate, updateStatus, openGeneralSettings]
+    [canMutate, selectedId, updateStatus, openGeneralSettings]
   );
 
   useKeyboardShortcuts(shortcutHandlers, sessionReady && !envMissing);
@@ -699,7 +703,7 @@ export default function Home() {
             tenantId={effectiveTenantId}
             onChamar={() => void updateStatus(STATUS_UPDATE.chamar)}
             onRechamar={() => void updateStatus(STATUS_UPDATE.rechamar)}
-            onFinalizar={() => void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true })}
+            onFinalizar={() => setFinalizeOpen(true)}
             onLimpar={() => setSelectedId(null)}
             onPatch={async (patch) => {
               await patchAtendimento(patch);
@@ -747,6 +751,28 @@ export default function Home() {
 
       <ReportsModal open={reportsOpen} onClose={() => setReportsOpen(false)} proActive={proActive} />
 
+      <FinalizeConfirmModal
+        open={finalizeOpen}
+        onClose={() => setFinalizeOpen(false)}
+        selected={selected}
+        pending={pending}
+        onConfirmFinalize={() => {
+          setFinalizeOpen(false);
+          void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
+        }}
+        onRequestReturnUpgrade={() => {
+          setFinalizeOpen(false);
+          setProUpgradeOpen(true);
+        }}
+      />
+
+      <ProUpgradeModal
+        open={proUpgradeOpen}
+        onClose={() => setProUpgradeOpen(false)}
+        title="Agendar retorno no Plano PRO"
+        description="Registre retornos e acompanhe reagendamentos com histórico completo. O modo vitalício finaliza sem retenção — ative o Plano PRO para agendar retornos."
+      />
+
       {quickCrud && (
         <CrudEntityModal
           open
@@ -791,6 +817,7 @@ export default function Home() {
         supabase={supabase}
         tenantId={tenantIdForInsert}
         tenantConfig={tenantConfig}
+        proActive={proActive}
         onRegistered={(meta) => {
           if (meta?.queueTabId) setQueueTabId(meta.queueTabId);
           void refreshRows();

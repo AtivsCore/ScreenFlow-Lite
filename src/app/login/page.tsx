@@ -1,6 +1,17 @@
 "use client";
 
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
+import {
+  buildForgotPasswordWhatsAppUrl,
+  SANDBOX_ADMIN_RESET_EMAIL,
+} from "@/lib/forgot-password-sandbox";
+import { Mail, MessageCircle } from "lucide-react";
+
+const LOGIN_SUPPORT_WHATSAPP_URL =
+  "https://wa.me/5541995282939?text=Olá!%20Preciso%20de%20suporte%20com%20o%20acesso%20ao%20sistema.";
+
+const LOGIN_SUPPORT_EMAIL_URL =
+  "mailto:appercomp@gmail.com?subject=Suporte%20-%20Dificuldade%20no%20Acesso&body=Olá,%20estou%20com%20dificuldades%20para%20fazer%20login.%20[Descreva%20seu%20problema%20aqui]";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -21,6 +32,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [whatsappSupport, setWhatsappSupport] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
 
@@ -74,17 +86,50 @@ export default function LoginPage() {
     setResetBusy(true);
     setError(null);
     setResetSent(false);
-    const redirectTo =
-      typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined;
-    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(trimmed, {
-      redirectTo,
-    });
-    if (resetErr) {
-      setError(resetErr.message);
+    setWhatsappSupport(false);
+
+    const normalized = trimmed.toLowerCase();
+
+    if (normalized === SANDBOX_ADMIN_RESET_EMAIL) {
+      const redirectTo =
+        typeof window !== "undefined" ? `${window.location.origin}/reset-password` : undefined;
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo,
+      });
+      if (resetErr) {
+        setError(resetErr.message);
+        setResetBusy(false);
+        return;
+      }
+      setResetSent(true);
       setResetBusy(false);
       return;
     }
-    setResetSent(true);
+
+    try {
+      const res = await fetch("/api/auth/check-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalized }),
+      });
+      const json = (await res.json()) as { ok?: boolean; exists?: boolean; message?: string };
+
+      if (!res.ok || !json.ok) {
+        setError(json.message ?? "Não foi possível verificar o e-mail. Tente novamente.");
+        setResetBusy(false);
+        return;
+      }
+
+      if (!json.exists) {
+        setError("E-mail não encontrado.");
+        setResetBusy(false);
+        return;
+      }
+
+      setWhatsappSupport(true);
+    } catch {
+      setError("Falha de rede ao verificar o e-mail.");
+    }
     setResetBusy(false);
   }
 
@@ -136,7 +181,12 @@ export default function LoginPage() {
               autoComplete="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setWhatsappSupport(false);
+                setResetSent(false);
+                setError(null);
+              }}
               className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
             />
           </label>
@@ -161,8 +211,25 @@ export default function LoginPage() {
           </button>
           {resetSent ? (
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
-              Se o e-mail existir na base, você receberá um link para redefinir a senha.
+              Enviamos um link de redefinição para o seu e-mail. Verifique a caixa de entrada.
             </p>
+          ) : null}
+          {whatsappSupport ? (
+            <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-900/60 dark:bg-amber-950/30">
+              <p className="text-xs leading-relaxed text-amber-950 dark:text-amber-100">
+                Por motivos de segurança, a redefinição automatizada está restrita. Clique no botão abaixo
+                para receber sua nova credencial de acesso temporária diretamente com o suporte técnico.
+              </p>
+              <a
+                href={buildForgotPasswordWhatsAppUrl(email)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+              >
+                <MessageCircle className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                Solicitar Nova Senha via WhatsApp
+              </a>
+            </div>
           ) : null}
           {error && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
@@ -177,6 +244,30 @@ export default function LoginPage() {
             {busy ? "Entrando…" : "Entrar"}
           </button>
         </form>
+
+        <div className="mt-6 border-t border-zinc-200 pt-5 dark:border-zinc-800">
+          <p className="text-center text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Precisa de ajuda?
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:gap-2">
+            <a
+              href={LOGIN_SUPPORT_WHATSAPP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-medium text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200 dark:hover:bg-emerald-950/50"
+            >
+              <MessageCircle className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+              WhatsApp
+            </a>
+            <a
+              href={LOGIN_SUPPORT_EMAIL_URL}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              <Mail className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+              E-mail
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );

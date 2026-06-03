@@ -15,6 +15,8 @@ import type { QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
+import { ProFutureScheduleSection } from "@/components/screenflow/pro-future-schedule-section";
+import { ProUpgradeModal } from "@/components/screenflow/pro-upgrade-modal";
 
 type OptRow = { id: string; nome: string | null };
 
@@ -24,6 +26,7 @@ type RegistryPatientModalProps = {
   supabase: SupabaseClient | null;
   tenantId: string | null;
   tenantConfig: ResolvedTenantConfig;
+  proActive?: boolean;
   defaultStatus?: string;
   onRegistered?: (meta?: { queueTabId?: string }) => void;
 };
@@ -52,6 +55,7 @@ export function RegistryPatientModal({
   supabase,
   tenantId,
   tenantConfig,
+  proActive = false,
   defaultStatus = "Aguardando",
   onRegistered,
 }: RegistryPatientModalProps) {
@@ -92,6 +96,7 @@ export function RegistryPatientModal({
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
   const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
 
   const effectiveTenantId = useMemo(
@@ -252,8 +257,7 @@ export function RegistryPatientModal({
         ...cadastroPayload,
       };
 
-      const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
-      if (wantsHora && horaMarcada.trim()) {
+      if (proActive && horaMarcada.trim()) {
         const d = new Date(horaMarcada);
         payload.hora_marcada = Number.isNaN(d.getTime()) ? horaMarcada.trim() : d.toISOString();
       } else if (triagemTab?.preset === "encaixe") {
@@ -335,21 +339,17 @@ export function RegistryPatientModal({
 
         {enabledCategories.map((cat) => renderCategoryField(cat))}
 
-        {(rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Horário marcado
-            <input
-              type="datetime-local"
-              value={horaMarcada}
-              onChange={(e) => setHoraMarcada(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
-          </label>
-        ) : null}
-
         {law ? (
           <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
         ) : null}
+
+        <ProFutureScheduleSection
+          proActive={proActive}
+          value={horaMarcada}
+          onChange={setHoraMarcada}
+          onRequestUpgrade={() => setProUpgradeOpen(true)}
+          disabled={busy}
+        />
 
         {rf.showObservacao ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
@@ -377,6 +377,13 @@ export function RegistryPatientModal({
           {busy ? "Salvando…" : "Adicionar à fila"}
         </button>
       </form>
+
+      <ProUpgradeModal
+        open={proUpgradeOpen}
+        onClose={() => setProUpgradeOpen(false)}
+        title="Agendamento futuro no Plano PRO"
+        description="Agende atendimentos com data e hora marcada, organize a fila por horário e planeje a operação com antecedência. Ative o Plano PRO pelo WhatsApp."
+      />
     </Modal>
   );
 }
