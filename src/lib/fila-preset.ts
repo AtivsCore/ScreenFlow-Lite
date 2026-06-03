@@ -5,6 +5,9 @@ import type { QueueTabEntry } from "@/lib/tenant-config";
 /** Remove todas as tags `__sf_fila:...__` (presets e abas customizadas). */
 const FILA_TAG_GLOBAL = /__sf_fila:[^\s_]+(?::[^\s_]+)?__/gi;
 
+/** Marcador de cadastro Docas em observação (textos livres — ver docas-logistics). */
+const DOCAS_DATA_TAG_GLOBAL = /__sf_docas:[^_\s]+__/gi;
+
 const MARKER_PARSE = /^__sf_fila:([a-z]+)__(?:\r?\n|$)/i;
 const TAB_MARKER_PARSE = /^__sf_fila:tab:([a-z0-9-]+)__(?:\r?\n|$)/i;
 
@@ -23,6 +26,7 @@ export function formatObservacaoForDisplay(observacao: string | null | undefined
   if (!observacao) return "";
   return observacao
     .replace(FILA_TAG_GLOBAL, "")
+    .replace(DOCAS_DATA_TAG_GLOBAL, "")
     .replace(/^[ \t]*\r?\n+/gm, "")
     .replace(/\r?\n{3,}/g, "\n\n")
     .trim();

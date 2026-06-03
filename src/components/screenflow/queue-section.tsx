@@ -5,6 +5,7 @@ import { filterAndSortQueue, formatCreatedAt, formatHoraMarcada, normalizeQueueS
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
+import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DocasStatusStepper } from "@/components/screenflow/docas-status-stepper";
@@ -25,8 +26,12 @@ function queueStatusStyle(label: ReturnType<typeof normalizeQueueStatusLabel>): 
 function resolveKanbanMeta(
   row: AtendimentoLite,
   cadastroCategories: CadastroCategoryEntry[],
-  cadastroLookups: CadastroLookups
-): { profissional: string | null; local: string | null; servico: string | null } {
+  cadastroLookups: CadastroLookups,
+  docasLogisticsActive: boolean
+): { title: string; profissional: string | null; local: string | null; servico: string | null } {
+  if (docasLogisticsActive) {
+    return resolveDocasKanbanMeta(row, cadastroCategories, cadastroLookups);
+  }
   const legacyCtx = {
     profissional_id: row.profissional_id,
     local_id: row.local_id,
@@ -56,6 +61,7 @@ function resolveKanbanMeta(
   };
 
   return {
+    title: row.nome?.trim() || "—",
     profissional: firstLabel("profissionais"),
     local: firstLabel("locais"),
     servico: firstLabel("servicos"),
@@ -94,7 +100,7 @@ const KanbanCard = memo(function KanbanCard({
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
     : null;
   const statusLabel = normalizeQueueStatusLabel(row.status);
-  const clientName = row.nome?.trim() || "—";
+  const clientName = meta.title;
   const contextLine = formatKanbanContextLine(meta);
   const horaMarcadaLabel = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : null;
   const observacaoText = formatObservacaoForDisplay(row.observacao);
@@ -212,6 +218,7 @@ type QueueRowProps = {
   isSel: boolean;
   priorityLawEnabled: boolean;
   notesInline: boolean;
+  docasLogisticsActive: boolean;
   cadastroCategories: CadastroCategoryEntry[];
   cadastroLookups: CadastroLookups;
   deleting: string | null;
@@ -225,6 +232,7 @@ const QueueRow = memo(function QueueRow({
   isSel,
   priorityLawEnabled,
   notesInline,
+  docasLogisticsActive,
   cadastroCategories,
   cadastroLookups,
   deleting,
@@ -295,14 +303,23 @@ const QueueRow = memo(function QueueRow({
         </div>
       </td>
       {cadastroCategories.map((cat) => {
-        const label = resolveCategoryDisplayLabel(
-          cat.id,
-          row.cadastro_valores ?? {},
-          cadastroLookups,
-          cadastroCategories,
-          undefined,
-          legacyCtx
-        );
+        const label = docasLogisticsActive
+          ? resolveDocasCategoryDisplay(
+              cat.id,
+              row.observacao,
+              row.cadastro_valores ?? {},
+              cadastroLookups,
+              cadastroCategories,
+              legacyCtx
+            )
+          : resolveCategoryDisplayLabel(
+              cat.id,
+              row.cadastro_valores ?? {},
+              cadastroLookups,
+              cadastroCategories,
+              undefined,
+              legacyCtx
+            );
         return (
           <td
             key={cat.id}
@@ -455,6 +472,15 @@ export function QueueSection({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <h2 className="shrink-0 text-xs font-semibold text-zinc-800 dark:text-zinc-100">Fila em tempo real</h2>
+            <button
+              type="button"
+              title="Configurar fluxo de abas"
+              aria-label="Configurar fluxo de abas"
+              onClick={onOpenFlowSettings}
+              className="flex size-6 shrink-0 items-center justify-center rounded-md border border-zinc-300 text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              <Plus className="size-3.5" strokeWidth={2} aria-hidden />
+            </button>
             {docasLogisticsActive && docasCurrentStep && docasStepLabel && onDocasStepPrev && onDocasStepNext ? (
               <DocasStatusStepper
                 stepLabel={docasStepLabel}
@@ -466,15 +492,6 @@ export function QueueSection({
                 onNext={onDocasStepNext}
               />
             ) : null}
-            <button
-              type="button"
-              title="Configurar fluxo de abas"
-              aria-label="Configurar fluxo de abas"
-              onClick={onOpenFlowSettings}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md border border-zinc-300 text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              <Plus className="size-3.5" strokeWidth={2} aria-hidden />
-            </button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -606,6 +623,7 @@ export function QueueSection({
                       isSel={row.id === selectedId}
                       priorityLawEnabled={priorityLawEnabled}
                       notesInline={notesInline}
+                      docasLogisticsActive={docasLogisticsActive}
                       cadastroCategories={enabledCategories}
                       cadastroLookups={cadastroLookups}
                       deleting={deleting}
@@ -659,7 +677,7 @@ export function QueueSection({
                             isSel={row.id === selectedId}
                             priorityLawEnabled={priorityLawEnabled}
                             notesInline={notesInline}
-                            meta={resolveKanbanMeta(row, enabledCategories, cadastroLookups)}
+                            meta={resolveKanbanMeta(row, enabledCategories, cadastroLookups, docasLogisticsActive)}
                             deleting={deleting}
                             onSelectId={onSelectId}
                             onEditRow={onEditRow}

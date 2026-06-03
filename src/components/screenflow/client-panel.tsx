@@ -1,10 +1,15 @@
 "use client";
 
 import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valores";
-import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
-import { isDocasSegment } from "@/lib/docas-logistics";
+import {
+  embedDocasCadastroFields,
+  isDocasSegment,
+  isDocasTextField,
+  parseDocasCadastroFields,
+} from "@/lib/docas-logistics";
+import { embedObservacaoForQueueTab, formatObservacaoForDisplay, parseFilaTabId } from "@/lib/fila-preset";
 import type { CadastroCategoryEntry, ObservacoesVisibility } from "@/lib/tenant-config";
 import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -148,7 +153,36 @@ export const ClientPanel = memo(function ClientPanel({
     void onPatch(payload);
   }
 
+  function patchDocasTextField(categoryId: string, value: string) {
+    if (!selected) return;
+    const next = { ...categoryValues, [categoryId]: value };
+    setCategoryValues(next);
+    const docasFields = { ...parseDocasCadastroFields(selected.observacao), [categoryId]: value };
+    const tabId = parseFilaTabId(selected.observacao);
+    const tab = tabId ? { id: tabId, preset: "outros" as const } : undefined;
+    const observacao = embedDocasCadastroFields(
+      embedObservacaoForQueueTab(formatObservacaoForDisplay(selected.observacao), tab),
+      docasFields
+    );
+    void onPatch({ observacao });
+  }
+
   function renderCategoryField(cat: CadastroCategoryEntry) {
+    if (docasMode && isDocasTextField(cat.id)) {
+      return (
+        <label key={cat.id} className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
+          {cat.label}
+          <input
+            type="text"
+            value={categoryValues[cat.id] ?? ""}
+            disabled={selectDisabled}
+            onChange={(e) => patchDocasTextField(cat.id, e.target.value)}
+            className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+        </label>
+      );
+    }
+
     return (
       <SelectWithQuickAdd
         key={cat.id}
@@ -197,13 +231,19 @@ export const ClientPanel = memo(function ClientPanel({
       return;
     }
     const vals = selected.cadastro_valores ?? {};
+    const docasFields = docasMode ? parseDocasCadastroFields(selected.observacao) : {};
     const next: Record<string, string> = {};
     for (const cat of enabledCategories) {
-      const v = vals[cat.id];
-      if (v) next[cat.id] = v;
+      if (docasMode && isDocasTextField(cat.id)) {
+        const t = docasFields[cat.id];
+        if (t) next[cat.id] = t;
+      } else {
+        const v = vals[cat.id];
+        if (v) next[cat.id] = v;
+      }
     }
     setCategoryValues(next);
-  }, [selected?.id, selected?.cadastro_valores, enabledCategories]);
+  }, [selected?.id, selected?.cadastro_valores, selected?.observacao, enabledCategories, docasMode]);
 
   const tvValue = selected?.tv_id ?? "";
   const selectDisabled = !selected || !canMutate || pending;

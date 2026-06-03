@@ -43,6 +43,8 @@ import {
   getDocasStepLabel,
   isDocasSegment,
   resolveDocasStepFromObservacao,
+  embedDocasCadastroFields,
+  parseDocasCadastroFields,
   shiftDocasStep,
   type DocasQueueTabId,
 } from "@/lib/docas-logistics";
@@ -645,9 +647,10 @@ export default function Home() {
       if (!selectedId || !selected) return;
       const tab = tenantConfig.queueTabs.find((t) => t.id === targetTabId);
       if (!tab) return;
-      const observacao = embedObservacaoForQueueTab(
-        formatObservacaoForDisplay(selected.observacao),
-        tab
+      const docasFields = parseDocasCadastroFields(selected.observacao);
+      const observacao = embedDocasCadastroFields(
+        embedObservacaoForQueueTab(formatObservacaoForDisplay(selected.observacao), tab),
+        docasFields
       );
       const patch: {
         observacao: string | null;

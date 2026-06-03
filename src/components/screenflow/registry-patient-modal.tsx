@@ -15,6 +15,8 @@ import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import {
+  buildDocasRegistryObservacao,
+  buildDocasSavePayload,
   DOCAS_QUEUE_TAB,
   DOCAS_REQUIRED_CATEGORY_IDS,
   isDocasRequiredCategory,
@@ -222,7 +224,7 @@ export function RegistryPatientModal({
     if (docasMode) {
       const missing = DOCAS_REQUIRED_CATEGORY_IDS.filter((id) => !formValues[id]?.trim());
       if (missing.length > 0) {
-        setError("Transportadora/Placa e Motorista/Telefone são obrigatórios.");
+        setError("Placa é obrigatória.");
         return;
       }
     }
@@ -261,14 +263,23 @@ export function RegistryPatientModal({
       const userObs = observacaoBase.trim();
       const filaPreset = triagemTab?.preset ?? "ordem";
 
-      const cadastroPayload = buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
+      const { cadastroPayload, docasFields } = docasMode
+        ? buildDocasSavePayload(formValues, tenantConfig.cadastroCategories)
+        : {
+            cadastroPayload: buildCadastroPayload(formValues, tenantConfig.cadastroCategories),
+            docasFields: {} as Record<string, string>,
+          };
+
+      const observacao = docasMode
+        ? buildDocasRegistryObservacao(userObs || null, filaPreset, triagemTab?.id, docasFields)
+        : embedFilaPreset(userObs || null, filaPreset, triagemTab?.id);
 
       const payload: Record<string, unknown> = {
         paciente_id: pacienteIdValue,
         tenant_id: effectiveTenantId,
         prioridade: law ? prioridadeBooleanFromClassificacao(classificacao) : false,
         classificacao_prioridade: law ? classificacao : "normal",
-        observacao: embedFilaPreset(userObs || null, filaPreset, triagemTab?.id),
+        observacao,
         status: defaultStatus,
         ...cadastroPayload,
       };
