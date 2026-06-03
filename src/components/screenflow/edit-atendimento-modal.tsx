@@ -8,6 +8,13 @@ import {
 } from "@/lib/classificacao-prioridade";
 import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-valores";
 import {
+  buildAviacaoSavePayload,
+  isAviacaoSegment,
+  isAviacaoTextField,
+  mergeAviacaoObservacao,
+  parseAviacaoCadastroFields,
+} from "@/lib/aviacao-logistics";
+import {
   buildDocasSavePayload,
   isDocasSegment,
   isDocasTextField,
@@ -72,11 +79,15 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     [tenantConfig.cadastroCategories]
   );
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
+  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
 
   const initialTriagemTabId = resolveRowQueueTabId(row, queueTabs) || queueTabs[0]?.id || "";
   const initialFormValues = useMemo(() => {
-    if (docasMode) {
-      const docasFields = parseDocasCadastroFields(row.observacao);
+    if (docasMode || aviacaoMode) {
+      const inlineFields = docasMode
+        ? parseDocasCadastroFields(row.observacao)
+        : parseAviacaoCadastroFields(row.observacao);
+      const isTextField = docasMode ? isDocasTextField : isAviacaoTextField;
       const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
         profissional_id: row.profissional_id,
         local_id: row.local_id,
@@ -84,8 +95,8 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       });
       const out: Record<string, string> = {};
       for (const cat of enabledCategories) {
-        if (isDocasTextField(cat.id)) {
-          const t = docasFields[cat.id];
+        if (isTextField(cat.id)) {
+          const t = inlineFields[cat.id];
           if (t) out[cat.id] = t;
         } else {
           const v = hydrated[cat.id];
@@ -104,7 +115,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       if (v) out[k] = v;
     }
     return out;
-  }, [row, tenantConfig.cadastroCategories, docasMode, enabledCategories]);
+  }, [row, tenantConfig.cadastroCategories, docasMode, aviacaoMode, enabledCategories]);
 
   const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
   const [nomeCliente, setNomeCliente] = useState(row.nome ?? "");
@@ -151,15 +162,19 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
-    if (docasMode) return;
+    if (docasMode || aviacaoMode) return;
     const tab = queueTabs.find((t) => t.id === tabId);
     if (tab?.preset !== "hora") setHoraMarcada("");
   }
 
   const showDocasHoraAgendada = docasMode;
+  const showAviacaoHoraAgendada = aviacaoMode;
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
-    if (docasMode && isDocasTextField(cat.id)) {
+    if (
+      (docasMode && isDocasTextField(cat.id)) ||
+      (aviacaoMode && isAviacaoTextField(cat.id))
+    ) {
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           {cat.label}
@@ -231,7 +246,22 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
           });
           return { ...cadastroPayload, observacao };
         })()
-      : {
+      : aviacaoMode
+        ? (() => {
+            const { cadastroPayload, aviacaoFields } = buildAviacaoSavePayload(
+              formValues,
+              tenantConfig.cadastroCategories
+            );
+            const observacao = mergeAviacaoObservacao({
+              current: row.observacao,
+              tab: triagemTab,
+              aviacaoFields,
+              preserveTabWhenUnset: true,
+              userObservacaoText: observacaoBase.trim() || null,
+            });
+            return { ...cadastroPayload, observacao };
+          })()
+        : {
           ...buildCadastroPayload(formValues, tenantConfig.cadastroCategories),
           observacao: embedObservacaoForQueueTab(observacaoBase.trim() || null, triagemTab),
         };
@@ -241,14 +271,15 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       patch.classificacao_prioridade = classificacao;
     }
 
-    const wantsHora = docasMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
+    const wantsHora =
+      docasMode || aviacaoMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
     if (wantsHora && horaMarcada.trim()) {
-      if (allowFullDatetime && !docasMode) {
+      if (allowFullDatetime && !docasMode && !aviacaoMode) {
         patch.hora_marcada = datetimeLocalToIso(horaMarcada) ?? horaMarcada.trim();
       } else {
         patch.hora_marcada = mergeHoraMarcadaPreserveDate(row.hora_marcada, horaMarcada);
       }
-    } else if (!docasMode && triagemTab?.preset === "encaixe") {
+    } else if (!docasMode && !aviacaoMode && triagemTab?.preset === "encaixe") {
       patch.hora_marcada = null;
     }
 
@@ -271,6 +302,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     enabledCategories.length > 0 ||
     rf.showHoraMarcada ||
     showDocasHoraAgendada ||
+    showAviacaoHoraAgendada ||
     triagemTab?.preset === "hora" ||
     law ||
     rf.showObservacao;
@@ -314,12 +346,12 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
 
       {enabledCategories.map((cat) => renderCategoryField(cat))}
 
-      {(showDocasHoraAgendada || rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
+      {(showDocasHoraAgendada || showAviacaoHoraAgendada || rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {showDocasHoraAgendada ? (
+          {showDocasHoraAgendada || showAviacaoHoraAgendada ? (
             <span className="flex items-center gap-1.5">
               <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
-              Horário agendado
+              {showAviacaoHoraAgendada ? "ETA (horário estimado de pouso)" : "Horário agendado"}
             </span>
           ) : allowFullDatetime ? (
             "Data e hora do agendamento"
@@ -327,7 +359,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
             "Horário marcado (somente hora)"
           )}
           <input
-            type={showDocasHoraAgendada || !allowFullDatetime ? "time" : "datetime-local"}
+            type={showDocasHoraAgendada || showAviacaoHoraAgendada || !allowFullDatetime ? "time" : "datetime-local"}
             value={horaMarcada}
             onChange={(e) => setHoraMarcada(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"

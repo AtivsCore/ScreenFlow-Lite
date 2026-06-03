@@ -4,6 +4,13 @@ import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valor
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
+  buildAviacaoCategoryPatch,
+  isAviacaoSegment,
+  isAviacaoTextField,
+  mergeAviacaoObservacao,
+  parseAviacaoCadastroFields,
+} from "@/lib/aviacao-logistics";
+import {
   buildDocasCategoryPatch,
   isDocasSegment,
   isDocasTextField,
@@ -129,6 +136,7 @@ export const ClientPanel = memo(function ClientPanel({
     [cadastroCategories]
   );
   const docasMode = isDocasSegment(segmentoAplicado);
+  const aviacaoMode = isAviacaoSegment(segmentoAplicado);
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
     setQuickCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) });
@@ -156,6 +164,11 @@ export const ClientPanel = memo(function ClientPanel({
       void onPatch(payload);
       return;
     }
+    if (aviacaoMode) {
+      const payload = buildAviacaoCategoryPatch(next, cadastroCategories, selected.observacao);
+      void onPatch(payload);
+      return;
+    }
     const payload = buildCadastroPayload(next, cadastroCategories);
     void onPatch(payload);
   }
@@ -173,6 +186,19 @@ export const ClientPanel = memo(function ClientPanel({
     void onPatch({ observacao });
   }
 
+  function patchAviacaoTextField(categoryId: string, value: string) {
+    if (!selected) return;
+    const next = { ...categoryValues, [categoryId]: value };
+    setCategoryValues(next);
+    const aviacaoFields = { ...parseAviacaoCadastroFields(selected.observacao), [categoryId]: value };
+    const observacao = mergeAviacaoObservacao({
+      current: selected.observacao,
+      aviacaoFields,
+      preserveTabWhenUnset: true,
+    });
+    void onPatch({ observacao });
+  }
+
   function renderCategoryField(cat: CadastroCategoryEntry) {
     if (docasMode && isDocasTextField(cat.id)) {
       return (
@@ -183,6 +209,21 @@ export const ClientPanel = memo(function ClientPanel({
             value={categoryValues[cat.id] ?? ""}
             disabled={selectDisabled}
             onChange={(e) => patchDocasTextField(cat.id, e.target.value)}
+            className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+        </label>
+      );
+    }
+
+    if (aviacaoMode && isAviacaoTextField(cat.id)) {
+      return (
+        <label key={cat.id} className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
+          {cat.label}
+          <input
+            type="text"
+            value={categoryValues[cat.id] ?? ""}
+            disabled={selectDisabled}
+            onChange={(e) => patchAviacaoTextField(cat.id, e.target.value)}
             className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
           />
         </label>
@@ -237,11 +278,18 @@ export const ClientPanel = memo(function ClientPanel({
       return;
     }
     const vals = selected.cadastro_valores ?? {};
-    const docasFields = docasMode ? parseDocasCadastroFields(selected.observacao) : {};
+    const inlineFields = docasMode
+      ? parseDocasCadastroFields(selected.observacao)
+      : aviacaoMode
+        ? parseAviacaoCadastroFields(selected.observacao)
+        : {};
     const next: Record<string, string> = {};
     for (const cat of enabledCategories) {
-      if (docasMode && isDocasTextField(cat.id)) {
-        const t = docasFields[cat.id];
+      if (
+        (docasMode && isDocasTextField(cat.id)) ||
+        (aviacaoMode && isAviacaoTextField(cat.id))
+      ) {
+        const t = inlineFields[cat.id];
         if (t) next[cat.id] = t;
       } else {
         const v = vals[cat.id];
@@ -249,7 +297,7 @@ export const ClientPanel = memo(function ClientPanel({
       }
     }
     setCategoryValues(next);
-  }, [selected?.id, selected?.cadastro_valores, selected?.observacao, enabledCategories, docasMode]);
+  }, [selected?.id, selected?.cadastro_valores, selected?.observacao, enabledCategories, docasMode, aviacaoMode]);
 
   const tvValue = selected?.tv_id ?? "";
   const selectDisabled = !selected || !canMutate || pending;
@@ -262,7 +310,9 @@ export const ClientPanel = memo(function ClientPanel({
   const hasObs = !!observacaoText;
   const docasPlaca =
     docasMode && selected ? parseDocasCadastroFields(selected.observacao)["doc-c1"]?.trim() : null;
-  const selectedDisplayName = docasPlaca || selected?.nome?.trim() || null;
+  const aviacaoPrefixo =
+    aviacaoMode && selected ? parseAviacaoCadastroFields(selected.observacao)["av-c3"]?.trim() : null;
+  const selectedDisplayName = docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
 
   return (
     <>
@@ -333,7 +383,7 @@ export const ClientPanel = memo(function ClientPanel({
             onClick={onChamar}
             className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
-            {docasMode ? "Chamar p/ Doca" : "Chamar"}
+            {docasMode ? "Chamar p/ Doca" : aviacaoMode ? "Chamar p/ Hangar" : "Chamar"}
           </button>
           <button
             type="button"
@@ -341,7 +391,7 @@ export const ClientPanel = memo(function ClientPanel({
             onClick={onRechamar}
             className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
           >
-            {docasMode ? "Iniciar Operação" : "Rechamar"}
+            {docasMode || aviacaoMode ? "Iniciar Operação" : "Rechamar"}
           </button>
           <button
             type="button"
@@ -357,7 +407,7 @@ export const ClientPanel = memo(function ClientPanel({
             onClick={onFinalizar}
             className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-emerald-600 bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {docasMode ? "Liberar" : "Finalizar"}
+            {docasMode || aviacaoMode ? "Liberar" : "Finalizar"}
           </button>
         </div>
       </section>

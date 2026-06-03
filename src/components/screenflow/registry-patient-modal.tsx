@@ -16,6 +16,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import {
+  buildAviacaoRegistryObservacao,
+  buildAviacaoSavePayload,
+  AVIACAO_QUEUE_TAB,
+  AVIACAO_REQUIRED_CATEGORY_IDS,
+  isAviacaoRequiredCategory,
+  isAviacaoSegment,
+  isAviacaoTextField,
+} from "@/lib/aviacao-logistics";
+import {
   buildDocasRegistryObservacao,
   buildDocasSavePayload,
   DOCAS_QUEUE_TAB,
@@ -66,14 +75,17 @@ export function RegistryPatientModal({
   );
 
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
+  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
-    const requiredMark =
-      docasMode && isDocasRequiredCategory(cat.id) ? (
-        <span className="text-red-600 dark:text-red-400"> *</span>
-      ) : null;
+    const isRequired =
+      (docasMode && isDocasRequiredCategory(cat.id)) ||
+      (aviacaoMode && isAviacaoRequiredCategory(cat.id));
+    const requiredMark = isRequired ? (
+      <span className="text-red-600 dark:text-red-400"> *</span>
+    ) : null;
 
-    if (docasMode && isDocasTextField(cat.id)) {
+    if ((docasMode && isDocasTextField(cat.id)) || (aviacaoMode && isAviacaoTextField(cat.id))) {
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           {cat.label}
@@ -119,8 +131,11 @@ export function RegistryPatientModal({
     if (docasMode) {
       return queueTabs.find((t) => t.id === DOCAS_QUEUE_TAB.NO_PATIO)?.id ?? queueTabs[0]?.id ?? "";
     }
+    if (aviacaoMode) {
+      return queueTabs.find((t) => t.id === AVIACAO_QUEUE_TAB.TRIAGEM)?.id ?? queueTabs[0]?.id ?? "";
+    }
     return queueTabs[0]?.id ?? "";
-  }, [docasMode, queueTabs]);
+  }, [docasMode, aviacaoMode, queueTabs]);
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
@@ -187,13 +202,14 @@ export function RegistryPatientModal({
 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
-    if (docasMode) return;
+    if (docasMode || aviacaoMode) return;
     const tab = queueTabs.find((t) => t.id === tabId);
     if (tab?.preset !== "hora") setHoraMarcada("");
   }
 
+  const showAviacaoHoraAgendada = aviacaoMode;
   const showDocasHoraAgendada = docasMode;
-  const showHoraHoje = !docasMode && triagemTab?.preset === "hora";
+  const showHoraHoje = !docasMode && !aviacaoMode && triagemTab?.preset === "hora";
 
   async function submitViaApi(
     pacienteNome: string,
@@ -228,6 +244,13 @@ export function RegistryPatientModal({
       const missing = DOCAS_REQUIRED_CATEGORY_IDS.filter((id) => !formValues[id]?.trim());
       if (missing.length > 0) {
         setError("Placa é obrigatória.");
+        return;
+      }
+    }
+    if (aviacaoMode) {
+      const missing = AVIACAO_REQUIRED_CATEGORY_IDS.filter((id) => !formValues[id]?.trim());
+      if (missing.length > 0) {
+        setError("Prefixo da Aeronave é obrigatório.");
         return;
       }
     }
@@ -266,16 +289,31 @@ export function RegistryPatientModal({
       const userObs = observacaoBase.trim();
       const filaPreset = triagemTab?.preset ?? "ordem";
 
-      const { cadastroPayload, docasFields } = docasMode
-        ? buildDocasSavePayload(formValues, tenantConfig.cadastroCategories)
-        : {
-            cadastroPayload: buildCadastroPayload(formValues, tenantConfig.cadastroCategories),
-            docasFields: {} as Record<string, string>,
-          };
+      const observacao = aviacaoMode
+        ? (() => {
+            const { aviacaoFields } = buildAviacaoSavePayload(
+              formValues,
+              tenantConfig.cadastroCategories
+            );
+            return buildAviacaoRegistryObservacao(
+              userObs || null,
+              filaPreset,
+              triagemTab?.id,
+              aviacaoFields
+            );
+          })()
+        : docasMode
+          ? (() => {
+              const { docasFields } = buildDocasSavePayload(formValues, tenantConfig.cadastroCategories);
+              return buildDocasRegistryObservacao(userObs || null, filaPreset, triagemTab?.id, docasFields);
+            })()
+          : embedFilaPreset(userObs || null, filaPreset, triagemTab?.id);
 
-      const observacao = docasMode
-        ? buildDocasRegistryObservacao(userObs || null, filaPreset, triagemTab?.id, docasFields)
-        : embedFilaPreset(userObs || null, filaPreset, triagemTab?.id);
+      const cadastroPayload = aviacaoMode
+        ? buildAviacaoSavePayload(formValues, tenantConfig.cadastroCategories).cadastroPayload
+        : docasMode
+          ? buildDocasSavePayload(formValues, tenantConfig.cadastroCategories).cadastroPayload
+          : buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
 
       const payload: Record<string, unknown> = {
         paciente_id: pacienteIdValue,
@@ -287,10 +325,11 @@ export function RegistryPatientModal({
         ...cadastroPayload,
       };
 
-      const wantsHora = docasMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
+      const wantsHora =
+        docasMode || aviacaoMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
       if (wantsHora && horaMarcada.trim()) {
         payload.hora_marcada = buildHoraMarcadaTodayIso(horaMarcada);
-      } else if (!docasMode && triagemTab?.preset === "encaixe") {
+      } else if (!docasMode && !aviacaoMode && triagemTab?.preset === "encaixe") {
         payload.hora_marcada = null;
       }
 
@@ -328,6 +367,7 @@ export function RegistryPatientModal({
     enabledCategories.length > 0 ||
     rf.showHoraMarcada ||
     showDocasHoraAgendada ||
+    showAviacaoHoraAgendada ||
     law ||
     rf.showObservacao;
 
@@ -383,11 +423,11 @@ export function RegistryPatientModal({
 
         {enabledCategories.map((cat) => renderCategoryField(cat))}
 
-        {showDocasHoraAgendada ? (
+        {showDocasHoraAgendada || showAviacaoHoraAgendada ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
             <span className="flex items-center gap-1.5">
               <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
-              Horário agendado
+              {showAviacaoHoraAgendada ? "ETA — Horário estimado de pouso" : "Horário agendado"}
             </span>
             <input
               type="time"

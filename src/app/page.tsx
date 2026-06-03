@@ -38,6 +38,17 @@ import {
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
 import {
+  AVIACAO_QUEUE_TAB,
+  aviacaoStepTvStatus,
+  findAviacaoQueueTabByStep,
+  getAviacaoHangarLabel,
+  isAviacaoSegment,
+  mergeAviacaoObservacao,
+  resolveAviacaoStepFromObservacao,
+  shiftAviacaoStep,
+  type AviacaoQueueTabId,
+} from "@/lib/aviacao-logistics";
+import {
   DOCAS_QUEUE_TAB,
   docasStepTvStatus,
   getDocasStepLabel,
@@ -270,6 +281,7 @@ export default function Home() {
   );
 
   const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
+  const aviacaoLogisticsActive = isAviacaoSegment(tenantConfig.segmentoAplicado);
 
   const queueDisplayRows = useMemo(() => {
     if (!docasLogisticsActive) return rows;
@@ -647,6 +659,16 @@ export default function Home() {
     return getDocasStepLabel(selectedDocasStep, tenantConfig.queueTabs);
   }, [selectedDocasStep, tenantConfig.queueTabs]);
 
+  const selectedAviacaoStep = useMemo(() => {
+    if (!aviacaoLogisticsActive || !selected) return null;
+    return resolveAviacaoStepFromObservacao(selected.observacao);
+  }, [aviacaoLogisticsActive, selected]);
+
+  const selectedAviacaoHangarLabel = useMemo(() => {
+    if (!aviacaoLogisticsActive || !selected) return null;
+    return getAviacaoHangarLabel(selected, tenantConfig.cadastroCategories, cadastroLookups);
+  }, [aviacaoLogisticsActive, selected, tenantConfig.cadastroCategories, cadastroLookups]);
+
   const advanceDocasLogistics = useCallback(
     async (targetTabId: DocasQueueTabId, status?: string) => {
       if (!selectedId || !selected) return;
@@ -676,6 +698,35 @@ export default function Home() {
     [selectedDocasStep, advanceDocasLogistics]
   );
 
+  const advanceAviacaoLogistics = useCallback(
+    async (targetTabId: AviacaoQueueTabId, status?: string) => {
+      if (!selectedId || !selected) return;
+      const tab = findAviacaoQueueTabByStep(tenantConfig.queueTabs, targetTabId);
+      if (!tab) return;
+      const observacao = mergeAviacaoObservacao({
+        current: selected.observacao,
+        tab,
+      });
+      const patch: {
+        observacao: string | null;
+        status?: string;
+      } = { observacao };
+      if (status) patch.status = status;
+      await patchAtendimento(patch);
+    },
+    [selectedId, selected, tenantConfig.queueTabs, patchAtendimento]
+  );
+
+  const shiftSelectedAviacaoStep = useCallback(
+    (delta: -1 | 1) => {
+      if (!selectedAviacaoStep) return;
+      const target = shiftAviacaoStep(selectedAviacaoStep, delta);
+      if (!target) return;
+      void advanceAviacaoLogistics(target, aviacaoStepTvStatus(target));
+    },
+    [selectedAviacaoStep, advanceAviacaoLogistics]
+  );
+
   useEffect(() => {
     if (!docasLogisticsActive || !selected) return;
     const step = resolveDocasStepFromObservacao(selected.observacao);
@@ -683,6 +734,13 @@ export default function Home() {
       setQueueTabId(step);
     }
   }, [docasLogisticsActive, selected, tenantConfig.queueTabs]);
+
+  useEffect(() => {
+    if (!aviacaoLogisticsActive || !selected) return;
+    const step = resolveAviacaoStepFromObservacao(selected.observacao);
+    const tab = findAviacaoQueueTabByStep(tenantConfig.queueTabs, step);
+    if (tab) setQueueTabId(tab.id);
+  }, [aviacaoLogisticsActive, selected, tenantConfig.queueTabs]);
 
   useEffect(() => {
     if (!sessionReady || envMissing || appView !== "fila" || !docasLogisticsActive) return;
@@ -718,6 +776,40 @@ export default function Home() {
     shiftSelectedDocasStep,
   ]);
 
+  useEffect(() => {
+    if (!sessionReady || envMissing || appView !== "fila" || !aviacaoLogisticsActive) return;
+
+    function isTypingTarget(target: EventTarget | null): boolean {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+    }
+
+    function onArrowKey(e: KeyboardEvent) {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (!selectedId || pending) return;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        shiftSelectedAviacaoStep(1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        shiftSelectedAviacaoStep(-1);
+      }
+    }
+
+    window.addEventListener("keydown", onArrowKey, { capture: true });
+    return () => window.removeEventListener("keydown", onArrowKey, { capture: true });
+  }, [
+    sessionReady,
+    envMissing,
+    appView,
+    aviacaoLogisticsActive,
+    selectedId,
+    pending,
+    shiftSelectedAviacaoStep,
+  ]);
+
   const handleDeleteRow = useCallback(
     async (row: AtendimentoLite) => {
       if (!proActive) {
@@ -747,6 +839,8 @@ export default function Home() {
         if (!canMutate) return;
         if (docasLogisticsActive) {
           void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
+        } else if (aviacaoLogisticsActive) {
+          void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.TRIAGEM, STATUS_UPDATE.chamar);
         } else {
           void updateStatus(STATUS_UPDATE.chamar);
         }
@@ -755,6 +849,8 @@ export default function Home() {
         if (!canMutate) return;
         if (docasLogisticsActive) {
           void advanceDocasLogistics(DOCAS_QUEUE_TAB.DESCARREGANDO, STATUS_UPDATE.rechamar);
+        } else if (aviacaoLogisticsActive) {
+          void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_EXECUCAO, STATUS_UPDATE.rechamar);
         } else {
           void updateStatus(STATUS_UPDATE.rechamar);
         }
@@ -763,6 +859,8 @@ export default function Home() {
         if (!canMutate || !selectedId) return;
         if (docasLogisticsActive) {
           void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
+        } else if (aviacaoLogisticsActive) {
+          void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.LIBERADO, "Aguardando");
         } else {
           setFinalizeOpen(true);
         }
@@ -779,7 +877,9 @@ export default function Home() {
       canMutate,
       selectedId,
       docasLogisticsActive,
+      aviacaoLogisticsActive,
       advanceDocasLogistics,
+      advanceAviacaoLogistics,
       updateStatus,
       openGeneralSettings,
       shiftSelectedDocasStep,
@@ -859,6 +959,8 @@ export default function Home() {
             onChamar={() => {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
+              } else if (aviacaoLogisticsActive) {
+                void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.TRIAGEM, STATUS_UPDATE.chamar);
               } else {
                 void updateStatus(STATUS_UPDATE.chamar);
               }
@@ -866,6 +968,8 @@ export default function Home() {
             onRechamar={() => {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.DESCARREGANDO, STATUS_UPDATE.rechamar);
+              } else if (aviacaoLogisticsActive) {
+                void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_EXECUCAO, STATUS_UPDATE.rechamar);
               } else {
                 void updateStatus(STATUS_UPDATE.rechamar);
               }
@@ -873,6 +977,8 @@ export default function Home() {
             onFinalizar={() => {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
+              } else if (aviacaoLogisticsActive) {
+                void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.LIBERADO, "Aguardando");
               } else {
                 setFinalizeOpen(true);
               }
@@ -943,6 +1049,17 @@ export default function Home() {
               docasStepperDisabled={pending}
               onDocasStepPrev={() => shiftSelectedDocasStep(-1)}
               onDocasStepNext={() => shiftSelectedDocasStep(1)}
+              aviacaoLogisticsActive={aviacaoLogisticsActive}
+              aviacaoHangarLabel={selectedAviacaoHangarLabel}
+              aviacaoCanGoPrev={
+                selectedAviacaoStep ? shiftAviacaoStep(selectedAviacaoStep, -1) !== null : false
+              }
+              aviacaoCanGoNext={
+                selectedAviacaoStep ? shiftAviacaoStep(selectedAviacaoStep, 1) !== null : false
+              }
+              aviacaoStepperDisabled={pending}
+              onAviacaoStepPrev={() => shiftSelectedAviacaoStep(-1)}
+              onAviacaoStepNext={() => shiftSelectedAviacaoStep(1)}
             />
           )}
         </main>

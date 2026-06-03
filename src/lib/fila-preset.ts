@@ -8,6 +8,9 @@ const FILA_TAG_GLOBAL = /__sf_fila:[^\s_]+(?::[^\s_]+)?__/gi;
 /** Marcador de cadastro Docas em observação (textos livres — ver docas-logistics). */
 const DOCAS_DATA_TAG_GLOBAL = /__sf_docas:[\s\S]*?__/gi;
 
+/** Marcador de cadastro Aviação em observação (ver aviacao-logistics). */
+const AVIACAO_DATA_TAG_GLOBAL = /__sf_aviacao:[\s\S]*?__/gi;
+
 /** Equivalência de ids de coluna Docas (estável ↔ legado `doc-t*`). */
 const DOCAS_KANBAN_TAB_EQUIV: Record<string, string> = {
   em_operacao: "descarregando",
@@ -18,8 +21,17 @@ const DOCAS_KANBAN_TAB_EQUIV: Record<string, string> = {
   "doc-t5": "liberado",
 };
 
+/** Equivalência de ids de coluna Aviação (estável ↔ legado `av-t*`). */
+const AVIACAO_KANBAN_TAB_EQUIV: Record<string, string> = {
+  "av-t1": "triagem",
+  "av-t2": "aguardando_peca",
+  "av-t3": "em_execucao",
+  "av-t4": "teste_voo",
+  "av-t5": "liberado",
+};
+
 function normalizeKanbanTabId(id: string): string {
-  return DOCAS_KANBAN_TAB_EQUIV[id] ?? id;
+  return DOCAS_KANBAN_TAB_EQUIV[id] ?? AVIACAO_KANBAN_TAB_EQUIV[id] ?? id;
 }
 
 const MARKER_PARSE = /^__sf_fila:([a-z]+)__(?:\r?\n|$)/i;
@@ -41,6 +53,7 @@ export function formatObservacaoForDisplay(observacao: string | null | undefined
   return observacao
     .replace(FILA_TAG_GLOBAL, "")
     .replace(DOCAS_DATA_TAG_GLOBAL, "")
+    .replace(AVIACAO_DATA_TAG_GLOBAL, "")
     .replace(/^[ \t]*\r?\n+/gm, "")
     .replace(/\r?\n{3,}/g, "\n\n")
     .trim();
@@ -150,6 +163,9 @@ export function rowMatchesQueueTabEntry(row: RowForPreset, tab: Pick<QueueTabEnt
     return normalizeKanbanTabId(tabId) === normalizeKanbanTabId(tab.id);
   }
   if (row.observacao?.includes("__sf_docas:") && normalizeKanbanTabId(tab.id) === "no_patio") {
+    return true;
+  }
+  if (row.observacao?.includes("__sf_aviacao:") && normalizeKanbanTabId(tab.id) === "triagem") {
     return true;
   }
   return rowMatchesQueueTab(row, tab.preset);

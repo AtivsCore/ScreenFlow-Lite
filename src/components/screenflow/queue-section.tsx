@@ -5,9 +5,14 @@ import { filterAndSortQueue, formatCreatedAt, formatHoraMarcada, normalizeQueueS
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
+import {
+  resolveAviacaoCategoryDisplay,
+  resolveAviacaoKanbanMeta,
+} from "@/lib/aviacao-logistics";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { AviacaoHangarStepper } from "@/components/screenflow/aviacao-hangar-stepper";
 import { DocasStatusStepper } from "@/components/screenflow/docas-status-stepper";
 import type { DocasQueueTabId } from "@/lib/docas-logistics";
 import { Columns3, Eye, EyeOff, LayoutList, MessageSquareText, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
@@ -27,16 +32,28 @@ function resolveKanbanMeta(
   row: AtendimentoLite,
   cadastroCategories: CadastroCategoryEntry[],
   cadastroLookups: CadastroLookups,
-  docasLogisticsActive: boolean
+  docasLogisticsActive: boolean,
+  aviacaoLogisticsActive: boolean
 ): {
   title: string;
   profissional: string | null;
   local: string | null;
   servico: string | null;
   docaAlocada?: string | null;
+  hangarAlocado?: string | null;
 } {
   if (docasLogisticsActive) {
     return resolveDocasKanbanMeta(row, cadastroCategories, cadastroLookups);
+  }
+  if (aviacaoLogisticsActive) {
+    const meta = resolveAviacaoKanbanMeta(row, cadastroCategories, cadastroLookups);
+    return {
+      title: meta.title,
+      profissional: meta.profissional,
+      local: meta.local,
+      servico: meta.servico,
+      hangarAlocado: meta.hangarLabel,
+    };
   }
   const legacyCtx = {
     profissional_id: row.profissional_id,
@@ -159,6 +176,14 @@ const KanbanCard = memo(function KanbanCard({
             {meta.docaAlocada}
           </p>
         ) : null}
+        {meta.hangarAlocado ? (
+          <p
+            className="truncate text-[9px] font-semibold uppercase leading-tight tracking-wide text-sky-700 dark:text-sky-400"
+            title={meta.hangarAlocado}
+          >
+            {meta.hangarAlocado}
+          </p>
+        ) : null}
         {contextLine ? (
           <p
             className="truncate text-[11px] leading-tight text-zinc-500 dark:text-zinc-400"
@@ -233,6 +258,7 @@ type QueueRowProps = {
   priorityLawEnabled: boolean;
   notesInline: boolean;
   docasLogisticsActive: boolean;
+  aviacaoLogisticsActive: boolean;
   cadastroCategories: CadastroCategoryEntry[];
   cadastroLookups: CadastroLookups;
   deleting: string | null;
@@ -247,6 +273,7 @@ const QueueRow = memo(function QueueRow({
   priorityLawEnabled,
   notesInline,
   docasLogisticsActive,
+  aviacaoLogisticsActive,
   cadastroCategories,
   cadastroLookups,
   deleting,
@@ -258,6 +285,9 @@ const QueueRow = memo(function QueueRow({
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
     : null;
   const observacaoText = formatObservacaoForDisplay(row.observacao);
+  const clientLabel = aviacaoLogisticsActive
+    ? resolveAviacaoKanbanMeta(row, cadastroCategories, cadastroLookups).title
+    : row.nome?.trim() || "—";
   const legacyCtx = {
     profissional_id: row.profissional_id,
     local_id: row.local_id,
@@ -294,8 +324,8 @@ const QueueRow = memo(function QueueRow({
             {priorityLawEnabled && prioStyle ? (
               <span className={`shrink-0 whitespace-nowrap ${prioStyle.badge}`}>{prioStyle.label}</span>
             ) : null}
-            <span className="min-w-0 truncate font-medium" title={row.nome ?? undefined}>
-              {row.nome ?? "—"}
+            <span className="min-w-0 truncate font-medium" title={clientLabel !== "—" ? clientLabel : undefined}>
+              {clientLabel}
             </span>
           </div>
           <div className="ml-12 w-[200px] shrink-0 sm:ml-16">
@@ -326,7 +356,16 @@ const QueueRow = memo(function QueueRow({
               cadastroCategories,
               legacyCtx
             )
-          : resolveCategoryDisplayLabel(
+          : aviacaoLogisticsActive
+            ? resolveAviacaoCategoryDisplay(
+                cat.id,
+                row.observacao,
+                row.cadastro_valores ?? {},
+                cadastroLookups,
+                cadastroCategories,
+                legacyCtx
+              )
+            : resolveCategoryDisplayLabel(
               cat.id,
               row.cadastro_valores ?? {},
               cadastroLookups,
@@ -405,6 +444,13 @@ type QueueSectionProps = {
   docasStepperDisabled?: boolean;
   onDocasStepPrev?: () => void;
   onDocasStepNext?: () => void;
+  aviacaoLogisticsActive?: boolean;
+  aviacaoHangarLabel?: string | null;
+  aviacaoCanGoPrev?: boolean;
+  aviacaoCanGoNext?: boolean;
+  aviacaoStepperDisabled?: boolean;
+  onAviacaoStepPrev?: () => void;
+  onAviacaoStepNext?: () => void;
 };
 
 export function QueueSection({
@@ -438,6 +484,13 @@ export function QueueSection({
   docasStepperDisabled = false,
   onDocasStepPrev,
   onDocasStepNext,
+  aviacaoLogisticsActive = false,
+  aviacaoHangarLabel = null,
+  aviacaoCanGoPrev = false,
+  aviacaoCanGoNext = false,
+  aviacaoStepperDisabled = false,
+  onAviacaoStepPrev,
+  onAviacaoStepNext,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
@@ -504,6 +557,16 @@ export function QueueSection({
                 disabled={docasStepperDisabled || !selectedId}
                 onPrev={onDocasStepPrev}
                 onNext={onDocasStepNext}
+              />
+            ) : null}
+            {aviacaoLogisticsActive && aviacaoHangarLabel && onAviacaoStepPrev && onAviacaoStepNext ? (
+              <AviacaoHangarStepper
+                hangarLabel={aviacaoHangarLabel}
+                canGoPrev={aviacaoCanGoPrev}
+                canGoNext={aviacaoCanGoNext}
+                disabled={aviacaoStepperDisabled || !selectedId}
+                onPrev={onAviacaoStepPrev}
+                onNext={onAviacaoStepNext}
               />
             ) : null}
           </div>
@@ -638,6 +701,7 @@ export function QueueSection({
                       priorityLawEnabled={priorityLawEnabled}
                       notesInline={notesInline}
                       docasLogisticsActive={docasLogisticsActive}
+                      aviacaoLogisticsActive={aviacaoLogisticsActive}
                       cadastroCategories={enabledCategories}
                       cadastroLookups={cadastroLookups}
                       deleting={deleting}
@@ -691,7 +755,13 @@ export function QueueSection({
                             isSel={row.id === selectedId}
                             priorityLawEnabled={priorityLawEnabled}
                             notesInline={notesInline}
-                            meta={resolveKanbanMeta(row, enabledCategories, cadastroLookups, docasLogisticsActive)}
+                            meta={resolveKanbanMeta(
+                              row,
+                              enabledCategories,
+                              cadastroLookups,
+                              docasLogisticsActive,
+                              aviacaoLogisticsActive
+                            )}
                             deleting={deleting}
                             onSelectId={onSelectId}
                             onEditRow={onEditRow}

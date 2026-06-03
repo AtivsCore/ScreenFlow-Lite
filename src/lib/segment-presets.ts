@@ -1,3 +1,4 @@
+import { AVIACAO_QUEUE_TAB } from "@/lib/aviacao-logistics";
 import { DOCAS_QUEUE_TAB } from "@/lib/docas-logistics";
 import {
   DEFAULT_CADASTRO_CATEGORIES,
@@ -47,6 +48,10 @@ function flowTab(id: string, label: string): QueueTabEntry {
 }
 
 function docasTab(id: string, label: string): QueueTabEntry {
+  return { id, preset: "outros", label, customTypeLabel: label };
+}
+
+function aviacaoTab(id: string, label: string): QueueTabEntry {
   return { id, preset: "outros", label, customTypeLabel: label };
 }
 
@@ -179,22 +184,23 @@ const AVIACAO = makePreset(
   "aviacao_mro",
   "✈️",
   "Aviação e Logística de Manutenção (MRO)",
-  "Mecânico/Inspetor, Hangar/Box, Aeronave (Prefixo), Tipo de Serviço, Urgência da Peça",
+  "Piloto / Responsável, Vaga / Hangar, Prefixo da Aeronave, Modelo, Urgência da Peça",
   "Triagem → Aguardando Peça → Em Execução → Teste de Voo → Liberado",
   [
-    cat("av-c1", "Mecânico/Inspetor", "profissionais"),
-    cat("av-c2", "Hangar/Box", "locais"),
-    cat("av-c3", "Aeronave (Prefixo)", "locais"),
-    cat("av-c4", "Tipo de Serviço", "servicos"),
+    cat("av-c1", "Piloto / Responsável", "profissionais"),
+    cat("av-c2", "Vaga / Hangar / Box Alocado", "locais"),
+    cat("av-c3", "Prefixo da Aeronave", "profissionais"),
+    cat("av-c4", "Modelo da Aeronave", "servicos"),
     cat("av-c5", "Urgência da Peça", "servicos"),
   ],
   [
-    flowTab("av-t1", "Triagem"),
-    flowTab("av-t2", "Aguardando Peça"),
-    flowTab("av-t3", "Em Execução"),
-    flowTab("av-t4", "Teste de Voo"),
-    flowTab("av-t5", "Liberado"),
-  ]
+    aviacaoTab(AVIACAO_QUEUE_TAB.TRIAGEM, "Triagem"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.AGUARDANDO_PECA, "Aguardando Peça"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.EM_EXECUCAO, "Em Execução"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.TESTE_VOO, "Teste de Voo"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.LIBERADO, "Liberado"),
+  ],
+  { showClienteNome: false, showHoraMarcada: false, showObservacao: true }
 );
 
 const OFICINAS = makePreset(
