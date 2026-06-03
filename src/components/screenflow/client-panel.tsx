@@ -4,6 +4,7 @@ import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valor
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
+import { isDocasSegment } from "@/lib/docas-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility } from "@/lib/tenant-config";
 import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -27,6 +28,7 @@ type ClientPanelProps = {
   priorityLawEnabled: boolean;
   observacoesVisibility: ObservacoesVisibility;
   cadastroCategories: CadastroCategoryEntry[];
+  segmentoAplicado?: string | null;
   onChamar: () => void;
   onRechamar: () => void;
   onFinalizar: () => void;
@@ -100,6 +102,7 @@ export const ClientPanel = memo(function ClientPanel({
   priorityLawEnabled,
   observacoesVisibility,
   cadastroCategories,
+  segmentoAplicado,
   onChamar,
   onRechamar,
   onFinalizar,
@@ -119,6 +122,7 @@ export const ClientPanel = memo(function ClientPanel({
     () => cadastroCategories.filter((c) => c.enabled),
     [cadastroCategories]
   );
+  const docasMode = isDocasSegment(segmentoAplicado);
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
     setQuickCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) });
@@ -280,7 +284,7 @@ export const ClientPanel = memo(function ClientPanel({
             onClick={onChamar}
             className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
-            Chamar
+            {docasMode ? "Chamar p/ Doca" : "Chamar"}
           </button>
           <button
             type="button"
@@ -288,7 +292,7 @@ export const ClientPanel = memo(function ClientPanel({
             onClick={onRechamar}
             className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
           >
-            Rechamar
+            {docasMode ? "Iniciar Operação" : "Rechamar"}
           </button>
           <button
             type="button"
@@ -304,7 +308,7 @@ export const ClientPanel = memo(function ClientPanel({
             onClick={onFinalizar}
             className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-emerald-600 bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Finalizar
+            {docasMode ? "Liberar" : "Finalizar"}
           </button>
         </div>
       </section>

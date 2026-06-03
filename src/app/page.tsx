@@ -37,6 +37,8 @@ import {
   type ObservacoesVisibility,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
+import { DOCAS_QUEUE_TAB, isDocasSegment, type DocasQueueTabId } from "@/lib/docas-logistics";
+import { embedObservacaoForQueueTab, formatObservacaoForDisplay } from "@/lib/fila-preset";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
@@ -514,6 +516,7 @@ export default function Home() {
       especialidade_id?: string | null;
       cadastro_valores?: Record<string, string | null>;
       tv_id?: string | null;
+      status?: string;
     }) => {
       if (!selectedId) return;
       applyLocalPatch(selectedId, patch);
@@ -617,6 +620,27 @@ export default function Home() {
     [supabase, selectedId, selected, proActive, purgeRow, applyLocalPatch, tryProxyPatch]
   );
 
+  const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
+
+  const advanceDocasLogistics = useCallback(
+    async (targetTabId: DocasQueueTabId, status?: string) => {
+      if (!selectedId || !selected) return;
+      const tab = tenantConfig.queueTabs.find((t) => t.id === targetTabId);
+      if (!tab) return;
+      const observacao = embedObservacaoForQueueTab(
+        formatObservacaoForDisplay(selected.observacao),
+        tab
+      );
+      const patch: {
+        observacao: string | null;
+        status?: string;
+      } = { observacao };
+      if (status) patch.status = status;
+      await patchAtendimento(patch);
+    },
+    [selectedId, selected, tenantConfig.queueTabs, patchAtendimento]
+  );
+
   const handleDeleteRow = useCallback(
     async (row: AtendimentoLite) => {
       if (!proActive) {
@@ -643,13 +667,28 @@ export default function Home() {
   const shortcutHandlers = useMemo(
     () => ({
       onChamar: () => {
-        if (canMutate) void updateStatus(STATUS_UPDATE.chamar);
+        if (!canMutate) return;
+        if (docasLogisticsActive) {
+          void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
+        } else {
+          void updateStatus(STATUS_UPDATE.chamar);
+        }
       },
       onRechamar: () => {
-        if (canMutate) void updateStatus(STATUS_UPDATE.rechamar);
+        if (!canMutate) return;
+        if (docasLogisticsActive) {
+          void advanceDocasLogistics(DOCAS_QUEUE_TAB.EM_OPERACAO, STATUS_UPDATE.rechamar);
+        } else {
+          void updateStatus(STATUS_UPDATE.rechamar);
+        }
       },
       onFinalizar: () => {
-        if (canMutate && selectedId) setFinalizeOpen(true);
+        if (!canMutate || !selectedId) return;
+        if (docasLogisticsActive) {
+          void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
+        } else {
+          setFinalizeOpen(true);
+        }
       },
       onLimpar: () => setSelectedId(null),
       onNovoRegistro: () => setRegistryOpen(true),
@@ -659,7 +698,7 @@ export default function Home() {
       onCrudLocais: () => setQuickCrud({ title: "Locais", table: "locais" }),
       onCrudServicos: () => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE }),
     }),
-    [canMutate, selectedId, updateStatus, openGeneralSettings]
+    [canMutate, selectedId, docasLogisticsActive, advanceDocasLogistics, updateStatus, openGeneralSettings]
   );
 
   useKeyboardShortcuts(shortcutHandlers, sessionReady && !envMissing && appView === "fila");
@@ -730,10 +769,29 @@ export default function Home() {
             priorityLawEnabled={tenantConfig.priorityLawEnabled}
             observacoesVisibility={tenantConfig.observacoesVisibility}
             cadastroCategories={tenantConfig.cadastroCategories}
+            segmentoAplicado={tenantConfig.segmentoAplicado}
             tenantId={effectiveTenantId}
-            onChamar={() => void updateStatus(STATUS_UPDATE.chamar)}
-            onRechamar={() => void updateStatus(STATUS_UPDATE.rechamar)}
-            onFinalizar={() => setFinalizeOpen(true)}
+            onChamar={() => {
+              if (docasLogisticsActive) {
+                void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
+              } else {
+                void updateStatus(STATUS_UPDATE.chamar);
+              }
+            }}
+            onRechamar={() => {
+              if (docasLogisticsActive) {
+                void advanceDocasLogistics(DOCAS_QUEUE_TAB.EM_OPERACAO, STATUS_UPDATE.rechamar);
+              } else {
+                void updateStatus(STATUS_UPDATE.rechamar);
+              }
+            }}
+            onFinalizar={() => {
+              if (docasLogisticsActive) {
+                void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
+              } else {
+                setFinalizeOpen(true);
+              }
+            }}
             onLimpar={() => setSelectedId(null)}
             onPatch={async (patch) => {
               await patchAtendimento(patch);

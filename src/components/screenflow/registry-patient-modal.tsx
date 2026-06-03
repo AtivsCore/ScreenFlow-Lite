@@ -14,6 +14,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
+import {
+  DOCAS_QUEUE_TAB,
+  isDocasRequiredCategory,
+  isDocasSegment,
+  DOCAS_REQUIRED_CATEGORY_IDS,
+} from "@/lib/docas-logistics";
 import { buildHoraMarcadaTodayIso } from "@/lib/hora-marcada";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
@@ -57,6 +63,9 @@ export function RegistryPatientModal({
     return (
       <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
         {cat.label}
+        {docasMode && isDocasRequiredCategory(cat.id) ? (
+          <span className="text-red-600 dark:text-red-400"> *</span>
+        ) : null}
         <select
           value={formValues[cat.id] ?? ""}
           onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
@@ -82,10 +91,17 @@ export function RegistryPatientModal({
     [sessionTenantId, tenantId]
   );
 
-  const defaultTriagemId = queueTabs[0]?.id ?? "";
+  const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
+
+  const initialTriagemTabId = useMemo(() => {
+    if (docasMode) {
+      return queueTabs.find((t) => t.id === DOCAS_QUEUE_TAB.NO_PATIO)?.id ?? queueTabs[0]?.id ?? "";
+    }
+    return queueTabs[0]?.id ?? "";
+  }, [docasMode, queueTabs]);
 
   const [nomeCliente, setNomeCliente] = useState("");
-  const [triagemTabId, setTriagemTabId] = useState(defaultTriagemId);
+  const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [horaMarcada, setHoraMarcada] = useState("");
   const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>("normal");
@@ -139,13 +155,13 @@ export function RegistryPatientModal({
   useEffect(() => {
     if (!open) return;
     setNomeCliente("");
-    setTriagemTabId(queueTabs[0]?.id ?? "");
+    setTriagemTabId(initialTriagemTabId);
     setFormValues({});
     setHoraMarcada("");
     setClassificacao("normal");
     setObservacaoBase("");
     setError(null);
-  }, [open, tenantConfig.priorityLawEnabled, queueTabs]);
+  }, [open, tenantConfig.priorityLawEnabled, queueTabs, initialTriagemTabId]);
 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
@@ -183,6 +199,15 @@ export function RegistryPatientModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!supabase) return;
+
+    if (docasMode) {
+      const missing = DOCAS_REQUIRED_CATEGORY_IDS.filter((id) => !formValues[id]?.trim());
+      if (missing.length > 0) {
+        setError("Transportadora/Placa e Motorista/Telefone são obrigatórios.");
+        return;
+      }
+    }
+
     setBusy(true);
     setError(null);
 

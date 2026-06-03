@@ -1,3 +1,4 @@
+import { DOCAS_QUEUE_TAB } from "@/lib/docas-logistics";
 import {
   DEFAULT_CADASTRO_CATEGORIES,
   DEFAULT_QUEUE_TABS,
@@ -42,6 +43,10 @@ function cat(id: string, label: string, tableKey: CadastroTableKey): CadastroCat
 }
 
 function flowTab(id: string, label: string): QueueTabEntry {
+  return { id, preset: "outros", label, customTypeLabel: label };
+}
+
+function docasTab(id: string, label: string): QueueTabEntry {
   return { id, preset: "outros", label, customTypeLabel: label };
 }
 
@@ -151,22 +156,22 @@ const DOCAS = makePreset(
   "docas",
   "🚛",
   "Carga e Descarga (Gestão de Docas)",
-  "Transportadora / Placa, Motorista / Telefone, Tipo de Carga, Doca Alocada, Conferente Responsável",
-  "No Pátio (Espera) → Chamado p/ Doca → Descarregando → Em Conferência → Liberado",
+  "Transportadora/Placa, Motorista/Telefone, Tipo de Carga, Doca Alocada, Conferente Responsável",
+  "NO PÁTIO → CHAMADO P/ DOCA → EM OPERAÇÃO → LIBERADO",
   [
-    cat("doc-c1", "Transportadora / Placa", "profissionais"),
-    cat("doc-c2", "Motorista / Telefone", "profissionais"),
+    cat("doc-c1", "Transportadora/Placa", "profissionais"),
+    cat("doc-c2", "Motorista/Telefone", "profissionais"),
     cat("doc-c3", "Tipo de Carga", "servicos"),
     cat("doc-c4", "Doca Alocada", "locais"),
     cat("doc-c5", "Conferente Responsável", "servicos"),
   ],
   [
-    flowTab("doc-t1", "No Pátio (Espera)"),
-    flowTab("doc-t2", "Chamado p/ Doca"),
-    flowTab("doc-t3", "Descarregando"),
-    flowTab("doc-t4", "Em Conferência"),
-    flowTab("doc-t5", "Liberado"),
-  ]
+    docasTab(DOCAS_QUEUE_TAB.NO_PATIO, "NO PÁTIO (ESPERA)"),
+    docasTab(DOCAS_QUEUE_TAB.CHAMADO, "CHAMADO P/ DOCA"),
+    docasTab(DOCAS_QUEUE_TAB.EM_OPERACAO, "EM OPERAÇÃO"),
+    docasTab(DOCAS_QUEUE_TAB.LIBERADO, "LIBERADO"),
+  ],
+  { showClienteNome: false, showHoraMarcada: false, showObservacao: true }
 );
 
 const AVIACAO = makePreset(
