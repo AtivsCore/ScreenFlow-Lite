@@ -15,10 +15,13 @@ import {
   type QueueTabPreset,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
+import { isProPlan, LIFETIME_STORAGE_NOTICE } from "@/lib/plan-tier";
 import { Briefcase, ChevronDown, ChevronUp, ClipboardList, Layers, MapPin, Palette, Settings2, UserCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
+import { ProFeatureLock } from "@/components/screenflow/pro-feature-lock";
+import { SecuritySettingsPanel } from "@/components/screenflow/security-settings-panel";
 
 type SettingsHubModalProps = {
   open: boolean;
@@ -145,6 +148,7 @@ export function SettingsHubModal({
   }
 
   const footerText = draft.tvDisplay.footerLines.join("\n");
+  const proActive = isProPlan(draft.planTier);
 
   return (
     <>
@@ -362,6 +366,36 @@ export function SettingsHubModal({
 
         {mainTab === "geral" && (
           <div className="space-y-4">
+            <p className="rounded-lg border border-amber-200/80 bg-amber-50/90 px-2.5 py-2 text-[10px] leading-snug text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-100">
+              {LIFETIME_STORAGE_NOTICE}
+            </p>
+
+            <SecuritySettingsPanel supabase={supabase} />
+
+            <ProFeatureLock label="Plano PRO — Google Planilhas">
+              <label className="block rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/40">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Sincronização Google Planilhas
+                </span>
+                <input
+                  type="url"
+                  disabled={!proActive}
+                  value={draft.googleSheetsUrl ?? ""}
+                  onChange={(e) =>
+                    updateDraft((d) => ({
+                      ...d,
+                      googleSheetsUrl: e.target.value.trim() || null,
+                    }))
+                  }
+                  placeholder="https://docs.google.com/spreadsheets/…"
+                  className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+                />
+                <p className="mt-1 text-[9px] text-zinc-500">
+                  Backup automático e exportação diária (exclusivo Plano PRO).
+                </p>
+              </label>
+            </ProFeatureLock>
+
             <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900/60">
               <div>
                 <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">Ativar lei de prioridade</p>

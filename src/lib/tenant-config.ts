@@ -1,3 +1,4 @@
+import type { PlanTier } from "@/lib/plan-tier";
 import type { QueueTabId } from "@/lib/atendimentos-lite";
 import { QUEUE_TAB_LABELS } from "@/lib/atendimentos-lite";
 import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
@@ -79,6 +80,9 @@ export type TenantConfiguracoes = {
   segmentoAplicado?: string;
   registerForm?: Partial<RegisterFormConfig>;
   tvDisplay?: Partial<TvDisplayConfig>;
+  /** `pro` habilita histórico, métricas e Google Planilhas. Padrão: vitalício. */
+  planTier?: PlanTier;
+  googleSheetsUrl?: string | null;
 };
 
 export type ResolvedTenantConfig = {
@@ -90,6 +94,8 @@ export type ResolvedTenantConfig = {
   segmentoAplicado: string | null;
   registerForm: RegisterFormConfig;
   tvDisplay: TvDisplayConfig;
+  planTier: PlanTier;
+  googleSheetsUrl: string | null;
 };
 
 export const DEFAULT_QUEUE_TABS: QueueTabEntry[] = [
@@ -256,6 +262,12 @@ export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
       ? obj.segmentoAplicado.trim()
       : null;
 
+  const planTier: PlanTier = obj.planTier === "pro" ? "pro" : "lifetime";
+  const googleSheetsUrl =
+    typeof obj.googleSheetsUrl === "string" && obj.googleSheetsUrl.trim()
+      ? obj.googleSheetsUrl.trim()
+      : null;
+
   return {
     queueTabs,
     showTodosTab,
@@ -265,6 +277,8 @@ export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
     segmentoAplicado,
     registerForm: rf,
     tvDisplay: tv,
+    planTier,
+    googleSheetsUrl,
   };
 }
 
@@ -278,5 +292,7 @@ export function configuracoesForSupabase(resolved: ResolvedTenantConfig): Tenant
     segmentoAplicado: resolved.segmentoAplicado ?? undefined,
     registerForm: resolved.registerForm,
     tvDisplay: resolved.tvDisplay,
+    planTier: resolved.planTier,
+    googleSheetsUrl: resolved.googleSheetsUrl,
   };
 }

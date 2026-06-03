@@ -20,6 +20,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
@@ -60,6 +62,30 @@ export default function LoginPage() {
     router.replace(nextPath);
     router.refresh();
     setBusy(false);
+  }
+
+  async function handleForgotPassword() {
+    if (!supabase) return;
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("Informe seu e-mail acima para receber o link de recuperação.");
+      return;
+    }
+    setResetBusy(true);
+    setError(null);
+    setResetSent(false);
+    const redirectTo =
+      typeof window !== "undefined" ? `${window.location.origin}/login` : undefined;
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      redirectTo,
+    });
+    if (resetErr) {
+      setError(resetErr.message);
+      setResetBusy(false);
+      return;
+    }
+    setResetSent(true);
+    setResetBusy(false);
   }
 
   if (envChecking || (supabase && checkingSession)) {
@@ -125,6 +151,19 @@ export default function LoginPage() {
               className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
             />
           </label>
+          <button
+            type="button"
+            disabled={resetBusy || !supabase}
+            onClick={() => void handleForgotPassword()}
+            className="-mt-1 text-left text-[11px] font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            {resetBusy ? "Enviando link…" : "Esqueci minha senha"}
+          </button>
+          {resetSent ? (
+            <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100">
+              Se o e-mail existir na base, você receberá um link para redefinir a senha.
+            </p>
+          ) : null}
           {error && (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
               {error}

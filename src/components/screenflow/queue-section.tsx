@@ -7,13 +7,12 @@ import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Columns3, LayoutList, MessageSquareText, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
+import { Columns3, Eye, EyeOff, LayoutList, MessageSquareText, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
 import { memo, useMemo, useState } from "react";
-import { ObservacaoPopover } from "@/components/screenflow/observacao-popover";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 
-type ViewMode = "list" | "kanban";
+export type QueueViewMode = "list" | "kanban";
 
 function queueStatusStyle(label: ReturnType<typeof normalizeQueueStatusLabel>): string {
   if (label === "chamado") return "text-sky-700 dark:text-sky-400";
@@ -70,6 +69,7 @@ type KanbanCardProps = {
   row: AtendimentoLite;
   isSel: boolean;
   priorityLawEnabled: boolean;
+  showNotesInline: boolean;
   meta: ReturnType<typeof resolveKanbanMeta>;
   deleting: string | null;
   onSelectId: (id: string) => void;
@@ -81,6 +81,7 @@ const KanbanCard = memo(function KanbanCard({
   row,
   isSel,
   priorityLawEnabled,
+  showNotesInline,
   meta,
   deleting,
   onSelectId,
@@ -144,6 +145,9 @@ const KanbanCard = memo(function KanbanCard({
             {contextLine}
           </p>
         ) : null}
+        {showNotesInline && observacaoText ? (
+          <p className="line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{observacaoText}</p>
+        ) : null}
       </div>
 
       <div className="mt-0.5 flex items-center justify-between gap-1">
@@ -160,7 +164,7 @@ const KanbanCard = memo(function KanbanCard({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
-          {observacaoText ? (
+          {!showNotesInline && observacaoText ? (
             <Tooltip content={observacaoText} side="top" align="end">
               <button
                 type="button"
@@ -200,6 +204,7 @@ type QueueRowProps = {
   row: AtendimentoLite;
   isSel: boolean;
   priorityLawEnabled: boolean;
+  showNotesInline: boolean;
   observacoesAlwaysVisible: boolean;
   cadastroCategories: CadastroCategoryEntry[];
   cadastroLookups: CadastroLookups;
@@ -213,6 +218,7 @@ const QueueRow = memo(function QueueRow({
   row,
   isSel,
   priorityLawEnabled,
+  showNotesInline,
   observacoesAlwaysVisible,
   cadastroCategories,
   cadastroLookups,
@@ -224,6 +230,8 @@ const QueueRow = memo(function QueueRow({
   const prioStyle = priorityLawEnabled
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
     : null;
+  const observacaoText = formatObservacaoForDisplay(row.observacao);
+  const notesInline = showNotesInline || observacoesAlwaysVisible;
   const legacyCtx = {
     profissional_id: row.profissional_id,
     local_id: row.local_id,
@@ -260,15 +268,20 @@ const QueueRow = memo(function QueueRow({
             <span className={`shrink-0 whitespace-nowrap ${prioStyle.badge}`}>{prioStyle.label}</span>
           ) : null}
           <span className="min-w-0 truncate font-medium">{row.nome ?? "—"}</span>
-          {observacoesAlwaysVisible ? (
-            <ObservacaoPopover
-              observacao={row.observacao}
-              inlineVisible
-              inlineClassName="min-w-0 max-w-[8rem] shrink truncate text-[10px] text-zinc-500 dark:text-zinc-400"
-            />
-          ) : (
-            <ObservacaoPopover observacao={row.observacao} className="shrink-0" />
-          )}
+          {notesInline && observacaoText ? (
+            <span
+              className="min-w-0 max-w-[10rem] shrink truncate text-[10px] text-zinc-500 dark:text-zinc-400"
+              title={observacaoText}
+            >
+              {observacaoText}
+            </span>
+          ) : !notesInline && observacaoText ? (
+            <Tooltip content={observacaoText} side="top">
+              <span className="inline-flex shrink-0 rounded p-0.5 text-zinc-400">
+                <MessageSquareText className="size-3.5" strokeWidth={1.75} aria-hidden />
+              </span>
+            </Tooltip>
+          ) : null}
         </div>
       </td>
       {cadastroCategories.map((cat) => {
@@ -333,6 +346,11 @@ type QueueSectionProps = {
   onRegisterClick: () => void;
   onOpenFlowSettings: () => void;
   onEditRow: (row: AtendimentoLite) => void;
+  viewMode: QueueViewMode;
+  onViewModeChange: (mode: QueueViewMode) => void;
+  showNotesInline: boolean;
+  onShowNotesInlineChange: (value: boolean) => void;
+  onDeleteRow: (row: AtendimentoLite) => void | Promise<void>;
 };
 
 export function QueueSection({
@@ -354,8 +372,12 @@ export function QueueSection({
   onRegisterClick,
   onOpenFlowSettings,
   onEditRow,
+  viewMode,
+  onViewModeChange,
+  showNotesInline,
+  onShowNotesInlineChange,
+  onDeleteRow,
 }: QueueSectionProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [deleting, setDeleting] = useState<string | null>(null);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
   const observacoesAlwaysVisible = observacoesVisibility === "always";
@@ -384,12 +406,13 @@ export function QueueSection({
   }, [rows, kanbanColumns, priorityLawEnabled]);
 
   async function handleDelete(row: AtendimentoLite) {
-    if (!supabase || !confirm(`Excluir registro de “${row.nome ?? "cliente"}”?`)) return;
+    if (!confirm(`Excluir registro de “${row.nome ?? "cliente"}”?`)) return;
     setDeleting(row.id);
-    const { error } = await supabase.from("atendimentos_lite").delete().eq("id", row.id);
-    if (error) alert(error.message);
-    else onRefresh();
-    setDeleting(null);
+    try {
+      await onDeleteRow(row);
+    } finally {
+      setDeleting(null);
+    }
   }
 
   return (
@@ -414,6 +437,25 @@ export function QueueSection({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              aria-pressed={showNotesInline}
+              aria-label={showNotesInline ? "Ocultar observações inline" : "Mostrar observações inline"}
+              title={showNotesInline ? "Ocultar observações" : "Mostrar observações"}
+              onClick={() => onShowNotesInlineChange(!showNotesInline)}
+              className={`flex size-7 items-center justify-center rounded-md border transition ${
+                showNotesInline
+                  ? "border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-300"
+                  : "border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              }`}
+            >
+              {showNotesInline ? (
+                <Eye className="size-3.5" strokeWidth={1.75} aria-hidden />
+              ) : (
+                <EyeOff className="size-3.5" strokeWidth={1.75} aria-hidden />
+              )}
+            </button>
+
             <div
               className="flex overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-700"
               role="group"
@@ -421,7 +463,7 @@ export function QueueSection({
             >
               <button
                 type="button"
-                onClick={() => setViewMode("kanban")}
+                onClick={() => onViewModeChange("kanban")}
                 className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
                   viewMode === "kanban"
                     ? "bg-orange-500 text-white"
@@ -433,7 +475,7 @@ export function QueueSection({
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode("list")}
+                onClick={() => onViewModeChange("list")}
                 className={`flex items-center gap-1 border-l border-zinc-200 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition dark:border-zinc-700 ${
                   viewMode === "list"
                     ? "bg-orange-500 text-white"
@@ -520,6 +562,7 @@ export function QueueSection({
                       row={row}
                       isSel={row.id === selectedId}
                       priorityLawEnabled={priorityLawEnabled}
+                      showNotesInline={showNotesInline}
                       observacoesAlwaysVisible={observacoesAlwaysVisible}
                       cadastroCategories={enabledCategories}
                       cadastroLookups={cadastroLookups}
@@ -538,7 +581,7 @@ export function QueueSection({
             Nenhuma coluna de fluxo configurada.
           </p>
         ) : (
-          <div className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden pb-4 sf-scroll-y">
+          <div className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden pb-3 sf-scroll-x-hover">
             <div className="flex h-full min-h-full w-max min-w-full gap-2">
             {kanbanColumns.map((tab) => {
               const cards = columnRows[tab.id] ?? [];
@@ -548,15 +591,15 @@ export function QueueSection({
                   key={tab.id}
                   className="flex h-full min-h-0 max-h-full w-[240px] shrink-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50"
                 >
-                  <header className="shrink-0 border-y border-zinc-200 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800/80">
+                  <header className="shrink-0 border-y border-zinc-200 bg-zinc-100 px-2 py-0.5 dark:border-zinc-700 dark:bg-zinc-800/80">
                     <div className="flex items-center justify-between gap-1">
                       <h3
-                        className="truncate text-[9px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
+                        className="truncate text-[8px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
                         title={tab.label}
                       >
                         {tab.label}
                       </h3>
-                      <span className="shrink-0 font-mono text-[9px] font-semibold leading-none text-zinc-500 dark:text-zinc-400">
+                      <span className="shrink-0 font-mono text-[8px] font-medium leading-none text-zinc-500 dark:text-zinc-400">
                         {count}
                       </span>
                     </div>
@@ -573,6 +616,7 @@ export function QueueSection({
                             row={row}
                             isSel={row.id === selectedId}
                             priorityLawEnabled={priorityLawEnabled}
+                            showNotesInline={showNotesInline || observacoesAlwaysVisible}
                             meta={resolveKanbanMeta(row, enabledCategories, cadastroLookups)}
                             deleting={deleting}
                             onSelectId={onSelectId}

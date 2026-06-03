@@ -2,10 +2,17 @@
 
 import { ClientPanel } from "@/components/screenflow/client-panel";
 import { AppSidebar } from "@/components/screenflow/app-sidebar";
-import { QueueSection } from "@/components/screenflow/queue-section";
+import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
+import { KeyboardShortcutsModal } from "@/components/screenflow/keyboard-shortcuts-modal";
+import { ProMetricsPanel } from "@/components/screenflow/pro-metrics-panel";
+import { QueueSection, type QueueViewMode } from "@/components/screenflow/queue-section";
 import { RegistryPatientModal } from "@/components/screenflow/registry-patient-modal";
 import { SettingsHubModal } from "@/components/screenflow/settings-hub-modal";
 import { TvStrip } from "@/components/screenflow/tv-strip";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { purgeAtendimentoRecord } from "@/lib/purge-atendimento";
+import { isProPlan, LIFETIME_STORAGE_NOTICE, resolvePlanTier } from "@/lib/plan-tier";
+import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { buildCadastroLookups, type CadastroLookups } from "@/lib/cadastro-valores";
 import { SegmentConfigModal } from "@/components/screenflow/segment-config-modal";
 import { EditAtendimentoModal } from "@/components/screenflow/edit-atendimento-modal";
@@ -49,9 +56,19 @@ export default function Home() {
   const [tenantMetaLoaded, setTenantMetaLoaded] = useState(false);
   const [segmentBootstrapAttempted, setSegmentBootstrapAttempted] = useState(false);
   const [editRow, setEditRow] = useState<AtendimentoLite | null>(null);
+  const [queueViewMode, setQueueViewMode] = useState<QueueViewMode>("list");
+  const [showNotesInline, setShowNotesInline] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [quickCrud, setQuickCrud] = useState<{ title: string; table: string } | null>(null);
   const [, startTransition] = useTransition();
 
   const [tenantConfig, setTenantConfig] = useState<ResolvedTenantConfig>(() => mergeTenantConfig({}));
+
+  const planTier = useMemo(
+    () => resolvePlanTier(tenantConfig.planTier),
+    [tenantConfig.planTier]
+  );
+  const proActive = isProPlan(planTier);
   const [tvRows, setTvRows] = useState<{ id: string; nome: string | null }[]>([]);
   const [tvIdx, setTvIdx] = useState(0);
   const [tvAuto, setTvAuto] = useState(false);
@@ -514,9 +531,36 @@ export default function Home() {
     [supabase, selectedId, applyLocalPatch, refreshRows, tryProxyPatch]
   );
 
+  const purgeRow = useCallback(
+    async (row: AtendimentoLite) => {
+      if (!supabase) {
+        setLoadError("Supabase indisponível para excluir o registro.");
+        return;
+      }
+      setPending(true);
+      setLoadError(null);
+      const { ok, message } = await purgeAtendimentoRecord(supabase, row);
+      if (!ok) {
+        setLoadError(message ?? "Falha ao excluir registro.");
+      } else {
+        if (selectedId === row.id) setSelectedId(null);
+        setRows((prev) => prev.filter((r) => r.id !== row.id));
+        void refreshRows();
+      }
+      setPending(false);
+    },
+    [supabase, selectedId, refreshRows]
+  );
+
   const updateStatus = useCallback(
     async (status: string, options?: { clearSelection?: boolean }) => {
-      if (!selectedId) return;
+      if (!selectedId || !selected) return;
+
+      if (!proActive && status === STATUS_UPDATE.finalizar) {
+        await purgeRow(selected);
+        return;
+      }
+
       setPending(true);
       setLoadError(null);
 
@@ -551,11 +595,55 @@ export default function Home() {
         setPending(false);
       }
     },
-    [supabase, selectedId, refreshRows, tryProxyPatch]
+    [supabase, selectedId, selected, proActive, purgeRow, applyLocalPatch, tryProxyPatch]
+  );
+
+  const handleDeleteRow = useCallback(
+    async (row: AtendimentoLite) => {
+      if (!proActive) {
+        await purgeRow(row);
+        return;
+      }
+      if (!supabase) {
+        setLoadError("Supabase indisponível.");
+        return;
+      }
+      const { error } = await supabase.from("atendimentos_lite").delete().eq("id", row.id);
+      if (error) setLoadError(error.message);
+      else {
+        if (selectedId === row.id) setSelectedId(null);
+        void refreshRows();
+      }
+    },
+    [proActive, purgeRow, supabase, selectedId, refreshRows]
   );
 
   const canMutate =
     !pending && !!selectedId && (!!supabase || (!!mergedEnv.url && !!mergedEnv.anonKey));
+
+  const shortcutHandlers = useMemo(
+    () => ({
+      onChamar: () => {
+        if (canMutate) void updateStatus(STATUS_UPDATE.chamar);
+      },
+      onRechamar: () => {
+        if (canMutate) void updateStatus(STATUS_UPDATE.rechamar);
+      },
+      onFinalizar: () => {
+        if (canMutate) void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
+      },
+      onLimpar: () => setSelectedId(null),
+      onNovoRegistro: () => setRegistryOpen(true),
+      onToggleView: () => setQueueViewMode((m) => (m === "list" ? "kanban" : "list")),
+      onOpenSettings: () => openGeneralSettings(),
+      onCrudProfissionais: () => setQuickCrud({ title: "Equipe (profissionais)", table: "profissionais" }),
+      onCrudLocais: () => setQuickCrud({ title: "Locais", table: "locais" }),
+      onCrudServicos: () => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE }),
+    }),
+    [canMutate, updateStatus, openGeneralSettings]
+  );
+
+  useKeyboardShortcuts(shortcutHandlers, sessionReady && !envMissing);
 
   if (supabase && !sessionReady && !envMissing) {
     return (
@@ -566,14 +654,15 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-full min-w-0 flex-1 overflow-x-hidden overflow-y-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+    <div className="flex h-screen max-h-screen min-h-0 w-full max-w-full min-w-0 flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <AppSidebar
         onOpenSegment={() => setSegmentOpen(true)}
         onOpenSettings={openGeneralSettings}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
         onSignOut={() => void supabase?.auth.signOut()}
       />
 
-      <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-hidden overflow-y-hidden">
+      <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden">
         {envChecking && (
           <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-900/60 dark:text-zinc-400">
             Verificando variáveis do Supabase no servidor…
@@ -595,7 +684,11 @@ export default function Home() {
           </div>
         )}
 
-        <header className="grid w-full max-w-full shrink-0 gap-3 overflow-x-hidden border-b border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900 lg:grid-cols-2">
+        <div className="shrink-0 border-b border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
+          <ProMetricsPanel />
+        </div>
+
+        <header className="grid w-full max-w-full shrink-0 gap-2 overflow-x-hidden border-b border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900 lg:grid-cols-2">
           <ClientPanel
             selected={selected}
             loading={loading}
@@ -624,7 +717,7 @@ export default function Home() {
           />
         </header>
 
-        <main className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-hidden overflow-y-hidden p-3">
+        <main className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden p-2">
           <QueueSection
             rows={rows}
             queueTabs={visibleQueueTabs}
@@ -643,9 +736,33 @@ export default function Home() {
             onRegisterClick={() => setRegistryOpen(true)}
             onOpenFlowSettings={openFlowSettings}
             onEditRow={(row) => setEditRow(row)}
+            viewMode={queueViewMode}
+            onViewModeChange={setQueueViewMode}
+            showNotesInline={showNotesInline}
+            onShowNotesInlineChange={setShowNotesInline}
+            onDeleteRow={handleDeleteRow}
           />
+          {!proActive ? (
+            <p className="mt-1.5 shrink-0 rounded-lg border border-amber-200/70 bg-amber-50/80 px-2 py-1.5 text-[10px] leading-snug text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100">
+              {LIFETIME_STORAGE_NOTICE}
+            </p>
+          ) : null}
         </main>
       </div>
+
+      <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      {quickCrud && (
+        <CrudEntityModal
+          open
+          supabase={supabase}
+          title={quickCrud.title}
+          table={quickCrud.table}
+          tenantId={effectiveTenantId}
+          onClose={() => setQuickCrud(null)}
+          onSaved={() => void refreshRows()}
+        />
+      )}
 
       <SegmentConfigModal
         open={segmentOpen}
