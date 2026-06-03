@@ -4,12 +4,13 @@ import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valor
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
-  embedDocasCadastroFields,
+  buildDocasCategoryPatch,
   isDocasSegment,
   isDocasTextField,
+  mergeDocasObservacao,
   parseDocasCadastroFields,
 } from "@/lib/docas-logistics";
-import { embedObservacaoForQueueTab, formatObservacaoForDisplay, parseFilaTabId } from "@/lib/fila-preset";
+import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import type { CadastroCategoryEntry, ObservacoesVisibility } from "@/lib/tenant-config";
 import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -147,8 +148,14 @@ export const ClientPanel = memo(function ClientPanel({
   }
 
   function patchCategoryValue(categoryId: string, value: string) {
+    if (!selected) return;
     const next = { ...categoryValues, [categoryId]: value };
     setCategoryValues(next);
+    if (docasMode) {
+      const payload = buildDocasCategoryPatch(next, cadastroCategories, selected.observacao);
+      void onPatch(payload);
+      return;
+    }
     const payload = buildCadastroPayload(next, cadastroCategories);
     void onPatch(payload);
   }
@@ -158,12 +165,11 @@ export const ClientPanel = memo(function ClientPanel({
     const next = { ...categoryValues, [categoryId]: value };
     setCategoryValues(next);
     const docasFields = { ...parseDocasCadastroFields(selected.observacao), [categoryId]: value };
-    const tabId = parseFilaTabId(selected.observacao);
-    const tab = tabId ? { id: tabId, preset: "outros" as const } : undefined;
-    const observacao = embedDocasCadastroFields(
-      embedObservacaoForQueueTab(formatObservacaoForDisplay(selected.observacao), tab),
-      docasFields
-    );
+    const observacao = mergeDocasObservacao({
+      current: selected.observacao,
+      docasFields,
+      preserveTabWhenUnset: true,
+    });
     void onPatch({ observacao });
   }
 
@@ -254,6 +260,9 @@ export const ClientPanel = memo(function ClientPanel({
   const observacaoText = selected ? formatObservacaoForDisplay(selected.observacao) : "";
   const observacoesAlwaysVisible = observacoesVisibility === "always";
   const hasObs = !!observacaoText;
+  const docasPlaca =
+    docasMode && selected ? parseDocasCadastroFields(selected.observacao)["doc-c1"]?.trim() : null;
+  const selectedDisplayName = docasPlaca || selected?.nome?.trim() || null;
 
   return (
     <>
@@ -266,7 +275,7 @@ export const ClientPanel = memo(function ClientPanel({
             {selected ? (
               <>
                 <p className="shrink-0 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
-                  {selected.nome ?? "—"}
+                  {selectedDisplayName ?? "—"}
                 </p>
                 {observacoesAlwaysVisible && hasObs ? (
                   <span

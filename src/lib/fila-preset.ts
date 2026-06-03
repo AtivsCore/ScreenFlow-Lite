@@ -6,7 +6,21 @@ import type { QueueTabEntry } from "@/lib/tenant-config";
 const FILA_TAG_GLOBAL = /__sf_fila:[^\s_]+(?::[^\s_]+)?__/gi;
 
 /** Marcador de cadastro Docas em observação (textos livres — ver docas-logistics). */
-const DOCAS_DATA_TAG_GLOBAL = /__sf_docas:[^_\s]+__/gi;
+const DOCAS_DATA_TAG_GLOBAL = /__sf_docas:[\s\S]*?__/gi;
+
+/** Equivalência de ids de coluna Docas (estável ↔ legado `doc-t*`). */
+const DOCAS_KANBAN_TAB_EQUIV: Record<string, string> = {
+  em_operacao: "descarregando",
+  "doc-t1": "no_patio",
+  "doc-t2": "chamado",
+  "doc-t3": "descarregando",
+  "doc-t4": "em_conferencia",
+  "doc-t5": "liberado",
+};
+
+function normalizeKanbanTabId(id: string): string {
+  return DOCAS_KANBAN_TAB_EQUIV[id] ?? id;
+}
 
 const MARKER_PARSE = /^__sf_fila:([a-z]+)__(?:\r?\n|$)/i;
 const TAB_MARKER_PARSE = /^__sf_fila:tab:([a-z0-9-]+)__(?:\r?\n|$)/i;
@@ -132,6 +146,11 @@ export function rowMatchesQueueTab(row: RowForPreset, tab: QueueTabId): boolean 
 export function rowMatchesQueueTabEntry(row: RowForPreset, tab: Pick<QueueTabEntry, "id" | "preset">): boolean {
   if (tab.preset === "todos") return true;
   const tabId = parseFilaTabId(row.observacao);
-  if (tabId) return tabId === tab.id;
+  if (tabId) {
+    return normalizeKanbanTabId(tabId) === normalizeKanbanTabId(tab.id);
+  }
+  if (row.observacao?.includes("__sf_docas:") && normalizeKanbanTabId(tab.id) === "no_patio") {
+    return true;
+  }
   return rowMatchesQueueTab(row, tab.preset);
 }

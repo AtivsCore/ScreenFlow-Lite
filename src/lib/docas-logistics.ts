@@ -5,7 +5,12 @@ import {
   type CadastroLookups,
   type CadastroValores,
 } from "@/lib/cadastro-valores";
-import { embedFilaPreset, parseFilaTabId } from "@/lib/fila-preset";
+import {
+  embedFilaPreset,
+  formatObservacaoForDisplay,
+  parseFilaTabId,
+  parseFilaPreset,
+} from "@/lib/fila-preset";
 import { STATUS_UPDATE, type QueueTabId } from "@/lib/atendimentos-lite";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
 
@@ -51,7 +56,9 @@ export const DOCAS_TEXT_FIELD_IDS = ["doc-c1", "doc-c2"] as const;
 export const DOCAS_REQUIRED_CATEGORY_IDS = ["doc-c1"] as const;
 
 /** Marcador JSON em `observacao` para campos de texto livre (não vai para UUID). */
-export const DOCAS_DATA_TAG_RE = /__sf_docas:[^_\s]+__/gi;
+export const DOCAS_DATA_TAG_RE = /__sf_docas:[\s\S]*?__/gi;
+
+const DOCAS_DATA_PARSE = /__sf_docas:([\s\S]*?)__/i;
 
 const LEGACY_TAB_ALIASES: Record<string, DocasQueueTabId> = {
   em_operacao: DOCAS_QUEUE_TAB.DESCARREGANDO,
@@ -94,8 +101,18 @@ export function resolveDocasStepFromObservacao(
 export function findDocasQueueTab(
   queueTabs: Pick<QueueTabEntry, "id" | "label">[],
   tabId: DocasQueueTabId
-): QueueTabEntry | undefined {
-  return queueTabs.find((t) => t.id === tabId) as QueueTabEntry | undefined;
+): Pick<QueueTabEntry, "id" | "label"> | undefined {
+  return findDocasQueueTabByStep(queueTabs, tabId);
+}
+
+/** Resolve aba configurada pelo id estável ou alias legado (`doc-t1` … `doc-t5`). */
+export function findDocasQueueTabByStep(
+  queueTabs: Pick<QueueTabEntry, "id" | "label">[],
+  step: DocasQueueTabId
+): Pick<QueueTabEntry, "id" | "label"> | undefined {
+  const direct = queueTabs.find((t) => t.id === step);
+  if (direct) return direct;
+  return queueTabs.find((t) => normalizeDocasTabId(t.id) === step);
 }
 
 export function getDocasStepLabel(
@@ -132,7 +149,7 @@ export function parseDocasCadastroFields(
   observacao: string | null | undefined
 ): DocasCadastroFields {
   if (!observacao) return {};
-  const inline = observacao.match(/__sf_docas:([^_\s]+)__/i);
+  const inline = DOCAS_DATA_PARSE.exec(observacao);
   if (!inline?.[1]) return {};
   try {
     const parsed = JSON.parse(decodeURIComponent(inline[1])) as Record<string, unknown>;
@@ -162,6 +179,43 @@ export function embedDocasCadastroFields(
   return `${marker}\n${withoutTag}`;
 }
 
+/**
+ * Fusão segura: atualiza coluna (`__sf_fila:tab:…__`) e/ou dados do caminhão (`__sf_docas:…__`)
+ * sem apagar a outra tag nem o texto livre do usuário.
+ */
+export function mergeDocasObservacao(params: {
+  current?: string | null;
+  tab?: Pick<QueueTabEntry, "id"> & { preset?: QueueTabEntry["preset"] } | null;
+  docasFields?: DocasCadastroFields | null;
+  preserveTabWhenUnset?: boolean;
+}): string | null {
+  const current = params.current ?? null;
+  const docasFields =
+    params.docasFields !== undefined && params.docasFields !== null
+      ? params.docasFields
+      : parseDocasCadastroFields(current);
+  const userText = formatObservacaoForDisplay(current);
+
+  let withFila: string | null = userText || null;
+
+  if (params.tab) {
+    const rawPreset = params.tab.preset;
+    const preset: QueueTabId =
+      rawPreset === "todos" || !rawPreset ? "ordem" : (rawPreset as QueueTabId);
+    withFila = embedFilaPreset(withFila, preset, params.tab.id);
+  } else if (params.preserveTabWhenUnset !== false) {
+    const tabId = parseFilaTabId(current);
+    if (tabId) {
+      withFila = embedFilaPreset(withFila, "outros", tabId);
+    } else {
+      const preset = parseFilaPreset(current);
+      if (preset) withFila = embedFilaPreset(withFila, preset);
+    }
+  }
+
+  return embedDocasCadastroFields(withFila, docasFields);
+}
+
 /** Observação do novo registro: aba da fila + textos Docas + notas do usuário. */
 export function buildDocasRegistryObservacao(
   userObs: string | null,
@@ -169,8 +223,40 @@ export function buildDocasRegistryObservacao(
   tabId: string | undefined,
   docasFields: DocasCadastroFields
 ): string | null {
-  const withFila = embedFilaPreset(userObs || null, filaPreset, tabId);
-  return embedDocasCadastroFields(withFila, docasFields);
+  const preset: QueueTabId = filaPreset === "todos" ? "ordem" : filaPreset;
+  const tab = tabId ? { id: tabId, preset } : null;
+  return mergeDocasObservacao({
+    current: userObs || null,
+    tab,
+    docasFields,
+    preserveTabWhenUnset: false,
+  });
+}
+
+/** Patch de categorias UUID no painel sem sobrescrever marcadores na observação. */
+export function buildDocasCategoryPatch(
+  categoryValues: Record<string, string>,
+  categories: CadastroCategoryEntry[],
+  currentObservacao: string | null
+): ReturnType<typeof buildCadastroPayload> & { observacao: string | null } {
+  const selectOnly: Record<string, string> = {};
+  for (const cat of categories.filter((c) => c.enabled)) {
+    if (isDocasTextField(cat.id)) continue;
+    const v = categoryValues[cat.id]?.trim();
+    if (v) selectOnly[cat.id] = v;
+  }
+  const cadastroPayload = buildCadastroPayload(selectOnly, categories);
+  const docasFields = parseDocasCadastroFields(currentObservacao);
+  for (const id of DOCAS_TEXT_FIELD_IDS) {
+    const t = categoryValues[id]?.trim();
+    if (t) docasFields[id] = t;
+  }
+  const observacao = mergeDocasObservacao({
+    current: currentObservacao,
+    docasFields,
+    preserveTabWhenUnset: true,
+  });
+  return { ...cadastroPayload, observacao };
 }
 
 /** Separa textos livres (observação) de UUIDs válidos (cadastro_valores / FKs). */

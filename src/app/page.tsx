@@ -43,12 +43,11 @@ import {
   getDocasStepLabel,
   isDocasSegment,
   resolveDocasStepFromObservacao,
-  embedDocasCadastroFields,
-  parseDocasCadastroFields,
+  findDocasQueueTabByStep,
+  mergeDocasObservacao,
   shiftDocasStep,
   type DocasQueueTabId,
 } from "@/lib/docas-logistics";
-import { embedObservacaoForQueueTab, formatObservacaoForDisplay } from "@/lib/fila-preset";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
@@ -645,13 +644,12 @@ export default function Home() {
   const advanceDocasLogistics = useCallback(
     async (targetTabId: DocasQueueTabId, status?: string) => {
       if (!selectedId || !selected) return;
-      const tab = tenantConfig.queueTabs.find((t) => t.id === targetTabId);
+      const tab = findDocasQueueTabByStep(tenantConfig.queueTabs, targetTabId);
       if (!tab) return;
-      const docasFields = parseDocasCadastroFields(selected.observacao);
-      const observacao = embedDocasCadastroFields(
-        embedObservacaoForQueueTab(formatObservacaoForDisplay(selected.observacao), tab),
-        docasFields
-      );
+      const observacao = mergeDocasObservacao({
+        current: selected.observacao,
+        tab,
+      });
       const patch: {
         observacao: string | null;
         status?: string;
