@@ -4,14 +4,14 @@ import { ClientPanel } from "@/components/screenflow/client-panel";
 import { AppSidebar } from "@/components/screenflow/app-sidebar";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import { KeyboardShortcutsModal } from "@/components/screenflow/keyboard-shortcuts-modal";
-import { ProMetricsPanel } from "@/components/screenflow/pro-metrics-panel";
+import { ReportsModal } from "@/components/screenflow/reports-modal";
 import { QueueSection, type QueueViewMode } from "@/components/screenflow/queue-section";
 import { RegistryPatientModal } from "@/components/screenflow/registry-patient-modal";
 import { SettingsHubModal } from "@/components/screenflow/settings-hub-modal";
 import { TvStrip } from "@/components/screenflow/tv-strip";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { purgeAtendimentoRecord } from "@/lib/purge-atendimento";
-import { isProPlan, LIFETIME_STORAGE_NOTICE, resolvePlanTier } from "@/lib/plan-tier";
+import { isProPlan, resolvePlanTier } from "@/lib/plan-tier";
 import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { buildCadastroLookups, type CadastroLookups } from "@/lib/cadastro-valores";
 import { SegmentConfigModal } from "@/components/screenflow/segment-config-modal";
@@ -59,6 +59,7 @@ export default function Home() {
   const [queueViewMode, setQueueViewMode] = useState<QueueViewMode>("list");
   const [showNotesInline, setShowNotesInline] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
   const [quickCrud, setQuickCrud] = useState<{ title: string; table: string } | null>(null);
   const [, startTransition] = useTransition();
 
@@ -659,6 +660,7 @@ export default function Home() {
         onOpenSegment={() => setSegmentOpen(true)}
         onOpenSettings={openGeneralSettings}
         onOpenShortcuts={() => setShortcutsOpen(true)}
+        onOpenReports={() => setReportsOpen(true)}
         onSignOut={() => void supabase?.auth.signOut()}
       />
 
@@ -683,10 +685,6 @@ export default function Home() {
             {loadError}
           </div>
         )}
-
-        <div className="shrink-0 border-b border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-900">
-          <ProMetricsPanel />
-        </div>
 
         <header className="grid w-full max-w-full shrink-0 gap-2 overflow-x-hidden border-b border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900 lg:grid-cols-2">
           <ClientPanel
@@ -742,15 +740,12 @@ export default function Home() {
             onShowNotesInlineChange={setShowNotesInline}
             onDeleteRow={handleDeleteRow}
           />
-          {!proActive ? (
-            <p className="mt-1.5 shrink-0 rounded-lg border border-amber-200/70 bg-amber-50/80 px-2 py-1.5 text-[10px] leading-snug text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100">
-              {LIFETIME_STORAGE_NOTICE}
-            </p>
-          ) : null}
         </main>
       </div>
 
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <ReportsModal open={reportsOpen} onClose={() => setReportsOpen(false)} proActive={proActive} />
 
       {quickCrud && (
         <CrudEntityModal

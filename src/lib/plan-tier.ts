@@ -1,5 +1,9 @@
 export type PlanTier = "lifetime" | "pro";
 
+/** Link comercial WhatsApp para ativação do Plano PRO. */
+export const WHATSAPP_PRO_UPGRADE_URL =
+  "https://api.whatsapp.com/send/?phone=5541995282939&text=Quero+ativar+o+Plano+PRO+no+ScreenFlow";
+
 /** Plano comercial: histórico, métricas e integrações. Padrão = vitalício (sem retenção). */
 export function resolvePlanTier(tenantPlan?: PlanTier | null): PlanTier {
   const env = process.env.NEXT_PUBLIC_SCREENFLOW_PLAN?.trim().toLowerCase();
@@ -11,6 +15,3 @@ export function resolvePlanTier(tenantPlan?: PlanTier | null): PlanTier {
 export function isProPlan(tier: PlanTier): boolean {
   return tier === "pro";
 }
-
-export const LIFETIME_STORAGE_NOTICE =
-  "Modo Vitalício Ativo: O sistema opera em tempo real e não armazena histórico no banco após a finalização. Para acompanhar relatórios, estatísticas diárias e integrar com o Google Planilhas, assine o Plano PRO.";
