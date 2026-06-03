@@ -18,7 +18,7 @@ import {
 import { isProPlan } from "@/lib/plan-tier";
 import { GoogleSheetsProSection } from "@/components/screenflow/google-sheets-pro-section";
 import { Briefcase, ChevronDown, ChevronUp, ClipboardList, Layers, MapPin, Palette, Settings2, UserCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import { SecuritySettingsPanel } from "@/components/screenflow/security-settings-panel";
@@ -70,13 +70,30 @@ export function SettingsHubModal({
   const [newTabPreset, setNewTabPreset] = useState<QueueTabPreset>("ordem");
   const [customTypeName, setCustomTypeName] = useState("");
 
+  const prevOpenRef = useRef(false);
+
   useEffect(() => {
-    if (open) {
+    if (open && !prevOpenRef.current) {
       setDraft(config);
       setSaveErr(null);
       setMainTab(initialMainTab);
     }
+    prevOpenRef.current = open;
   }, [open, config, initialMainTab]);
+
+  useEffect(() => {
+    if (!open) return;
+    setMainTab(initialMainTab);
+  }, [open, initialMainTab]);
+
+  useEffect(() => {
+    if (!open) return;
+    setDraft((prev) =>
+      prev.observacoesVisibility === config.observacoesVisibility
+        ? prev
+        : { ...prev, observacoesVisibility: config.observacoesVisibility }
+    );
+  }, [open, config.observacoesVisibility]);
 
   function moveQueueTab(index: number, direction: -1 | 1) {
     const swapIndex = index + direction;
@@ -121,6 +138,14 @@ export function SettingsHubModal({
 
   function updateDraft(mut: (d: ResolvedTenantConfig) => ResolvedTenantConfig) {
     setDraft((d) => enforcePriorityLaw(mut(d)));
+  }
+
+  function setObservacoesVisibilityLive(visibility: "hidden" | "always") {
+    setDraft((d) => {
+      const next = enforcePriorityLaw({ ...d, observacoesVisibility: visibility });
+      onConfigUpdated(next);
+      return next;
+    });
   }
 
   function patchCadastroCategories(mut: (cats: CadastroCategoryEntry[]) => CadastroCategoryEntry[]) {
@@ -405,7 +430,7 @@ export function SettingsHubModal({
                     name="obs-vis"
                     className="accent-zinc-900 dark:accent-zinc-100"
                     checked={draft.observacoesVisibility === "hidden"}
-                    onChange={() => updateDraft((d) => ({ ...d, observacoesVisibility: "hidden" }))}
+                    onChange={() => setObservacoesVisibilityLive("hidden")}
                   />
                   <span>Ocultar informações (padrão) — ícone de olho na fila</span>
                 </label>
@@ -415,7 +440,7 @@ export function SettingsHubModal({
                     name="obs-vis"
                     className="accent-zinc-900 dark:accent-zinc-100"
                     checked={draft.observacoesVisibility === "always"}
-                    onChange={() => updateDraft((d) => ({ ...d, observacoesVisibility: "always" }))}
+                    onChange={() => setObservacoesVisibilityLive("always")}
                   />
                   <span>Deixar observações sempre visíveis na linha</span>
                 </label>

@@ -69,7 +69,7 @@ type KanbanCardProps = {
   row: AtendimentoLite;
   isSel: boolean;
   priorityLawEnabled: boolean;
-  showNotesInline: boolean;
+  notesInline: boolean;
   meta: ReturnType<typeof resolveKanbanMeta>;
   deleting: string | null;
   onSelectId: (id: string) => void;
@@ -81,7 +81,7 @@ const KanbanCard = memo(function KanbanCard({
   row,
   isSel,
   priorityLawEnabled,
-  showNotesInline,
+  notesInline,
   meta,
   deleting,
   onSelectId,
@@ -145,7 +145,7 @@ const KanbanCard = memo(function KanbanCard({
             {contextLine}
           </p>
         ) : null}
-        {showNotesInline && observacaoText ? (
+        {notesInline && observacaoText ? (
           <p className="line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{observacaoText}</p>
         ) : null}
       </div>
@@ -164,7 +164,7 @@ const KanbanCard = memo(function KanbanCard({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
-          {!showNotesInline && observacaoText ? (
+          {!notesInline && observacaoText ? (
             <Tooltip content={observacaoText} side="top" align="end">
               <button
                 type="button"
@@ -204,8 +204,7 @@ type QueueRowProps = {
   row: AtendimentoLite;
   isSel: boolean;
   priorityLawEnabled: boolean;
-  showNotesInline: boolean;
-  observacoesAlwaysVisible: boolean;
+  notesInline: boolean;
   cadastroCategories: CadastroCategoryEntry[];
   cadastroLookups: CadastroLookups;
   deleting: string | null;
@@ -218,8 +217,7 @@ const QueueRow = memo(function QueueRow({
   row,
   isSel,
   priorityLawEnabled,
-  showNotesInline,
-  observacoesAlwaysVisible,
+  notesInline,
   cadastroCategories,
   cadastroLookups,
   deleting,
@@ -231,7 +229,6 @@ const QueueRow = memo(function QueueRow({
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
     : null;
   const observacaoText = formatObservacaoForDisplay(row.observacao);
-  const notesInline = showNotesInline || observacoesAlwaysVisible;
   const legacyCtx = {
     profissional_id: row.profissional_id,
     local_id: row.local_id,
@@ -348,8 +345,7 @@ type QueueSectionProps = {
   onEditRow: (row: AtendimentoLite) => void;
   viewMode: QueueViewMode;
   onViewModeChange: (mode: QueueViewMode) => void;
-  showNotesInline: boolean;
-  onShowNotesInlineChange: (value: boolean) => void;
+  onObservacoesVisibilityChange: (visibility: ObservacoesVisibility) => void;
   onDeleteRow: (row: AtendimentoLite) => void | Promise<void>;
 };
 
@@ -374,13 +370,12 @@ export function QueueSection({
   onEditRow,
   viewMode,
   onViewModeChange,
-  showNotesInline,
-  onShowNotesInlineChange,
+  onObservacoesVisibilityChange,
   onDeleteRow,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
-  const observacoesAlwaysVisible = observacoesVisibility === "always";
+  const notesInline = observacoesVisibility === "always";
   const colSpan = 4 + enabledCategories.length;
 
   const flowTabs = useMemo(() => queueTabs.filter((t) => t.preset !== "todos"), [queueTabs]);
@@ -439,17 +434,17 @@ export function QueueSection({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              aria-pressed={showNotesInline}
-              aria-label={showNotesInline ? "Ocultar observações inline" : "Mostrar observações inline"}
-              title={showNotesInline ? "Ocultar observações" : "Mostrar observações"}
-              onClick={() => onShowNotesInlineChange(!showNotesInline)}
+              aria-pressed={notesInline}
+              aria-label={notesInline ? "Ocultar observações na fila" : "Mostrar observações na fila"}
+              title={notesInline ? "Ocultar observações" : "Mostrar observações"}
+              onClick={() => onObservacoesVisibilityChange(notesInline ? "hidden" : "always")}
               className={`flex size-7 items-center justify-center rounded-md border transition ${
-                showNotesInline
+                notesInline
                   ? "border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-300"
                   : "border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
               }`}
             >
-              {showNotesInline ? (
+              {notesInline ? (
                 <Eye className="size-3.5" strokeWidth={1.75} aria-hidden />
               ) : (
                 <EyeOff className="size-3.5" strokeWidth={1.75} aria-hidden />
@@ -562,8 +557,7 @@ export function QueueSection({
                       row={row}
                       isSel={row.id === selectedId}
                       priorityLawEnabled={priorityLawEnabled}
-                      showNotesInline={showNotesInline}
-                      observacoesAlwaysVisible={observacoesAlwaysVisible}
+                      notesInline={notesInline}
                       cadastroCategories={enabledCategories}
                       cadastroLookups={cadastroLookups}
                       deleting={deleting}
@@ -616,7 +610,7 @@ export function QueueSection({
                             row={row}
                             isSel={row.id === selectedId}
                             priorityLawEnabled={priorityLawEnabled}
-                            showNotesInline={showNotesInline || observacoesAlwaysVisible}
+                            notesInline={notesInline}
                             meta={resolveKanbanMeta(row, enabledCategories, cadastroLookups)}
                             deleting={deleting}
                             onSelectId={onSelectId}

@@ -1,7 +1,8 @@
 "use client";
 
 import { ClientPanel } from "@/components/screenflow/client-panel";
-import { AppSidebar } from "@/components/screenflow/app-sidebar";
+import { AgendaProView } from "@/components/screenflow/agenda-pro-view";
+import { AppSidebar, type AppView } from "@/components/screenflow/app-sidebar";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import { KeyboardShortcutsModal } from "@/components/screenflow/keyboard-shortcuts-modal";
 import { FinalizeConfirmModal } from "@/components/screenflow/finalize-confirm-modal";
@@ -29,7 +30,13 @@ import {
 import { buildServicoLookup } from "@/lib/atendimentos-rest";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { isNetworkLikeFetchFailure } from "@/lib/supabase";
-import { mergeTenantConfig, configuracoesForSupabase, resolveVisibleQueueTabs, type ResolvedTenantConfig } from "@/lib/tenant-config";
+import {
+  mergeTenantConfig,
+  configuracoesForSupabase,
+  resolveVisibleQueueTabs,
+  type ObservacoesVisibility,
+  type ResolvedTenantConfig,
+} from "@/lib/tenant-config";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
@@ -59,11 +66,13 @@ export default function Home() {
   const [segmentBootstrapAttempted, setSegmentBootstrapAttempted] = useState(false);
   const [editRow, setEditRow] = useState<AtendimentoLite | null>(null);
   const [queueViewMode, setQueueViewMode] = useState<QueueViewMode>("list");
-  const [showNotesInline, setShowNotesInline] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [proUpgradeOpen, setProUpgradeOpen] = useState(false);
+  const [proUpgradeTitle, setProUpgradeTitle] = useState<string | undefined>();
+  const [proUpgradeDescription, setProUpgradeDescription] = useState<string | undefined>();
+  const [appView, setAppView] = useState<AppView>("fila");
   const [quickCrud, setQuickCrud] = useState<{ title: string; table: string } | null>(null);
   const [, startTransition] = useTransition();
 
@@ -74,6 +83,10 @@ export default function Home() {
     [tenantConfig.planTier]
   );
   const proActive = isProPlan(planTier);
+
+  const setObservacoesVisibility = useCallback((visibility: ObservacoesVisibility) => {
+    setTenantConfig((prev) => ({ ...prev, observacoesVisibility: visibility }));
+  }, []);
   const [tvRows, setTvRows] = useState<{ id: string; nome: string | null }[]>([]);
   const [tvIdx, setTvIdx] = useState(0);
   const [tvAuto, setTvAuto] = useState(false);
@@ -648,7 +661,19 @@ export default function Home() {
     [canMutate, selectedId, updateStatus, openGeneralSettings]
   );
 
-  useKeyboardShortcuts(shortcutHandlers, sessionReady && !envMissing);
+  useKeyboardShortcuts(shortcutHandlers, sessionReady && !envMissing && appView === "fila");
+
+  const handleOpenAgenda = useCallback(() => {
+    if (!proActive) {
+      setProUpgradeTitle("Agenda no Plano PRO");
+      setProUpgradeDescription(
+        "Gerencie agendamentos futuros com data e hora livres, edite e exclua compromissos e planeje a operação com antecedência. Ative o Plano PRO pelo WhatsApp."
+      );
+      setProUpgradeOpen(true);
+      return;
+    }
+    setAppView((v) => (v === "agenda" ? "fila" : "agenda"));
+  }, [proActive]);
 
   if (supabase && !sessionReady && !envMissing) {
     return (
@@ -661,10 +686,12 @@ export default function Home() {
   return (
     <div className="flex h-screen max-h-screen min-h-0 w-full max-w-full min-w-0 flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <AppSidebar
+        activeView={appView}
         onOpenSegment={() => setSegmentOpen(true)}
         onOpenSettings={openGeneralSettings}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenReports={() => setReportsOpen(true)}
+        onOpenAgenda={handleOpenAgenda}
         onSignOut={() => void supabase?.auth.signOut()}
       />
 
@@ -690,7 +717,9 @@ export default function Home() {
           </div>
         )}
 
-        <header className="grid w-full max-w-full shrink-0 gap-2 overflow-x-hidden border-b border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900 lg:grid-cols-2">
+        <header
+          className={`grid w-full max-w-full shrink-0 gap-2 overflow-x-hidden border-b border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900 ${appView === "fila" ? "lg:grid-cols-2" : "hidden"}`}
+        >
           <ClientPanel
             selected={selected}
             loading={loading}
@@ -720,30 +749,44 @@ export default function Home() {
         </header>
 
         <main className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden p-2">
-          <QueueSection
-            rows={rows}
-            queueTabs={visibleQueueTabs}
-            tabCounts={tabCounts}
-            queueTabId={queueTabId}
-            onQueueTabId={setQueueTabId}
-            priorityLawEnabled={tenantConfig.priorityLawEnabled}
-            observacoesVisibility={tenantConfig.observacoesVisibility}
-            cadastroCategories={tenantConfig.cadastroCategories}
-            cadastroLookups={cadastroLookups}
-            selectedId={selectedId}
-            onSelectId={handleSelectId}
-            loading={loading}
-            supabase={supabase}
-            onRefresh={() => void refreshRows()}
-            onRegisterClick={() => setRegistryOpen(true)}
-            onOpenFlowSettings={openFlowSettings}
-            onEditRow={(row) => setEditRow(row)}
-            viewMode={queueViewMode}
-            onViewModeChange={setQueueViewMode}
-            showNotesInline={showNotesInline}
-            onShowNotesInlineChange={setShowNotesInline}
-            onDeleteRow={handleDeleteRow}
-          />
+          {appView === "agenda" ? (
+            <AgendaProView
+              rows={rows}
+              loading={loading}
+              supabase={supabase}
+              tenantId={tenantIdForInsert}
+              tenantConfig={tenantConfig}
+              cadastroCategories={tenantConfig.cadastroCategories}
+              cadastroLookups={cadastroLookups}
+              onRefresh={() => void refreshRows()}
+              onEditRow={(row) => setEditRow(row)}
+              onDeleteRow={handleDeleteRow}
+            />
+          ) : (
+            <QueueSection
+              rows={rows}
+              queueTabs={visibleQueueTabs}
+              tabCounts={tabCounts}
+              queueTabId={queueTabId}
+              onQueueTabId={setQueueTabId}
+              priorityLawEnabled={tenantConfig.priorityLawEnabled}
+              observacoesVisibility={tenantConfig.observacoesVisibility}
+              cadastroCategories={tenantConfig.cadastroCategories}
+              cadastroLookups={cadastroLookups}
+              selectedId={selectedId}
+              onSelectId={handleSelectId}
+              loading={loading}
+              supabase={supabase}
+              onRefresh={() => void refreshRows()}
+              onRegisterClick={() => setRegistryOpen(true)}
+              onOpenFlowSettings={openFlowSettings}
+              onEditRow={(row) => setEditRow(row)}
+              viewMode={queueViewMode}
+              onViewModeChange={setQueueViewMode}
+              onObservacoesVisibilityChange={setObservacoesVisibility}
+              onDeleteRow={handleDeleteRow}
+            />
+          )}
         </main>
       </div>
 
@@ -762,6 +805,10 @@ export default function Home() {
         }}
         onRequestReturnUpgrade={() => {
           setFinalizeOpen(false);
+          setProUpgradeTitle("Agendar retorno no Plano PRO");
+          setProUpgradeDescription(
+            "Registre retornos e acompanhe reagendamentos com histórico completo. O modo vitalício finaliza sem retenção — ative o Plano PRO para agendar retornos."
+          );
           setProUpgradeOpen(true);
         }}
       />
@@ -769,8 +816,8 @@ export default function Home() {
       <ProUpgradeModal
         open={proUpgradeOpen}
         onClose={() => setProUpgradeOpen(false)}
-        title="Agendar retorno no Plano PRO"
-        description="Registre retornos e acompanhe reagendamentos com histórico completo. O modo vitalício finaliza sem retenção — ative o Plano PRO para agendar retornos."
+        title={proUpgradeTitle}
+        description={proUpgradeDescription}
       />
 
       {quickCrud && (
@@ -817,7 +864,6 @@ export default function Home() {
         supabase={supabase}
         tenantId={tenantIdForInsert}
         tenantConfig={tenantConfig}
-        proActive={proActive}
         onRegistered={(meta) => {
           if (meta?.queueTabId) setQueueTabId(meta.queueTabId);
           void refreshRows();

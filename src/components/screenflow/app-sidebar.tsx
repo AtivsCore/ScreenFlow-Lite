@@ -1,21 +1,33 @@
 "use client";
 
 import { ReportsSidebarIcon } from "@/components/screenflow/reports-modal";
-import { Keyboard, LayoutGrid, LogOut, Settings } from "lucide-react";
+import { CalendarDays, Keyboard, LayoutGrid, LogOut, Settings } from "lucide-react";
+
+export type AppView = "fila" | "agenda";
 
 type AppSidebarProps = {
+  activeView?: AppView;
   onOpenSegment: () => void;
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
   onOpenReports: () => void;
+  onOpenAgenda: () => void;
   onSignOut?: () => void;
 };
 
+function navButtonClass(active: boolean) {
+  return active
+    ? "bg-zinc-300/90 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-50"
+    : "text-zinc-700 hover:bg-zinc-300/80 dark:text-zinc-300 dark:hover:bg-zinc-800";
+}
+
 export function AppSidebar({
+  activeView = "fila",
   onOpenSegment,
   onOpenSettings,
   onOpenShortcuts,
   onOpenReports,
+  onOpenAgenda,
   onSignOut,
 }: AppSidebarProps) {
   return (
@@ -27,17 +39,26 @@ export function AppSidebar({
         <button
           type="button"
           onClick={onOpenReports}
-          className="flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-zinc-700 transition hover:bg-zinc-300/80 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          className={`flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition ${navButtonClass(false)}`}
         >
           <ReportsSidebarIcon />
           <span className="text-[8px] font-semibold uppercase leading-none tracking-wide">Relatórios</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenAgenda}
+          className={`flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition ${navButtonClass(activeView === "agenda")}`}
+        >
+          <CalendarDays className="size-5" strokeWidth={1.75} aria-hidden />
+          <span className="text-[8px] font-semibold uppercase leading-none tracking-wide">Agenda</span>
         </button>
       </div>
 
       <button
         type="button"
         onClick={onOpenShortcuts}
-        className="mb-1 flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-zinc-700 transition hover:bg-zinc-300/80 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        className={`mb-1 flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition ${navButtonClass(false)}`}
       >
         <Keyboard className="size-5" strokeWidth={1.75} aria-hidden />
         <span className="text-[8px] font-semibold uppercase leading-none tracking-wide">Atalhos</span>
