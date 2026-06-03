@@ -16,9 +16,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import {
   DOCAS_QUEUE_TAB,
+  DOCAS_REQUIRED_CATEGORY_IDS,
   isDocasRequiredCategory,
   isDocasSegment,
-  DOCAS_REQUIRED_CATEGORY_IDS,
+  isDocasTextField,
 } from "@/lib/docas-logistics";
 import { buildHoraMarcadaTodayIso } from "@/lib/hora-marcada";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
@@ -52,7 +53,38 @@ export function RegistryPatientModal({
     [tenantConfig.cadastroCategories]
   );
 
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
+
+  const effectiveTenantId = useMemo(
+    () => sessionTenantId ?? (tenantId?.trim() || resolveDefaultTenantId()),
+    [sessionTenantId, tenantId]
+  );
+
+  const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
+
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
+    const requiredMark =
+      docasMode && isDocasRequiredCategory(cat.id) ? (
+        <span className="text-red-600 dark:text-red-400"> *</span>
+      ) : null;
+
+    if (docasMode && isDocasTextField(cat.id)) {
+      return (
+        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          {cat.label}
+          {requiredMark}
+          <input
+            type="text"
+            value={formValues[cat.id] ?? ""}
+            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+          />
+        </label>
+      );
+    }
+
     const options =
       cat.tableKey === "profissionais"
         ? profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }))
@@ -63,9 +95,7 @@ export function RegistryPatientModal({
     return (
       <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
         {cat.label}
-        {docasMode && isDocasRequiredCategory(cat.id) ? (
-          <span className="text-red-600 dark:text-red-400"> *</span>
-        ) : null}
+        {requiredMark}
         <select
           value={formValues[cat.id] ?? ""}
           onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
@@ -81,17 +111,6 @@ export function RegistryPatientModal({
       </label>
     );
   }
-
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
-
-  const effectiveTenantId = useMemo(
-    () => sessionTenantId ?? (tenantId?.trim() || resolveDefaultTenantId()),
-    [sessionTenantId, tenantId]
-  );
-
-  const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
 
   const initialTriagemTabId = useMemo(() => {
     if (docasMode) {

@@ -156,11 +156,11 @@ const DOCAS = makePreset(
   "docas",
   "🚛",
   "Carga e Descarga (Gestão de Docas)",
-  "Transportadora/Placa, Motorista/Telefone, Tipo de Carga, Doca Alocada, Conferente Responsável",
-  "NO PÁTIO → CHAMADO P/ DOCA → EM OPERAÇÃO → LIBERADO",
+  "Transportadora / Placa, Motorista / Telefone, Tipo de Carga, Doca Alocada, Conferente Responsável",
+  "NO PÁTIO → CHAMADO → DESCARREGANDO → CONFERÊNCIA → LIBERADO",
   [
-    cat("doc-c1", "Transportadora/Placa", "profissionais"),
-    cat("doc-c2", "Motorista/Telefone", "profissionais"),
+    cat("doc-c1", "Transportadora / Placa", "profissionais"),
+    cat("doc-c2", "Motorista / Telefone", "profissionais"),
     cat("doc-c3", "Tipo de Carga", "servicos"),
     cat("doc-c4", "Doca Alocada", "locais"),
     cat("doc-c5", "Conferente Responsável", "servicos"),
@@ -168,7 +168,8 @@ const DOCAS = makePreset(
   [
     docasTab(DOCAS_QUEUE_TAB.NO_PATIO, "NO PÁTIO (ESPERA)"),
     docasTab(DOCAS_QUEUE_TAB.CHAMADO, "CHAMADO P/ DOCA"),
-    docasTab(DOCAS_QUEUE_TAB.EM_OPERACAO, "EM OPERAÇÃO"),
+    docasTab(DOCAS_QUEUE_TAB.DESCARREGANDO, "DESCARREGANDO"),
+    docasTab(DOCAS_QUEUE_TAB.EM_CONFERENCIA, "EM CONFERÊNCIA"),
     docasTab(DOCAS_QUEUE_TAB.LIBERADO, "LIBERADO"),
   ],
   { showClienteNome: false, showHoraMarcada: false, showObservacao: true }

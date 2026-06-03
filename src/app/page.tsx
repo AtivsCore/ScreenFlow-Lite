@@ -37,7 +37,15 @@ import {
   type ObservacoesVisibility,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
-import { DOCAS_QUEUE_TAB, isDocasSegment, type DocasQueueTabId } from "@/lib/docas-logistics";
+import {
+  DOCAS_QUEUE_TAB,
+  docasStepTvStatus,
+  getDocasStepLabel,
+  isDocasSegment,
+  resolveDocasStepFromObservacao,
+  shiftDocasStep,
+  type DocasQueueTabId,
+} from "@/lib/docas-logistics";
 import { embedObservacaoForQueueTab, formatObservacaoForDisplay } from "@/lib/fila-preset";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
@@ -622,6 +630,16 @@ export default function Home() {
 
   const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
 
+  const selectedDocasStep = useMemo(() => {
+    if (!docasLogisticsActive || !selected) return null;
+    return resolveDocasStepFromObservacao(selected.observacao);
+  }, [docasLogisticsActive, selected]);
+
+  const selectedDocasStepLabel = useMemo(() => {
+    if (!selectedDocasStep) return null;
+    return getDocasStepLabel(selectedDocasStep, tenantConfig.queueTabs);
+  }, [selectedDocasStep, tenantConfig.queueTabs]);
+
   const advanceDocasLogistics = useCallback(
     async (targetTabId: DocasQueueTabId, status?: string) => {
       if (!selectedId || !selected) return;
@@ -640,6 +658,58 @@ export default function Home() {
     },
     [selectedId, selected, tenantConfig.queueTabs, patchAtendimento]
   );
+
+  const shiftSelectedDocasStep = useCallback(
+    (delta: -1 | 1) => {
+      if (!selectedDocasStep) return;
+      const target = shiftDocasStep(selectedDocasStep, delta);
+      if (!target) return;
+      void advanceDocasLogistics(target, docasStepTvStatus(target));
+    },
+    [selectedDocasStep, advanceDocasLogistics]
+  );
+
+  useEffect(() => {
+    if (!docasLogisticsActive || !selected) return;
+    const step = resolveDocasStepFromObservacao(selected.observacao);
+    if (tenantConfig.queueTabs.some((t) => t.id === step)) {
+      setQueueTabId(step);
+    }
+  }, [docasLogisticsActive, selected, tenantConfig.queueTabs]);
+
+  useEffect(() => {
+    if (!sessionReady || envMissing || appView !== "fila" || !docasLogisticsActive) return;
+
+    function isTypingTarget(target: EventTarget | null): boolean {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+    }
+
+    function onArrowKey(e: KeyboardEvent) {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (!selectedId || pending) return;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        shiftSelectedDocasStep(1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        shiftSelectedDocasStep(-1);
+      }
+    }
+
+    window.addEventListener("keydown", onArrowKey, { capture: true });
+    return () => window.removeEventListener("keydown", onArrowKey, { capture: true });
+  }, [
+    sessionReady,
+    envMissing,
+    appView,
+    docasLogisticsActive,
+    selectedId,
+    pending,
+    shiftSelectedDocasStep,
+  ]);
 
   const handleDeleteRow = useCallback(
     async (row: AtendimentoLite) => {
@@ -677,7 +747,7 @@ export default function Home() {
       onRechamar: () => {
         if (!canMutate) return;
         if (docasLogisticsActive) {
-          void advanceDocasLogistics(DOCAS_QUEUE_TAB.EM_OPERACAO, STATUS_UPDATE.rechamar);
+          void advanceDocasLogistics(DOCAS_QUEUE_TAB.DESCARREGANDO, STATUS_UPDATE.rechamar);
         } else {
           void updateStatus(STATUS_UPDATE.rechamar);
         }
@@ -698,7 +768,15 @@ export default function Home() {
       onCrudLocais: () => setQuickCrud({ title: "Locais", table: "locais" }),
       onCrudServicos: () => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE }),
     }),
-    [canMutate, selectedId, docasLogisticsActive, advanceDocasLogistics, updateStatus, openGeneralSettings]
+    [
+      canMutate,
+      selectedId,
+      docasLogisticsActive,
+      advanceDocasLogistics,
+      updateStatus,
+      openGeneralSettings,
+      shiftSelectedDocasStep,
+    ]
   );
 
   useKeyboardShortcuts(shortcutHandlers, sessionReady && !envMissing && appView === "fila");
@@ -780,7 +858,7 @@ export default function Home() {
             }}
             onRechamar={() => {
               if (docasLogisticsActive) {
-                void advanceDocasLogistics(DOCAS_QUEUE_TAB.EM_OPERACAO, STATUS_UPDATE.rechamar);
+                void advanceDocasLogistics(DOCAS_QUEUE_TAB.DESCARREGANDO, STATUS_UPDATE.rechamar);
               } else {
                 void updateStatus(STATUS_UPDATE.rechamar);
               }
@@ -850,6 +928,14 @@ export default function Home() {
               onViewModeChange={setQueueViewMode}
               onObservacoesVisibilityChange={setObservacoesVisibility}
               onDeleteRow={handleDeleteRow}
+              docasLogisticsActive={docasLogisticsActive}
+              docasStepLabel={selectedDocasStepLabel}
+              docasCurrentStep={selectedDocasStep}
+              docasCanGoPrev={selectedDocasStep ? shiftDocasStep(selectedDocasStep, -1) !== null : false}
+              docasCanGoNext={selectedDocasStep ? shiftDocasStep(selectedDocasStep, 1) !== null : false}
+              docasStepperDisabled={pending}
+              onDocasStepPrev={() => shiftSelectedDocasStep(-1)}
+              onDocasStepNext={() => shiftSelectedDocasStep(1)}
             />
           )}
         </main>

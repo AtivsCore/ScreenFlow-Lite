@@ -7,6 +7,8 @@ import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { DocasStatusStepper } from "@/components/screenflow/docas-status-stepper";
+import type { DocasQueueTabId } from "@/lib/docas-logistics";
 import { Columns3, Eye, EyeOff, LayoutList, MessageSquareText, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
@@ -364,6 +366,14 @@ type QueueSectionProps = {
   onViewModeChange: (mode: QueueViewMode) => void;
   onObservacoesVisibilityChange: (visibility: ObservacoesVisibility) => void;
   onDeleteRow: (row: AtendimentoLite) => void | Promise<void>;
+  docasLogisticsActive?: boolean;
+  docasStepLabel?: string | null;
+  docasCurrentStep?: DocasQueueTabId | null;
+  docasCanGoPrev?: boolean;
+  docasCanGoNext?: boolean;
+  docasStepperDisabled?: boolean;
+  onDocasStepPrev?: () => void;
+  onDocasStepNext?: () => void;
 };
 
 export function QueueSection({
@@ -389,6 +399,14 @@ export function QueueSection({
   onViewModeChange,
   onObservacoesVisibilityChange,
   onDeleteRow,
+  docasLogisticsActive = false,
+  docasStepLabel = null,
+  docasCurrentStep = null,
+  docasCanGoPrev = false,
+  docasCanGoNext = false,
+  docasStepperDisabled = false,
+  onDocasStepPrev,
+  onDocasStepNext,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
@@ -435,8 +453,19 @@ export function QueueSection({
     >
       <div className="shrink-0 border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <h2 className="text-xs font-semibold text-zinc-800 dark:text-zinc-100">Fila em tempo real</h2>
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <h2 className="shrink-0 text-xs font-semibold text-zinc-800 dark:text-zinc-100">Fila em tempo real</h2>
+            {docasLogisticsActive && docasCurrentStep && docasStepLabel && onDocasStepPrev && onDocasStepNext ? (
+              <DocasStatusStepper
+                stepLabel={docasStepLabel}
+                currentStep={docasCurrentStep}
+                canGoPrev={docasCanGoPrev}
+                canGoNext={docasCanGoNext}
+                disabled={docasStepperDisabled || !selectedId}
+                onPrev={onDocasStepPrev}
+                onNext={onDocasStepNext}
+              />
+            ) : null}
             <button
               type="button"
               title="Configurar fluxo de abas"
