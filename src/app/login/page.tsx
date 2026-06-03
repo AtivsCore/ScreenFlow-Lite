@@ -5,16 +5,20 @@ import {
   buildForgotPasswordWhatsAppUrl,
   SANDBOX_ADMIN_RESET_EMAIL,
 } from "@/lib/forgot-password-sandbox";
-import { buildMailtoHref, openNativeMailClient } from "@/lib/mailto";
+import {
+  copyLoginSupportEmail,
+  LOGIN_SUPPORT_EMAIL_DEFAULT,
+  openLoginSupportGmailCompose,
+} from "@/lib/login-support-email";
 import { Mail, MessageCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const LOGIN_SUPPORT_WHATSAPP_URL =
   "https://wa.me/5541995282939?text=Olá!%20Preciso%20de%20suporte%20com%20o%20acesso%20ao%20sistema.";
 
 const LOGIN_SUPPORT_EMAIL =
-  process.env.NEXT_PUBLIC_LOGIN_SUPPORT_EMAIL?.trim() || "appercomp@gmail.com";
+  process.env.NEXT_PUBLIC_LOGIN_SUPPORT_EMAIL?.trim() || LOGIN_SUPPORT_EMAIL_DEFAULT;
 
 function resolvePostLoginPath(nextParam: string | null): string {
   if (!nextParam) return "/";
@@ -28,14 +32,7 @@ export default function LoginPage() {
   const nextPath = resolvePostLoginPath(searchParams.get("next"));
   const denyReason = searchParams.get("reason");
   const { supabase, envChecking, envMissing } = useMergedSupabaseClient();
-  const loginSupportMailtoHref = useMemo(
-    () =>
-      buildMailtoHref(LOGIN_SUPPORT_EMAIL, {
-        subject: "Suporte - Dificuldade no Acesso",
-        body: "Olá, estou com dificuldades para fazer login. Descreva seu problema aqui.",
-      }),
-    []
-  );
+  const [emailCopiedToast, setEmailCopiedToast] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +40,13 @@ export default function LoginPage() {
   const [resetSent, setResetSent] = useState(false);
   const [whatsappSupport, setWhatsappSupport] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
+
+  async function handleSupportEmailClick() {
+    await copyLoginSupportEmail(LOGIN_SUPPORT_EMAIL);
+    setEmailCopiedToast(true);
+    openLoginSupportGmailCompose();
+    window.setTimeout(() => setEmailCopiedToast(false), 3500);
+  }
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
@@ -268,18 +272,23 @@ export default function LoginPage() {
               <MessageCircle className="size-4 shrink-0" strokeWidth={2} aria-hidden />
               WhatsApp
             </a>
-            <a
-              href={loginSupportMailtoHref}
-              onClick={(e) => {
-                e.preventDefault();
-                openNativeMailClient(loginSupportMailtoHref);
-              }}
+            <button
+              type="button"
+              onClick={() => void handleSupportEmailClick()}
               className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
               <Mail className="size-4 shrink-0" strokeWidth={2} aria-hidden />
               E-mail
-            </a>
+            </button>
           </div>
+          {emailCopiedToast ? (
+            <p
+              role="status"
+              className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-medium text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200"
+            >
+              E-mail de suporte copiado!
+            </p>
+          ) : null}
         </div>
       </div>
     </div>

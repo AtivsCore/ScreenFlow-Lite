@@ -146,7 +146,12 @@ const KanbanCard = memo(function KanbanCard({
           </p>
         ) : null}
         {notesInline && observacaoText ? (
-          <p className="line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">{observacaoText}</p>
+          <p
+            title={observacaoText}
+            className="line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400"
+          >
+            {observacaoText}
+          </p>
         ) : null}
       </div>
 
@@ -260,14 +265,16 @@ const QueueRow = memo(function QueueRow({
         {formatHoraMarcada(row.hora_marcada)}
       </td>
       <td className="overflow-hidden px-2 py-1.5">
-        <div className="flex min-w-0 items-center gap-1.5">
-          {priorityLawEnabled && prioStyle ? (
-            <span className={`shrink-0 whitespace-nowrap ${prioStyle.badge}`}>{prioStyle.label}</span>
-          ) : null}
-          <span className="min-w-0 flex-1 truncate font-medium" title={row.nome ?? undefined}>
-            {row.nome ?? "—"}
-          </span>
-          <div className="w-[200px] shrink-0">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            {priorityLawEnabled && prioStyle ? (
+              <span className={`shrink-0 whitespace-nowrap ${prioStyle.badge}`}>{prioStyle.label}</span>
+            ) : null}
+            <span className="min-w-0 truncate font-medium" title={row.nome ?? undefined}>
+              {row.nome ?? "—"}
+            </span>
+          </div>
+          <div className="ml-12 w-[200px] shrink-0 sm:ml-16">
             {notesInline && observacaoText ? (
               <span
                 className="block truncate text-[10px] text-zinc-500 dark:text-zinc-400"

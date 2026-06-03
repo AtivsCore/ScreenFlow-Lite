@@ -65,6 +65,7 @@ export default function Home() {
   const [tenantMetaLoaded, setTenantMetaLoaded] = useState(false);
   const [segmentBootstrapAttempted, setSegmentBootstrapAttempted] = useState(false);
   const [editRow, setEditRow] = useState<AtendimentoLite | null>(null);
+  const [editFromAgenda, setEditFromAgenda] = useState(false);
   const [queueViewMode, setQueueViewMode] = useState<QueueViewMode>("list");
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
@@ -759,7 +760,10 @@ export default function Home() {
               cadastroCategories={tenantConfig.cadastroCategories}
               cadastroLookups={cadastroLookups}
               onRefresh={() => void refreshRows()}
-              onEditRow={(row) => setEditRow(row)}
+              onEditRow={(row) => {
+                setEditFromAgenda(true);
+                setEditRow(row);
+              }}
               onDeleteRow={handleDeleteRow}
             />
           ) : (
@@ -780,7 +784,10 @@ export default function Home() {
               onRefresh={() => void refreshRows()}
               onRegisterClick={() => setRegistryOpen(true)}
               onOpenFlowSettings={openFlowSettings}
-              onEditRow={(row) => setEditRow(row)}
+              onEditRow={(row) => {
+                setEditFromAgenda(false);
+                setEditRow(row);
+              }}
               viewMode={queueViewMode}
               onViewModeChange={setQueueViewMode}
               onObservacoesVisibilityChange={setObservacoesVisibility}
@@ -873,9 +880,13 @@ export default function Home() {
       <EditAtendimentoModal
         open={!!editRow}
         row={editRow}
-        onClose={() => setEditRow(null)}
+        onClose={() => {
+          setEditRow(null);
+          setEditFromAgenda(false);
+        }}
         supabase={supabase}
         tenantConfig={tenantConfig}
+        allowFullDatetime={proActive && editFromAgenda}
         onSaved={() => void refreshRows()}
       />
     </div>

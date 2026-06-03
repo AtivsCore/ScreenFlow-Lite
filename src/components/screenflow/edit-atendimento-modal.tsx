@@ -10,6 +10,11 @@ import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-val
 import { formatObservacaoForDisplay, embedObservacaoForQueueTab, resolveRowQueueTabId } from "@/lib/fila-preset";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { fetchServicos } from "@/lib/fetch-servicos";
+import {
+  datetimeLocalToIso,
+  isoToTimeInputValue,
+  mergeHoraMarcadaPreserveDate,
+} from "@/lib/hora-marcada";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
@@ -24,6 +29,8 @@ type EditAtendimentoModalProps = {
   onClose: () => void;
   supabase: SupabaseClient | null;
   tenantConfig: ResolvedTenantConfig;
+  /** Data/hora completa só na Agenda PRO; na fila diária usa apenas horário (HH:MM). */
+  allowFullDatetime?: boolean;
   onSaved: () => void;
 };
 
@@ -32,6 +39,7 @@ type FormProps = {
   onClose: () => void;
   supabase: SupabaseClient;
   tenantConfig: ResolvedTenantConfig;
+  allowFullDatetime: boolean;
   onSaved: () => void;
 };
 
@@ -43,7 +51,7 @@ function toDatetimeLocal(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: FormProps) {
+function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDatetime, onSaved }: FormProps) {
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
   const queueTabs = tenantConfig.queueTabs;
@@ -69,7 +77,9 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: 
   const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
   const [nomeCliente, setNomeCliente] = useState(row.nome ?? "");
   const [formValues, setFormValues] = useState<Record<string, string>>(initialFormValues);
-  const [horaMarcada, setHoraMarcada] = useState(() => toDatetimeLocal(row.hora_marcada));
+  const [horaMarcada, setHoraMarcada] = useState(() =>
+    allowFullDatetime ? toDatetimeLocal(row.hora_marcada) : isoToTimeInputValue(row.hora_marcada)
+  );
   const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>(() =>
     resolveClassificacaoPrioridade(row.classificacao_prioridade, row.prioridade)
   );
@@ -171,8 +181,11 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: 
 
     const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
     if (wantsHora && horaMarcada.trim()) {
-      const d = new Date(horaMarcada);
-      patch.hora_marcada = Number.isNaN(d.getTime()) ? horaMarcada.trim() : d.toISOString();
+      if (allowFullDatetime) {
+        patch.hora_marcada = datetimeLocalToIso(horaMarcada) ?? horaMarcada.trim();
+      } else {
+        patch.hora_marcada = mergeHoraMarcadaPreserveDate(row.hora_marcada, horaMarcada);
+      }
     } else if (triagemTab?.preset === "encaixe") {
       patch.hora_marcada = null;
     }
@@ -240,9 +253,9 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: 
 
       {(rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Horário marcado
+          {allowFullDatetime ? "Data e hora do agendamento" : "Horário marcado (somente hora)"}
           <input
-            type="datetime-local"
+            type={allowFullDatetime ? "datetime-local" : "time"}
             value={horaMarcada}
             onChange={(e) => setHoraMarcada(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
@@ -289,16 +302,18 @@ export function EditAtendimentoModal({
   onClose,
   supabase,
   tenantConfig,
+  allowFullDatetime = false,
   onSaved,
 }: EditAtendimentoModalProps) {
   return (
     <Modal open={open} title="Editar registro" onClose={onClose} widthClassName="max-w-md">
       {open && row && supabase ? (
         <EditAtendimentoForm
-          key={row.id}
+          key={`${row.id}-${allowFullDatetime ? "agenda" : "fila"}`}
           row={row}
           supabase={supabase}
           tenantConfig={tenantConfig}
+          allowFullDatetime={allowFullDatetime}
           onClose={onClose}
           onSaved={onSaved}
         />

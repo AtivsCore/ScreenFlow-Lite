@@ -45,3 +45,25 @@ export function datetimeLocalToIso(value: string): string | null {
   if (Number.isNaN(d.getTime())) return value.trim();
   return d.toISOString();
 }
+
+/** Aplica HH:MM preservando o dia (e mês/ano) já gravados em `originalIso`. */
+export function mergeHoraMarcadaPreserveDate(
+  originalIso: string | null | undefined,
+  timeHHMM: string
+): string | null {
+  const trimmed = timeHHMM.trim();
+  if (!trimmed) return null;
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (!m) return trimmed;
+
+  const base = new Date();
+  if (originalIso) {
+    const parsed = Date.parse(originalIso);
+    if (!Number.isNaN(parsed)) {
+      const d = new Date(parsed);
+      base.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+  }
+  base.setHours(Number(m[1]), Number(m[2]), m[3] ? Number(m[3]) : 0, 0);
+  return base.toISOString();
+}
