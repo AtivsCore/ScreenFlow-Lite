@@ -43,6 +43,7 @@ import {
   getDocasStepLabel,
   isDocasSegment,
   resolveDocasStepFromObservacao,
+  filterDocasQueueRowsForPlan,
   findDocasQueueTabByStep,
   mergeDocasObservacao,
   shiftDocasStep,
@@ -268,9 +269,16 @@ export default function Home() {
     [tenantConfig]
   );
 
+  const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
+
+  const queueDisplayRows = useMemo(() => {
+    if (!docasLogisticsActive) return rows;
+    return filterDocasQueueRowsForPlan(rows, planTier);
+  }, [rows, docasLogisticsActive, planTier]);
+
   const tabCounts = useMemo(
-    () => countActiveByQueueTab(rows, visibleQueueTabs),
-    [rows, visibleQueueTabs]
+    () => countActiveByQueueTab(queueDisplayRows, visibleQueueTabs),
+    [queueDisplayRows, visibleQueueTabs]
   );
 
   const selected = useMemo(
@@ -629,8 +637,6 @@ export default function Home() {
     [supabase, selectedId, selected, proActive, purgeRow, applyLocalPatch, tryProxyPatch]
   );
 
-  const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
-
   const selectedDocasStep = useMemo(() => {
     if (!docasLogisticsActive || !selected) return null;
     return resolveDocasStepFromObservacao(selected.observacao);
@@ -905,7 +911,7 @@ export default function Home() {
             />
           ) : (
             <QueueSection
-              rows={rows}
+              rows={queueDisplayRows}
               queueTabs={visibleQueueTabs}
               tabCounts={tabCounts}
               queueTabId={queueTabId}

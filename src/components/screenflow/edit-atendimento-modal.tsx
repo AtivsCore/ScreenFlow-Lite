@@ -7,7 +7,18 @@ import {
   type ClassificacaoPrioridade,
 } from "@/lib/classificacao-prioridade";
 import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-valores";
-import { formatObservacaoForDisplay, embedObservacaoForQueueTab, resolveRowQueueTabId } from "@/lib/fila-preset";
+import {
+  buildDocasSavePayload,
+  isDocasSegment,
+  isDocasTextField,
+  mergeDocasObservacao,
+  parseDocasCadastroFields,
+} from "@/lib/docas-logistics";
+import {
+  embedObservacaoForQueueTab,
+  formatObservacaoForDisplay,
+  resolveRowQueueTabId,
+} from "@/lib/fila-preset";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import {
@@ -18,6 +29,7 @@ import {
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
+import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
@@ -59,9 +71,29 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
   );
+  const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
 
   const initialTriagemTabId = resolveRowQueueTabId(row, queueTabs) || queueTabs[0]?.id || "";
   const initialFormValues = useMemo(() => {
+    if (docasMode) {
+      const docasFields = parseDocasCadastroFields(row.observacao);
+      const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
+        profissional_id: row.profissional_id,
+        local_id: row.local_id,
+        especialidade_id: row.especialidade_id,
+      });
+      const out: Record<string, string> = {};
+      for (const cat of enabledCategories) {
+        if (isDocasTextField(cat.id)) {
+          const t = docasFields[cat.id];
+          if (t) out[cat.id] = t;
+        } else {
+          const v = hydrated[cat.id];
+          if (v) out[cat.id] = v;
+        }
+      }
+      return out;
+    }
     const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
       profissional_id: row.profissional_id,
       local_id: row.local_id,
@@ -72,7 +104,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       if (v) out[k] = v;
     }
     return out;
-  }, [row, tenantConfig.cadastroCategories]);
+  }, [row, tenantConfig.cadastroCategories, docasMode, enabledCategories]);
 
   const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
   const [nomeCliente, setNomeCliente] = useState(row.nome ?? "");
@@ -119,11 +151,28 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
+    if (docasMode) return;
     const tab = queueTabs.find((t) => t.id === tabId);
     if (tab?.preset !== "hora") setHoraMarcada("");
   }
 
+  const showDocasHoraAgendada = docasMode;
+
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
+    if (docasMode && isDocasTextField(cat.id)) {
+      return (
+        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          {cat.label}
+          <input
+            type="text"
+            value={formValues[cat.id] ?? ""}
+            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+          />
+        </label>
+      );
+    }
+
     const options =
       cat.tableKey === "profissionais"
         ? profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }))
@@ -167,26 +216,39 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       }
     }
 
-    const cadastroPayload = buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
-
-    const patch: Record<string, unknown> = {
-      ...cadastroPayload,
-      observacao: embedObservacaoForQueueTab(observacaoBase.trim() || null, triagemTab),
-    };
+    const patch: Record<string, unknown> = docasMode
+      ? (() => {
+          const { cadastroPayload, docasFields } = buildDocasSavePayload(
+            formValues,
+            tenantConfig.cadastroCategories
+          );
+          const observacao = mergeDocasObservacao({
+            current: row.observacao,
+            tab: triagemTab,
+            docasFields,
+            preserveTabWhenUnset: true,
+            userObservacaoText: observacaoBase.trim() || null,
+          });
+          return { ...cadastroPayload, observacao };
+        })()
+      : {
+          ...buildCadastroPayload(formValues, tenantConfig.cadastroCategories),
+          observacao: embedObservacaoForQueueTab(observacaoBase.trim() || null, triagemTab),
+        };
 
     if (law) {
       patch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
       patch.classificacao_prioridade = classificacao;
     }
 
-    const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
+    const wantsHora = docasMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
     if (wantsHora && horaMarcada.trim()) {
-      if (allowFullDatetime) {
+      if (allowFullDatetime && !docasMode) {
         patch.hora_marcada = datetimeLocalToIso(horaMarcada) ?? horaMarcada.trim();
       } else {
         patch.hora_marcada = mergeHoraMarcadaPreserveDate(row.hora_marcada, horaMarcada);
       }
-    } else if (triagemTab?.preset === "encaixe") {
+    } else if (!docasMode && triagemTab?.preset === "encaixe") {
       patch.hora_marcada = null;
     }
 
@@ -208,6 +270,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     queueTabs.length > 0 ||
     enabledCategories.length > 0 ||
     rf.showHoraMarcada ||
+    showDocasHoraAgendada ||
     triagemTab?.preset === "hora" ||
     law ||
     rf.showObservacao;
@@ -251,11 +314,20 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
 
       {enabledCategories.map((cat) => renderCategoryField(cat))}
 
-      {(rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
+      {(showDocasHoraAgendada || rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {allowFullDatetime ? "Data e hora do agendamento" : "Horário marcado (somente hora)"}
+          {showDocasHoraAgendada ? (
+            <span className="flex items-center gap-1.5">
+              <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
+              Horário agendado
+            </span>
+          ) : allowFullDatetime ? (
+            "Data e hora do agendamento"
+          ) : (
+            "Horário marcado (somente hora)"
+          )}
           <input
-            type={allowFullDatetime ? "datetime-local" : "time"}
+            type={showDocasHoraAgendada || !allowFullDatetime ? "time" : "datetime-local"}
             value={horaMarcada}
             onChange={(e) => setHoraMarcada(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"

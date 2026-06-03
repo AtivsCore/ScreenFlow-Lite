@@ -13,6 +13,7 @@ import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import { useEffect, useMemo, useState } from "react";
+import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import {
   buildDocasRegistryObservacao,
@@ -186,11 +187,13 @@ export function RegistryPatientModal({
 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
+    if (docasMode) return;
     const tab = queueTabs.find((t) => t.id === tabId);
     if (tab?.preset !== "hora") setHoraMarcada("");
   }
 
-  const showHoraHoje = triagemTab?.preset === "hora";
+  const showDocasHoraAgendada = docasMode;
+  const showHoraHoje = !docasMode && triagemTab?.preset === "hora";
 
   async function submitViaApi(
     pacienteNome: string,
@@ -284,10 +287,10 @@ export function RegistryPatientModal({
         ...cadastroPayload,
       };
 
-      const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;
+      const wantsHora = docasMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
       if (wantsHora && horaMarcada.trim()) {
         payload.hora_marcada = buildHoraMarcadaTodayIso(horaMarcada);
-      } else if (triagemTab?.preset === "encaixe") {
+      } else if (!docasMode && triagemTab?.preset === "encaixe") {
         payload.hora_marcada = null;
       }
 
@@ -324,6 +327,7 @@ export function RegistryPatientModal({
     queueTabs.length > 0 ||
     enabledCategories.length > 0 ||
     rf.showHoraMarcada ||
+    showDocasHoraAgendada ||
     law ||
     rf.showObservacao;
 
@@ -378,6 +382,21 @@ export function RegistryPatientModal({
         ) : null}
 
         {enabledCategories.map((cat) => renderCategoryField(cat))}
+
+        {showDocasHoraAgendada ? (
+          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            <span className="flex items-center gap-1.5">
+              <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
+              Horário agendado
+            </span>
+            <input
+              type="time"
+              value={horaMarcada}
+              onChange={(e) => setHoraMarcada(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            />
+          </label>
+        ) : null}
 
         {law ? (
           <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />

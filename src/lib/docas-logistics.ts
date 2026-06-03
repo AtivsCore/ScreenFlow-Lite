@@ -11,7 +11,8 @@ import {
   parseFilaTabId,
   parseFilaPreset,
 } from "@/lib/fila-preset";
-import { STATUS_UPDATE, type QueueTabId } from "@/lib/atendimentos-lite";
+import { STATUS_UPDATE, type AtendimentoLite, type QueueTabId } from "@/lib/atendimentos-lite";
+import { isProPlan, type PlanTier } from "@/lib/plan-tier";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
 
 /** Slug do segmento licenciado no painel Master (`segmento_definido` / `segmentoAplicado`). */
@@ -51,6 +52,9 @@ export const DOCAS_STATUS_TAG_WIDTH_CLASS = "w-[11.75rem]";
 
 /** Campos de texto livre no modal Novo registro (não usam `<select>`). */
 export const DOCAS_TEXT_FIELD_IDS = ["doc-c1", "doc-c2"] as const;
+
+/** Metadado interno: instante em que o card entrou na coluna Liberado (filtro vitalício). */
+export const DOCAS_META_LIBERADO_EM = "liberado_em";
 
 /** Única categoria obrigatória no primeiro cadastro (Placa). */
 export const DOCAS_REQUIRED_CATEGORY_IDS = ["doc-c1"] as const;
@@ -188,13 +192,18 @@ export function mergeDocasObservacao(params: {
   tab?: Pick<QueueTabEntry, "id"> & { preset?: QueueTabEntry["preset"] } | null;
   docasFields?: DocasCadastroFields | null;
   preserveTabWhenUnset?: boolean;
+  /** Texto livre do usuário (textarea); se omitido, extrai de `current`. */
+  userObservacaoText?: string | null;
 }): string | null {
   const current = params.current ?? null;
   const docasFields =
     params.docasFields !== undefined && params.docasFields !== null
       ? params.docasFields
       : parseDocasCadastroFields(current);
-  const userText = formatObservacaoForDisplay(current);
+  const userText =
+    params.userObservacaoText !== undefined
+      ? (params.userObservacaoText?.trim() || "")
+      : formatObservacaoForDisplay(current);
 
   let withFila: string | null = userText || null;
 
@@ -213,7 +222,53 @@ export function mergeDocasObservacao(params: {
     }
   }
 
-  return embedDocasCadastroFields(withFila, docasFields);
+  const fieldsWithTabMeta = applyDocasTabSideEffects(docasFields, params.tab);
+  return embedDocasCadastroFields(withFila, fieldsWithTabMeta);
+}
+
+/** Ao entrar em Liberado, grava timestamp para retenção do plano vitalício. */
+function applyDocasTabSideEffects(
+  docasFields: DocasCadastroFields,
+  tab?: Pick<QueueTabEntry, "id"> | null
+): DocasCadastroFields {
+  if (!tab) return docasFields;
+  if (normalizeDocasTabId(tab.id) !== DOCAS_QUEUE_TAB.LIBERADO) return docasFields;
+  return { ...docasFields, [DOCAS_META_LIBERADO_EM]: new Date().toISOString() };
+}
+
+/** Início do dia civil atual (fuso local). */
+function startOfTodayMs(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/**
+ * Plano vitalício (ou inferior ao PRO): oculta liberados de dias anteriores na fila Docas.
+ * PRO mantém histórico visível na coluna Liberado.
+ */
+export function isDocasLiberadoRowHiddenForLifetime(
+  row: Pick<AtendimentoLite, "observacao" | "created_at">,
+  planTier: PlanTier
+): boolean {
+  if (isProPlan(planTier)) return false;
+  if (resolveDocasStepFromObservacao(row.observacao) !== DOCAS_QUEUE_TAB.LIBERADO) return false;
+
+  const fields = parseDocasCadastroFields(row.observacao);
+  const refIso = fields[DOCAS_META_LIBERADO_EM] ?? row.created_at;
+  if (!refIso) return false;
+
+  const refMs = Date.parse(refIso);
+  if (Number.isNaN(refMs)) return false;
+  return refMs < startOfTodayMs();
+}
+
+/** Filtra linhas da fila Kanban Docas conforme retenção do plano (não afeta outros segmentos). */
+export function filterDocasQueueRowsForPlan(
+  rows: AtendimentoLite[],
+  planTier: PlanTier
+): AtendimentoLite[] {
+  return rows.filter((r) => !isDocasLiberadoRowHiddenForLifetime(r, planTier));
 }
 
 /** Observação do novo registro: aba da fila + textos Docas + notas do usuário. */
