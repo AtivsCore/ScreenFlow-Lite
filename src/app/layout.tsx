@@ -38,7 +38,7 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
+      <body className="flex min-h-full w-full max-w-full flex-col overflow-x-hidden">
         <SupabaseEnvProvider value={supabasePublic}>{children}</SupabaseEnvProvider>
       </body>
     </html>

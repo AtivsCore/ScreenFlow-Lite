@@ -7,9 +7,11 @@ import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Columns3, LayoutList, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
+import { Columns3, LayoutList, MessageSquareText, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 import { ObservacaoPopover } from "@/components/screenflow/observacao-popover";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 
 type ViewMode = "list" | "kanban";
 
@@ -91,6 +93,8 @@ const KanbanCard = memo(function KanbanCard({
   const statusLabel = normalizeQueueStatusLabel(row.status);
   const clientName = row.nome?.trim() || "—";
   const contextLine = formatKanbanContextLine(meta);
+  const horaMarcadaLabel = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : null;
+  const observacaoText = formatObservacaoForDisplay(row.observacao);
 
   return (
     <article
@@ -143,10 +147,30 @@ const KanbanCard = memo(function KanbanCard({
       </div>
 
       <div className="mt-0.5 flex items-center justify-between gap-1">
-        <span className={`text-[9px] font-semibold uppercase leading-none tracking-wide ${queueStatusStyle(statusLabel)}`}>
-          {statusLabel}
-        </span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            className={`shrink-0 text-[9px] font-semibold uppercase leading-none tracking-wide ${queueStatusStyle(statusLabel)}`}
+          >
+            {statusLabel}
+          </span>
+          {horaMarcadaLabel ? (
+            <span className="truncate text-[11px] leading-none text-zinc-500 dark:text-zinc-500" title={horaMarcadaLabel}>
+              {horaMarcadaLabel}
+            </span>
+          ) : null}
+        </div>
         <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
+          {observacaoText ? (
+            <Tooltip content={observacaoText} side="top" align="end">
+              <button
+                type="button"
+                aria-label="Ver observação"
+                className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-300"
+              >
+                <MessageSquareText className="size-3.5" strokeWidth={1.75} />
+              </button>
+            </Tooltip>
+          ) : null}
           <button
             type="button"
             title="Editar"
@@ -369,9 +393,10 @@ export function QueueSection({
   }
 
   return (
+    <TooltipProvider>
     <div
       id={id}
-      className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      className="flex h-full min-h-0 w-full max-w-full flex-1 flex-col overflow-x-hidden overflow-y-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
     >
       <div className="shrink-0 border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -461,7 +486,7 @@ export function QueueSection({
         ) : null}
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2">
+      <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-hidden overflow-y-hidden p-2">
         {loading ? (
           <p className="flex flex-1 items-center justify-center text-xs text-zinc-500">Carregando registros…</p>
         ) : viewMode === "list" ? (
@@ -513,14 +538,15 @@ export function QueueSection({
             Nenhuma coluna de fluxo configurada.
           </p>
         ) : (
-          <div className="flex h-0 min-h-0 min-w-0 flex-1 gap-2 overflow-hidden">
+          <div className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden pb-4 sf-scroll-y">
+            <div className="flex h-full min-h-full w-max min-w-full gap-2">
             {kanbanColumns.map((tab) => {
               const cards = columnRows[tab.id] ?? [];
               const count = tabCounts[tab.id] ?? cards.length;
               return (
                 <section
                   key={tab.id}
-                  className="flex h-full min-h-0 max-h-full min-w-[240px] max-w-[260px] flex-1 basis-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50"
+                  className="flex h-full min-h-0 max-h-full w-[240px] shrink-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50"
                 >
                   <header className="shrink-0 border-y border-zinc-200 bg-zinc-100 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800/80">
                     <div className="flex items-center justify-between gap-1">
@@ -560,9 +586,11 @@ export function QueueSection({
                 </section>
               );
             })}
+            </div>
           </div>
         )}
       </div>
     </div>
+    </TooltipProvider>
   );
 }
