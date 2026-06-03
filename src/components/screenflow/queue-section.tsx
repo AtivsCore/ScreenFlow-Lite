@@ -253,32 +253,36 @@ const QueueRow = memo(function QueueRow({
         isSel ? "bg-zinc-100 dark:bg-zinc-800/60" : ""
       } ${prioStyle?.rowAccent ?? ""}`}
     >
-      <td className="whitespace-nowrap px-2 py-1.5 font-mono text-zinc-500 dark:text-zinc-400">
+      <td className="w-[100px] overflow-hidden truncate whitespace-nowrap px-2 py-1.5 font-mono text-zinc-500 dark:text-zinc-400">
         {formatCreatedAt(row.created_at)}
       </td>
-      <td className="whitespace-nowrap px-2 py-1.5 font-mono font-medium text-zinc-800 dark:text-zinc-200">
+      <td className="w-[110px] overflow-hidden truncate whitespace-nowrap px-2 py-1.5 font-mono font-medium text-zinc-800 dark:text-zinc-200">
         {formatHoraMarcada(row.hora_marcada)}
       </td>
-      <td className="px-2 py-1.5">
-        <div className="flex min-w-0 items-center gap-2">
+      <td className="overflow-hidden px-2 py-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
           {priorityLawEnabled && prioStyle ? (
             <span className={`shrink-0 whitespace-nowrap ${prioStyle.badge}`}>{prioStyle.label}</span>
           ) : null}
-          <span className="min-w-0 truncate font-medium">{row.nome ?? "—"}</span>
-          {notesInline && observacaoText ? (
-            <span
-              className="min-w-0 max-w-[10rem] shrink truncate text-[10px] text-zinc-500 dark:text-zinc-400"
-              title={observacaoText}
-            >
-              {observacaoText}
-            </span>
-          ) : !notesInline && observacaoText ? (
-            <Tooltip content={observacaoText} side="top">
-              <span className="inline-flex shrink-0 rounded p-0.5 text-zinc-400">
-                <MessageSquareText className="size-3.5" strokeWidth={1.75} aria-hidden />
+          <span className="min-w-0 flex-1 truncate font-medium" title={row.nome ?? undefined}>
+            {row.nome ?? "—"}
+          </span>
+          <div className="w-[200px] shrink-0">
+            {notesInline && observacaoText ? (
+              <span
+                className="block truncate text-[10px] text-zinc-500 dark:text-zinc-400"
+                title={observacaoText}
+              >
+                {observacaoText}
               </span>
-            </Tooltip>
-          ) : null}
+            ) : !notesInline && observacaoText ? (
+              <Tooltip content={observacaoText} side="top">
+                <span className="inline-flex rounded p-0.5 text-zinc-400">
+                  <MessageSquareText className="size-3.5" strokeWidth={1.75} aria-hidden />
+                </span>
+              </Tooltip>
+            ) : null}
+          </div>
         </div>
       </td>
       {cadastroCategories.map((cat) => {
@@ -291,15 +295,21 @@ const QueueRow = memo(function QueueRow({
           legacyCtx
         );
         return (
-          <td key={cat.id} className="max-w-[8rem] truncate px-2 py-1.5 text-zinc-700 dark:text-zinc-300">
+          <td
+            key={cat.id}
+            className="w-32 overflow-hidden truncate px-2 py-1.5 text-zinc-700 dark:text-zinc-300"
+            title={label ?? undefined}
+          >
             {label ?? "—"}
           </td>
         );
       })}
-      <td className={`truncate px-2 py-1.5 capitalize ${queueStatusStyle(normalizeQueueStatusLabel(row.status))}`}>
+      <td
+        className={`w-24 overflow-hidden truncate px-2 py-1.5 capitalize ${queueStatusStyle(normalizeQueueStatusLabel(row.status))}`}
+      >
         {normalizeQueueStatusLabel(row.status)}
       </td>
-      <td className="px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
+      <td className="w-[72px] px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
           title="Editar"
@@ -528,18 +538,20 @@ export function QueueSection({
           <p className="flex flex-1 items-center justify-center text-xs text-zinc-500">Carregando registros…</p>
         ) : viewMode === "list" ? (
           <div className="min-h-0 flex-1 overflow-auto sf-scroll-y">
-            <table className="w-full min-w-[680px] border-collapse text-left text-[11px] text-zinc-800 dark:text-zinc-100">
+            <table className="w-full min-w-[880px] table-fixed border-collapse text-left text-[11px] text-zinc-800 dark:text-zinc-100">
               <thead className="sticky top-0 z-[1] border-b border-zinc-200 bg-zinc-50 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/95 dark:text-zinc-400">
                 <tr>
                   <th className="w-[100px] px-2 py-1.5">Chegada</th>
                   <th className="w-[110px] px-2 py-1.5">Horário marc.</th>
-                  <th className="min-w-[180px] px-2 py-1.5">Cliente</th>
+                  <th className="w-[38%] px-2 py-1.5">Cliente</th>
                   {enabledCategories.map((cat) => (
-                    <th key={cat.id} className="min-w-[80px] max-w-[8rem] px-2 py-1.5">
-                      {cat.label}
+                    <th key={cat.id} className="w-32 px-2 py-1.5">
+                      <span className="block truncate" title={cat.label}>
+                        {cat.label}
+                      </span>
                     </th>
                   ))}
-                  <th className="min-w-[70px] px-2 py-1.5">Status</th>
+                  <th className="w-24 px-2 py-1.5">Status</th>
                   <th className="w-[72px] px-2 py-1.5 text-right">Ações</th>
                 </tr>
               </thead>

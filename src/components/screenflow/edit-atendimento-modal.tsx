@@ -10,7 +10,7 @@ import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-val
 import { formatObservacaoForDisplay, embedObservacaoForQueueTab, resolveRowQueueTabId } from "@/lib/fila-preset";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { fetchServicos } from "@/lib/fetch-servicos";
-import type { QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
+import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
@@ -41,24 +41,6 @@ function toDatetimeLocal(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function applyTriagemPreset(
-  tab: QueueTabEntry | undefined,
-  classificacao: ClassificacaoPrioridade,
-  setClassificacao: (c: ClassificacaoPrioridade) => void
-): ClassificacaoPrioridade {
-  if (!tab) return classificacao;
-  switch (tab.preset) {
-    case "prioridade":
-      setClassificacao("prioritario");
-      return "prioritario";
-    case "urgente":
-      setClassificacao("emergencia");
-      return "emergencia";
-    default:
-      return classificacao;
-  }
 }
 
 function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: FormProps) {
@@ -128,9 +110,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
     const tab = queueTabs.find((t) => t.id === tabId);
-    if (law && tab) {
-      applyTriagemPreset(tab, classificacao, setClassificacao);
-    }
+    if (tab?.preset !== "hora") setHoraMarcada("");
   }
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
@@ -177,12 +157,6 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: 
       }
     }
 
-    let finalClassificacao: ClassificacaoPrioridade = classificacao;
-    if (law && triagemTab) {
-      if (triagemTab.preset === "prioridade") finalClassificacao = "prioritario";
-      else if (triagemTab.preset === "urgente") finalClassificacao = "emergencia";
-    }
-
     const cadastroPayload = buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
 
     const patch: Record<string, unknown> = {
@@ -191,8 +165,8 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, onSaved }: 
     };
 
     if (law) {
-      patch.prioridade = prioridadeBooleanFromClassificacao(finalClassificacao);
-      patch.classificacao_prioridade = finalClassificacao;
+      patch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
+      patch.classificacao_prioridade = classificacao;
     }
 
     const wantsHora = triagemTab?.preset === "hora" || rf.showHoraMarcada;

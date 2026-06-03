@@ -11,7 +11,7 @@ import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
+import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { buildHoraMarcadaTodayIso } from "@/lib/hora-marcada";
@@ -28,24 +28,6 @@ type RegistryPatientModalProps = {
   defaultStatus?: string;
   onRegistered?: (meta?: { queueTabId?: string }) => void;
 };
-
-function applyTriagemPreset(
-  tab: QueueTabEntry | undefined,
-  classificacao: ClassificacaoPrioridade,
-  setClassificacao: (c: ClassificacaoPrioridade) => void
-): ClassificacaoPrioridade {
-  if (!tab) return classificacao;
-  switch (tab.preset) {
-    case "prioridade":
-      setClassificacao("prioritario");
-      return "prioritario";
-    case "urgente":
-      setClassificacao("emergencia");
-      return "emergencia";
-    default:
-      return classificacao;
-  }
-}
 
 export function RegistryPatientModal({
   open,
@@ -169,9 +151,6 @@ export function RegistryPatientModal({
     setTriagemTabId(tabId);
     const tab = queueTabs.find((t) => t.id === tabId);
     if (tab?.preset !== "hora") setHoraMarcada("");
-    if (law && tab) {
-      applyTriagemPreset(tab, classificacao, setClassificacao);
-    }
   }
 
   const showHoraHoje = triagemTab?.preset === "hora";
@@ -238,19 +217,13 @@ export function RegistryPatientModal({
       const userObs = observacaoBase.trim();
       const filaPreset = triagemTab?.preset ?? "ordem";
 
-      let finalClassificacao: ClassificacaoPrioridade = classificacao;
-      if (law && triagemTab) {
-        if (triagemTab.preset === "prioridade") finalClassificacao = "prioritario";
-        else if (triagemTab.preset === "urgente") finalClassificacao = "emergencia";
-      }
-
       const cadastroPayload = buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
 
       const payload: Record<string, unknown> = {
         paciente_id: pacienteIdValue,
         tenant_id: effectiveTenantId,
-        prioridade: law ? prioridadeBooleanFromClassificacao(finalClassificacao) : false,
-        classificacao_prioridade: law ? finalClassificacao : "normal",
+        prioridade: law ? prioridadeBooleanFromClassificacao(classificacao) : false,
+        classificacao_prioridade: law ? classificacao : "normal",
         observacao: embedFilaPreset(userObs || null, filaPreset, triagemTab?.id),
         status: defaultStatus,
         ...cadastroPayload,
