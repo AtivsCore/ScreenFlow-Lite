@@ -28,7 +28,13 @@ function resolveKanbanMeta(
   cadastroCategories: CadastroCategoryEntry[],
   cadastroLookups: CadastroLookups,
   docasLogisticsActive: boolean
-): { title: string; profissional: string | null; local: string | null; servico: string | null } {
+): {
+  title: string;
+  profissional: string | null;
+  local: string | null;
+  servico: string | null;
+  docaAlocada?: string | null;
+} {
   if (docasLogisticsActive) {
     return resolveDocasKanbanMeta(row, cadastroCategories, cadastroLookups);
   }
@@ -143,6 +149,14 @@ const KanbanCard = memo(function KanbanCard({
             title={meta.servico}
           >
             {meta.servico}
+          </p>
+        ) : null}
+        {meta.docaAlocada ? (
+          <p
+            className="truncate text-[9px] font-semibold uppercase leading-tight tracking-wide text-orange-700 dark:text-orange-400"
+            title={meta.docaAlocada}
+          >
+            {meta.docaAlocada}
           </p>
         ) : null}
         {contextLine ? (

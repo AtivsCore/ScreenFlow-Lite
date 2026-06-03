@@ -378,7 +378,13 @@ export function resolveDocasKanbanMeta(
   },
   categories: CadastroCategoryEntry[],
   lookups: CadastroLookups
-): { title: string; profissional: string | null; local: string | null; servico: string | null } {
+): {
+  title: string;
+  profissional: string | null;
+  local: string | null;
+  servico: string | null;
+  docaAlocada: string | null;
+} {
   const fields = parseDocasCadastroFields(row.observacao);
   const legacyCtx: CadastroLegacyContext = {
     profissional_id: row.profissional_id,
@@ -393,11 +399,15 @@ export function resolveDocasKanbanMeta(
   const carga =
     resolveDocasCategoryDisplay("doc-c3", row.observacao, row.cadastro_valores ?? {}, lookups, categories, legacyCtx) ??
     null;
+  const docaAlocada =
+    resolveDocasCategoryDisplay("doc-c4", row.observacao, row.cadastro_valores ?? {}, lookups, categories, legacyCtx) ??
+    null;
 
   return {
     title: placa ?? row.nome?.trim() ?? "—",
     profissional: motorista,
     local: null,
     servico: carga,
+    docaAlocada,
   };
 }
