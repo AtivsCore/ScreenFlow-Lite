@@ -5,7 +5,7 @@ export type ShortcutEntry = {
 };
 
 export const KEYBOARD_SHORTCUTS: ShortcutEntry[] = [
-  { group: "Chamada", keys: "Alt + C", action: "Chamar paciente selecionado" },
+  { group: "Chamada", keys: "Alt + C", action: "Chamar selecionado" },
   { group: "Chamada", keys: "Alt + R", action: "Rechamar" },
   { group: "Chamada", keys: "Alt + F", action: "Finalizar atendimento" },
   { group: "Chamada", keys: "Alt + X", action: "Limpar seleção / dados" },
