@@ -11,6 +11,7 @@ import {
   appendAviacaoTimelineEntry,
   buildAviacaoSavePayload,
   AVIACAO_FIELD_ANEXOS,
+  AVIACAO_QUEUE_TAB,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
   AVIACAO_MODELO_CATEGORY_ID,
   AVIACAO_MODELO_MODAL_DATALIST_ID,
@@ -581,22 +582,33 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       )}
 
       {queueTabs.length > 0 ? (
-        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {triagemLabel}
-          <select
-            value={triagemTabId}
-            onChange={(e) => handleTriagemChange(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-          >
-            {queueTabs
-              .filter((t) => t.preset !== "todos")
-              .map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.label}
-                </option>
-              ))}
-          </select>
-        </label>
+        <div>
+          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {aviacaoMode ? "Estágio na rampa" : triagemLabel}
+            <select
+              value={triagemTabId}
+              onChange={(e) => handleTriagemChange(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            >
+              {queueTabs
+                .filter((t) => t.preset !== "todos")
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+            </select>
+          </label>
+          {aviacaoMode ? (
+            <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
+              As setas do card pulam &quot;Aguardando Peças&quot;. Para ativar esse gargalo, selecione-o
+              aqui — a justificativa será solicitada ao salvar.
+              {triagemTabId === AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS
+                ? " Justificativa obrigatória neste estágio."
+                : null}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {rf.showClienteNome ? (

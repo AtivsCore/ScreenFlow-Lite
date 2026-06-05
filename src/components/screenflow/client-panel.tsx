@@ -23,6 +23,9 @@ import {
   resolveAviacaoCrudTable,
   resolveAviacaoSelectOptions,
   sortAviacaoPanelCategories,
+  AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION,
+  AVIACAO_BASE_LIMIT_UPSELL_TITLE,
+  canCreateAviacaoBase,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasCategoryPatch,
@@ -38,6 +41,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Plus } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
+import { ProUpgradeModal } from "@/components/screenflow/pro-upgrade-modal";
+import { Modal } from "@/components/ui/modal";
 import { ObservacaoPopover } from "@/components/screenflow/observacao-popover";
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
@@ -77,15 +82,102 @@ type ClientPanelProps = {
   /** Bases/aeroportos do usuário (somente aviação). */
   tenantOptions?: Opt[];
   onTenantChange?: (tenantId: string) => void;
-  /** Filtros rápidos do Kanban MRO (somente aviação). */
-  aviacaoFilterPriorityOnly?: boolean;
-  onAviacaoFilterPriorityOnlyChange?: (v: boolean) => void;
-  aviacaoHideAguardandoPecas?: boolean;
-  onAviacaoHideAguardandoPecasChange?: (v: boolean) => void;
-  aviacaoSelectedHangarIds?: string[];
-  onAviacaoSelectedHangarIdsChange?: (ids: string[]) => void;
+  onTenantOptionsRefresh?: () => void | Promise<void>;
   onRegistrarAvaria?: () => void;
+  /** Plano PRO desbloqueia múltiplas bases (somente aviação). */
+  proActive?: boolean;
 };
+
+function AviacaoBaseQuickModal({
+  open,
+  onClose,
+  supabase,
+  sourceTenantId,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  supabase: SupabaseClient | null;
+  sourceTenantId?: string | null;
+  onCreated: (tenant: { id: string; nome: string }) => void;
+}) {
+  const [nome, setNome] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setNome("");
+    setError(null);
+  }, [open]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!supabase) return;
+    const trimmed = nome.trim();
+    if (!trimmed) {
+      setError("Informe o nome da base / aeroporto.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setError("Sessão ausente.");
+      setBusy(false);
+      return;
+    }
+    const res = await fetch("/api/aviacao-base", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ nome: trimmed, sourceTenantId: sourceTenantId ?? null }),
+    });
+    const json = (await res.json()) as { ok?: boolean; message?: string; id?: string; nome?: string };
+    if (!res.ok || !json.ok || !json.id) {
+      setError(json.message ?? "Falha ao cadastrar base.");
+      setBusy(false);
+      return;
+    }
+    onCreated({ id: json.id, nome: json.nome ?? trimmed });
+    onClose();
+    setBusy(false);
+  }
+
+  return (
+    <Modal open={open} title="Nova base / aeroporto" onClose={onClose} widthClassName="max-w-sm">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          Nome da base
+          <input
+            type="text"
+            value={nome}
+            disabled={busy}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="Ex.: Curitiba, Salvador…"
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            autoFocus
+          />
+        </label>
+        {error ? (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
+            {error}
+          </p>
+        ) : null}
+        <button
+          type="submit"
+          disabled={busy || !supabase}
+          className="rounded-lg bg-zinc-900 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+        >
+          {busy ? "Salvando…" : "Cadastrar base"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
 
 function SelectWithQuickAdd({
   label,
@@ -154,13 +246,9 @@ export const ClientPanel = memo(function ClientPanel({
   tenantId,
   tenantOptions = [],
   onTenantChange,
-  aviacaoFilterPriorityOnly = false,
-  onAviacaoFilterPriorityOnlyChange,
-  aviacaoHideAguardandoPecas = false,
-  onAviacaoHideAguardandoPecasChange,
-  aviacaoSelectedHangarIds = [],
-  onAviacaoSelectedHangarIdsChange,
+  onTenantOptionsRefresh,
   onRegistrarAvaria,
+  proActive = false,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
@@ -168,6 +256,16 @@ export const ClientPanel = memo(function ClientPanel({
   const [tvs, setTvs] = useState<Opt[]>([]);
   const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
   const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
+  const [baseQuickOpen, setBaseQuickOpen] = useState(false);
+  const [baseUpsellOpen, setBaseUpsellOpen] = useState(false);
+
+  function handleAviacaoBaseQuickAdd() {
+    if (!canCreateAviacaoBase(tenantOptions.length, proActive)) {
+      setBaseUpsellOpen(true);
+      return;
+    }
+    setBaseQuickOpen(true);
+  }
   const optionsLoadedRef = useRef<string | null>(null);
   const aviacaoFreeTextPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -544,7 +642,19 @@ export const ClientPanel = memo(function ClientPanel({
         >
           {aviacaoMode ? (
             <label className={AVIACAO_PANEL_FIELD_CLASS}>
-              <span className="block h-4 truncate leading-4">Base / Aeroporto</span>
+              <span className="flex h-4 items-center justify-between gap-1">
+                <span className="min-w-0 truncate leading-4">Base / Aeroporto</span>
+                <button
+                  type="button"
+                  title="Cadastrar nova base / aeroporto"
+                  disabled={!supabase}
+                  onClick={handleAviacaoBaseQuickAdd}
+                  className="inline-flex size-5 shrink-0 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  <Plus className="size-3" strokeWidth={2} aria-hidden />
+                  <span className="sr-only">Cadastrar base</span>
+                </button>
+              </span>
               <select
                 value={tenantId ?? ""}
                 disabled={!canMutate || tenantOptions.length === 0}
@@ -590,62 +700,6 @@ export const ClientPanel = memo(function ClientPanel({
             </label>
           ) : null}
         </div>
-
-        {aviacaoMode ? (
-          <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white/60 p-2 dark:border-zinc-700 dark:bg-zinc-900/40">
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-zinc-700 dark:text-zinc-300">
-                <input
-                  type="checkbox"
-                  checked={aviacaoFilterPriorityOnly}
-                  onChange={(e) => onAviacaoFilterPriorityOnlyChange?.(e.target.checked)}
-                  className="size-3.5 rounded border-zinc-300"
-                />
-                Exibir Apenas Prioritários
-              </label>
-              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-zinc-700 dark:text-zinc-300">
-                <input
-                  type="checkbox"
-                  checked={aviacaoHideAguardandoPecas}
-                  onChange={(e) => onAviacaoHideAguardandoPecasChange?.(e.target.checked)}
-                  className="size-3.5 rounded border-zinc-300"
-                />
-                Esconder &quot;Aguardando Peças&quot;
-              </label>
-            </div>
-            {locais.length > 0 ? (
-              <div>
-                <p className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
-                  Multi-Seleção de Hangares
-                </p>
-                <div className="mt-1 flex max-h-16 flex-wrap gap-x-3 gap-y-1 overflow-y-auto">
-                  {locais.map((h) => {
-                    const checked = aviacaoSelectedHangarIds.includes(h.id);
-                    return (
-                      <label
-                        key={h.id}
-                        className="inline-flex cursor-pointer items-center gap-1 text-[10px] text-zinc-700 dark:text-zinc-300"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const next = e.target.checked
-                              ? [...aviacaoSelectedHangarIds, h.id]
-                              : aviacaoSelectedHangarIds.filter((id) => id !== h.id);
-                            onAviacaoSelectedHangarIdsChange?.(next);
-                          }}
-                          className="size-3.5 rounded border-zinc-300"
-                        />
-                        {h.nome ?? h.id}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
 
         <div className="flex flex-wrap gap-1.5">
           <button
@@ -706,6 +760,27 @@ export const ClientPanel = memo(function ClientPanel({
               <option key={opt.id} value={opt.nome ?? opt.id} />
             ))}
           </datalist>
+        </>
+      ) : null}
+
+      {aviacaoMode ? (
+        <>
+          <AviacaoBaseQuickModal
+            open={baseQuickOpen}
+            onClose={() => setBaseQuickOpen(false)}
+            supabase={supabase}
+            sourceTenantId={tenantId}
+            onCreated={(tenant) => {
+              void onTenantOptionsRefresh?.();
+              onTenantChange?.(tenant.id);
+            }}
+          />
+          <ProUpgradeModal
+            open={baseUpsellOpen}
+            onClose={() => setBaseUpsellOpen(false)}
+            title={AVIACAO_BASE_LIMIT_UPSELL_TITLE}
+            description={AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION}
+          />
         </>
       ) : null}
 

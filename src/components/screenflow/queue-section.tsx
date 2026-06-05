@@ -15,6 +15,7 @@ import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AviacaoHangarStepper } from "@/components/screenflow/aviacao-hangar-stepper";
+import { AviacaoQueueFilterPopover } from "@/components/screenflow/aviacao-queue-filter-popover";
 import { DocasStatusStepper } from "@/components/screenflow/docas-status-stepper";
 import type { DocasQueueTabId } from "@/lib/docas-logistics";
 import { Columns3, Eye, EyeOff, LayoutList, MessageSquareText, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
@@ -459,6 +460,13 @@ type QueueSectionProps = {
   aviacaoStepperDisabled?: boolean;
   onAviacaoStepPrev?: () => void;
   onAviacaoStepNext?: () => void;
+  aviacaoFilterPriorityOnly?: boolean;
+  onAviacaoFilterPriorityOnlyChange?: (v: boolean) => void;
+  aviacaoHideAguardandoPecas?: boolean;
+  onAviacaoHideAguardandoPecasChange?: (v: boolean) => void;
+  aviacaoSelectedHangarIds?: string[];
+  onAviacaoSelectedHangarIdsChange?: (ids: string[]) => void;
+  aviacaoHangarFilterOptions?: Array<{ id: string; nome: string | null }>;
 };
 
 export function QueueSection({
@@ -499,6 +507,13 @@ export function QueueSection({
   aviacaoStepperDisabled = false,
   onAviacaoStepPrev,
   onAviacaoStepNext,
+  aviacaoFilterPriorityOnly = false,
+  onAviacaoFilterPriorityOnlyChange,
+  aviacaoHideAguardandoPecas = false,
+  onAviacaoHideAguardandoPecasChange,
+  aviacaoSelectedHangarIds = [],
+  onAviacaoSelectedHangarIdsChange,
+  aviacaoHangarFilterOptions = [],
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
@@ -556,6 +571,20 @@ export function QueueSection({
             >
               <Plus className="size-3.5" strokeWidth={2} aria-hidden />
             </button>
+            {aviacaoLogisticsActive &&
+            onAviacaoFilterPriorityOnlyChange &&
+            onAviacaoHideAguardandoPecasChange &&
+            onAviacaoSelectedHangarIdsChange ? (
+              <AviacaoQueueFilterPopover
+                priorityOnly={aviacaoFilterPriorityOnly}
+                onPriorityOnlyChange={onAviacaoFilterPriorityOnlyChange}
+                hideAguardandoPecas={aviacaoHideAguardandoPecas}
+                onHideAguardandoPecasChange={onAviacaoHideAguardandoPecasChange}
+                selectedHangarIds={aviacaoSelectedHangarIds}
+                onSelectedHangarIdsChange={onAviacaoSelectedHangarIdsChange}
+                hangarOptions={aviacaoHangarFilterOptions}
+              />
+            ) : null}
           </div>
 
           <div className="flex min-w-0 flex-1 items-center justify-center px-1">

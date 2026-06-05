@@ -41,7 +41,7 @@ import {
   AVIACAO_QUEUE_TAB,
   appendAviacaoTimelineEntry,
   aviacaoStepTvStatus,
-  canShiftAviacaoTab,
+  canShiftAviacaoTabQuick,
   filterAviacaoQueueRows,
   findAviacaoQueueTabById,
   getAviacaoActiveColumns,
@@ -55,7 +55,7 @@ import {
   resolveAviacaoQueueTabs,
   resolveAviacaoTabActionLabel,
   resolveAviacaoTabIdFromObservacao,
-  shiftAviacaoTab,
+  shiftAviacaoTabQuick,
 } from "@/lib/aviacao-logistics";
 import {
   DOCAS_QUEUE_TAB,
@@ -218,6 +218,12 @@ export default function Home() {
     setAviacaoBaseTenantId(tid);
     setSelectedId(null);
   }, []);
+
+  const refreshAviacaoTenantOptions = useCallback(async () => {
+    if (!supabase || !aviacaoLogisticsActive) return;
+    const opts = await fetchSessionTenants(supabase);
+    setAviacaoTenantOptions(opts);
+  }, [supabase, aviacaoLogisticsActive]);
 
   useEffect(() => {
     if (!supabase || !sessionReady) return;
@@ -857,7 +863,7 @@ export default function Home() {
   const shiftSelectedAviacaoStep = useCallback(
     (delta: -1 | 1) => {
       if (!selectedAviacaoTabId || aviacaoActiveColumns.length === 0) return;
-      const target = shiftAviacaoTab(selectedAviacaoTabId, delta, aviacaoActiveColumns);
+      const target = shiftAviacaoTabQuick(selectedAviacaoTabId, delta, aviacaoActiveColumns);
       if (!target) return;
       void advanceAviacaoLogistics(target, aviacaoStepTvStatus(normalizeAviacaoTabId(target)));
     },
@@ -1094,6 +1100,10 @@ export default function Home() {
             tenantId={effectiveTenantId}
             tenantOptions={aviacaoLogisticsActive ? aviacaoTenantOptions : undefined}
             onTenantChange={aviacaoLogisticsActive ? handleAviacaoBaseChange : undefined}
+            onTenantOptionsRefresh={
+              aviacaoLogisticsActive ? () => void refreshAviacaoTenantOptions() : undefined
+            }
+            proActive={aviacaoLogisticsActive ? proActive : undefined}
             onChamar={() => {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
@@ -1122,12 +1132,6 @@ export default function Home() {
               }
             }}
             onLimpar={() => setSelectedId(null)}
-            aviacaoFilterPriorityOnly={aviacaoFilterPriorityOnly}
-            onAviacaoFilterPriorityOnlyChange={setAviacaoFilterPriorityOnly}
-            aviacaoHideAguardandoPecas={aviacaoHideAguardandoPecas}
-            onAviacaoHideAguardandoPecasChange={setAviacaoHideAguardandoPecas}
-            aviacaoSelectedHangarIds={aviacaoSelectedHangarIds}
-            onAviacaoSelectedHangarIdsChange={setAviacaoSelectedHangarIds}
             onRegistrarAvaria={() => void registerAviacaoAvaria()}
             onPatch={async (patch) => {
               await patchAtendimento(patch);
@@ -1196,8 +1200,17 @@ export default function Home() {
               onDocasStepNext={() => shiftSelectedDocasStep(1)}
               aviacaoLogisticsActive={aviacaoLogisticsActive}
               aviacaoHangarLabel={selectedAviacaoHangarLabel}
-              aviacaoCanGoPrev={canShiftAviacaoTab(selectedAviacaoTabId, -1, aviacaoActiveColumns)}
-              aviacaoCanGoNext={canShiftAviacaoTab(selectedAviacaoTabId, 1, aviacaoActiveColumns)}
+              aviacaoCanGoPrev={canShiftAviacaoTabQuick(selectedAviacaoTabId, -1, aviacaoActiveColumns)}
+              aviacaoCanGoNext={canShiftAviacaoTabQuick(selectedAviacaoTabId, 1, aviacaoActiveColumns)}
+              aviacaoFilterPriorityOnly={aviacaoFilterPriorityOnly}
+              onAviacaoFilterPriorityOnlyChange={setAviacaoFilterPriorityOnly}
+              aviacaoHideAguardandoPecas={aviacaoHideAguardandoPecas}
+              onAviacaoHideAguardandoPecasChange={setAviacaoHideAguardandoPecas}
+              aviacaoSelectedHangarIds={aviacaoSelectedHangarIds}
+              onAviacaoSelectedHangarIdsChange={setAviacaoSelectedHangarIds}
+              aviacaoHangarFilterOptions={Array.from(cadastroLookups.locais.entries()).map(
+                ([id, nome]) => ({ id, nome })
+              )}
               aviacaoStepperDisabled={pending}
               onAviacaoStepPrev={() => shiftSelectedAviacaoStep(-1)}
               onAviacaoStepNext={() => shiftSelectedAviacaoStep(1)}

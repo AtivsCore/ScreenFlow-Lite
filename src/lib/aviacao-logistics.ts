@@ -76,6 +76,24 @@ export type AviacaoCombustivelLevel = (typeof AVIACAO_COMBUSTIVEL_OPTIONS)[numbe
 
 export const AVIACAO_STORAGE_BUCKET = "aviacao-anexos" as const;
 
+/** Limite de bases/aeroportos no plano gratuito (MRO). */
+export const AVIACAO_FREE_BASE_LIMIT = 1;
+
+export const AVIACAO_BASE_LIMIT_UPSELL_TITLE =
+  "Limite do plano gratuito (1 Base)" as const;
+
+export const AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION =
+  "Você atingiu o limite do plano gratuito (1 Base). O gerenciamento de múltiplas bases, aeroportos e hangares centralizados está disponível apenas no Plano PRO. Assine o plano PRO ou fale com o suporte para expandir sua operação!" as const;
+
+/**
+ * Plano gratuito: permite cadastrar a primeira base (count 0).
+ * A partir da segunda base (count ≥ 1 ao tentar criar nova), exige PRO.
+ */
+export function canCreateAviacaoBase(tenantCount: number, proActive = false): boolean {
+  if (proActive) return true;
+  return tenantCount < AVIACAO_FREE_BASE_LIMIT;
+}
+
 export const AVIACAO_HANGAR_TAG_WIDTH_CLASS = "w-[10.5rem]";
 
 /** Campos com `<select>` fixo (UUID em `cadastro_valores`). */
@@ -767,6 +785,55 @@ export function canShiftAviacaoTab(
 ): boolean {
   if (!tabId || activeColumns.length === 0) return false;
   return shiftAviacaoTab(tabId, delta, activeColumns) !== null;
+}
+
+/** Colunas ignoradas pelas setas rápidas do card (gargalo manual via modal). */
+export const AVIACAO_QUICK_SHIFT_SKIP_TAB_IDS: readonly AviacaoQueueTabId[] = [
+  AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS,
+];
+
+function findAviacaoColumnIdByStep(
+  step: AviacaoQueueTabId,
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): string | null {
+  const hit = activeColumns.find((c) => normalizeAviacaoTabId(c.id) === step);
+  return hit?.id ?? null;
+}
+
+/** Colunas percorridas pelas setas laterais — exclui gargalos técnicos. */
+export function getAviacaoQuickShiftColumns(
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): Pick<QueueTabEntry, "id">[] {
+  const skip = new Set<string>(AVIACAO_QUICK_SHIFT_SKIP_TAB_IDS);
+  return activeColumns.filter((c) => !skip.has(normalizeAviacaoTabId(c.id)));
+}
+
+/**
+ * Setas do Kanban: pula "Aguardando Peças".
+ * Se o card já estiver nesse gargalo (via modal), permite sair para Em Manutenção ou Inspeção / QC.
+ */
+export function shiftAviacaoTabQuick(
+  tabId: string,
+  delta: -1 | 1,
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): string | null {
+  const step = normalizeAviacaoTabId(tabId);
+  if (step === AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS) {
+    if (delta === -1) {
+      return findAviacaoColumnIdByStep(AVIACAO_QUEUE_TAB.EM_MANUTENCAO, activeColumns);
+    }
+    return findAviacaoColumnIdByStep(AVIACAO_QUEUE_TAB.INSPECAO_QC, activeColumns);
+  }
+  return shiftAviacaoTab(tabId, delta, getAviacaoQuickShiftColumns(activeColumns));
+}
+
+export function canShiftAviacaoTabQuick(
+  tabId: string | null | undefined,
+  delta: -1 | 1,
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): boolean {
+  if (!tabId || activeColumns.length === 0) return false;
+  return shiftAviacaoTabQuick(tabId, delta, activeColumns) !== null;
 }
 
 /** @deprecated Prefer `shiftAviacaoTab` com `getAviacaoActiveColumns` para colunas dinâmicas. */
