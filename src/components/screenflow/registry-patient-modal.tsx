@@ -26,9 +26,8 @@ import {
   AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
   AVIACAO_MODELO_CATEGORY_ID,
-  AVIACAO_MODELO_MODAL_DATALIST_ID,
   AVIACAO_PREFIXO_CATEGORY_ID,
-  AVIACAO_PREFIXO_MODAL_DATALIST_ID,
+  AVIACAO_RESPONSAVEL_CATEGORY_ID,
   AVIACAO_QUEUE_TAB,
   isAviacaoSegment,
   parseAviacaoServicosSolicitados,
@@ -36,6 +35,7 @@ import {
   resolveAviacaoSelectOptions,
   resolveAviacaoServicosSolicitadosOptions,
   serializeAviacaoServicosSolicitados,
+  validateAviacaoRequiredFormValues,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasRegistryObservacao,
@@ -189,34 +189,10 @@ export function RegistryPatientModal({
     [profissionais, locais, servicos]
   );
 
-  const aviacaoPrefixoDatalist = useMemo(
-    () =>
-      aviacaoMode
-        ? resolveAviacaoSelectOptions(AVIACAO_PREFIXO_CATEGORY_ID, aviacaoLookups)
-        : [],
-    [aviacaoMode, aviacaoLookups]
-  );
-
-  const aviacaoModeloDatalist = useMemo(
-    () =>
-      aviacaoMode
-        ? resolveAviacaoSelectOptions(AVIACAO_MODELO_CATEGORY_ID, aviacaoLookups)
-        : [],
-    [aviacaoMode, aviacaoLookups]
-  );
-
   const aviacaoHangarOptions = useMemo(
     () =>
       aviacaoMode
         ? resolveAviacaoSelectOptions(AVIACAO_HANGAR_CATEGORY_ID, aviacaoLookups)
-        : [],
-    [aviacaoMode, aviacaoLookups]
-  );
-
-  const aviacaoUrgenciaOptions = useMemo(
-    () =>
-      aviacaoMode
-        ? resolveAviacaoSelectOptions(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, aviacaoLookups)
         : [],
     [aviacaoMode, aviacaoLookups]
   );
@@ -326,24 +302,9 @@ export function RegistryPatientModal({
       }
     }
     if (aviacaoMode) {
-      if (!formValues[AVIACAO_PREFIXO_CATEGORY_ID]?.trim()) {
-        setError("Prefixo da Aeronave é obrigatório.");
-        return;
-      }
-      if (!formValues[AVIACAO_FIELD_HOBBS]?.trim()) {
-        setError("Horas de Voo (Hobbs) é obrigatório.");
-        return;
-      }
-      if (!formValues[AVIACAO_FIELD_COMBUSTIVEL]?.trim()) {
-        setError("Nível de Combustível é obrigatório.");
-        return;
-      }
-      if (!formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()) {
-        setError("Vaga / Hangar / Box é obrigatório.");
-        return;
-      }
-      if (aviacaoServicosSelected.length === 0) {
-        setError("Selecione ao menos um serviço solicitado.");
+      const requiredErr = validateAviacaoRequiredFormValues(formValues);
+      if (requiredErr) {
+        setError(requiredErr);
         return;
       }
     }
@@ -472,68 +433,64 @@ export function RegistryPatientModal({
     return (
       <>
         <label className={REGISTRY_LABEL_CLASS}>
-          Estágio
-          <select
-            value={triagemTabId}
-            disabled
-            className={`${REGISTRY_FIELD_CLASS} disabled:cursor-not-allowed disabled:opacity-70`}
-          >
-            <option value={AVIACAO_QUEUE_TAB.TRIAGEM}>Triagem / Check-in</option>
-          </select>
-        </label>
-
-        <label className={REGISTRY_LABEL_CLASS}>
           Prefixo da Aeronave
           {REGISTRY_REQUIRED_MARK}
           <input
             type="text"
-            list={AVIACAO_PREFIXO_MODAL_DATALIST_ID}
             value={formValues[AVIACAO_PREFIXO_CATEGORY_ID] ?? ""}
             disabled={busy}
             onChange={(e) => patchAviacaoField(AVIACAO_PREFIXO_CATEGORY_ID, e.target.value)}
             className={REGISTRY_FIELD_CLASS}
             autoComplete="off"
           />
-          <datalist id={AVIACAO_PREFIXO_MODAL_DATALIST_ID}>
-            {aviacaoPrefixoDatalist.map((m) => (
-              <option key={m.id} value={m.nome ?? m.id} />
-            ))}
-          </datalist>
-        </label>
-
-        <label className={REGISTRY_LABEL_CLASS}>
-          Urgência da Peça
-          <select
-            value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchAviacaoField(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-          >
-            <option value="">—</option>
-            {aviacaoUrgenciaOptions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nome ?? m.id}
-              </option>
-            ))}
-          </select>
         </label>
 
         <label className={REGISTRY_LABEL_CLASS}>
           Modelo da Aeronave
           <input
             type="text"
-            list={AVIACAO_MODELO_MODAL_DATALIST_ID}
             value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
             disabled={busy}
             onChange={(e) => patchAviacaoField(AVIACAO_MODELO_CATEGORY_ID, e.target.value)}
             className={REGISTRY_FIELD_CLASS}
             autoComplete="off"
           />
-          <datalist id={AVIACAO_MODELO_MODAL_DATALIST_ID}>
-            {aviacaoModeloDatalist.map((m) => (
-              <option key={m.id} value={m.nome ?? m.id} />
-            ))}
-          </datalist>
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Nome do Cliente / Operador
+          <input
+            type="text"
+            value={nomeCliente}
+            disabled={busy}
+            onChange={(e) => setNomeCliente(e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+            autoComplete="off"
+          />
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Responsável / Mecânico
+          <input
+            type="text"
+            value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchAviacaoField(AVIACAO_RESPONSAVEL_CATEGORY_ID, e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+            autoComplete="off"
+          />
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Urgência da Peça
+          <input
+            type="text"
+            value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchAviacaoField(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+            autoComplete="off"
+          />
         </label>
 
         <label className={REGISTRY_LABEL_CLASS}>

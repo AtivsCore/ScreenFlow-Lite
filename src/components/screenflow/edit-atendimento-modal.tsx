@@ -10,38 +10,35 @@ import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-val
 import {
   appendAviacaoTimelineEntry,
   buildAviacaoSavePayload,
+  AVIACAO_COMBUSTIVEL_OPTIONS,
   AVIACAO_FIELD_ANEXOS,
-  AVIACAO_QUEUE_TAB,
+  AVIACAO_FIELD_COMBUSTIVEL,
+  AVIACAO_FIELD_HOBBS,
+  AVIACAO_FIELD_SERVICOS,
   AVIACAO_RESPONSAVEL_CATEGORY_ID,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
   AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_MODELO_CATEGORY_ID,
-  AVIACAO_MODELO_MODAL_DATALIST_ID,
-  AVIACAO_PREFIXO_MODAL_DATALIST_ID,
+  AVIACAO_PREFIXO_CATEGORY_ID,
   AVIACAO_STORAGE_BUCKET,
   formatAviacaoTimelineLine,
-  hydrateAviacaoFormValue,
-  hydrateAviacaoFreeTextValue,
   hydrateAviacaoHangarSelectValue,
   hydrateAviacaoResponsavelValue,
-  isAviacaoFreeTextField,
-  isAviacaoInlineTextField,
-  looksLikeAviacaoUuid,
-  isAviacaoObservacaoInlineField,
-  isAviacaoRigidSelectField,
   isAviacaoSegment,
-  isAviacaoUrgenciaSelectMode,
+  looksLikeAviacaoUuid,
   mergeAviacaoObservacao,
   parseAviacaoAnexos,
   parseAviacaoCadastroFields,
   parseAviacaoFilaTabId,
+  parseAviacaoServicosSolicitados,
   parseAviacaoTimeline,
-  requiresAviacaoPecaJustification,
-  resolveAviacaoCategoryLabel,
   resolveAviacaoHangarIdFromRow,
   resolveAviacaoQueueTabs,
   resolveAviacaoSelectOptions,
+  resolveAviacaoServicosSolicitadosOptions,
   resolveAviacaoTabActionLabel,
+  serializeAviacaoServicosSolicitados,
+  validateAviacaoRequiredFormValues,
   type AviacaoAnexo,
 } from "@/lib/aviacao-logistics";
 import {
@@ -116,44 +113,26 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const initialTriagemTabId = resolveRowQueueTabId(row, queueTabs) || queueTabs[0]?.id || "";
   const initialFormValues = useMemo(() => {
     if (aviacaoMode) {
-      const inlineFields = parseAviacaoCadastroFields(row.observacao);
+      const inline = parseAviacaoCadastroFields(row.observacao);
       const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
         profissional_id: row.profissional_id,
         local_id: row.local_id,
         especialidade_id: row.especialidade_id,
       });
       const out: Record<string, string> = {};
-      for (const cat of enabledCategories) {
-        if (cat.id === AVIACAO_RESPONSAVEL_CATEGORY_ID) {
-          const v = hydrateAviacaoResponsavelValue(hydrated, row.observacao, row.profissionalNome);
-          if (v) out[cat.id] = v;
-        } else if (isAviacaoFreeTextField(cat.id)) {
-          const t = inlineFields[cat.id];
-          if (t && !looksLikeAviacaoUuid(t)) out[cat.id] = t;
-        } else if (isAviacaoObservacaoInlineField(cat.id) && !isAviacaoFreeTextField(cat.id)) {
-          const t = inlineFields[cat.id];
-          if (t) out[cat.id] = t;
-        } else if (isAviacaoRigidSelectField(cat.id)) {
-          if (cat.id === AVIACAO_HANGAR_CATEGORY_ID) {
-            const hangarId = resolveAviacaoHangarIdFromRow(row);
-            if (hangarId) out[cat.id] = hangarId;
-          } else {
-            const v = hydrated[cat.id];
-            if (v) out[cat.id] = v;
-            else {
-              const legacy = inlineFields[cat.id];
-              if (legacy) out[cat.id] = legacy;
-            }
-          }
-        } else if (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
-          const v = hydrated[cat.id];
-          if (v) out[cat.id] = v;
-          else {
-            const t = inlineFields[cat.id];
-            if (t) out[cat.id] = t;
-          }
-        }
-      }
+      const prefixo = inline[AVIACAO_PREFIXO_CATEGORY_ID] ?? hydrated[AVIACAO_PREFIXO_CATEGORY_ID];
+      if (prefixo && !looksLikeAviacaoUuid(prefixo)) out[AVIACAO_PREFIXO_CATEGORY_ID] = prefixo;
+      const modelo = inline[AVIACAO_MODELO_CATEGORY_ID];
+      if (modelo && !looksLikeAviacaoUuid(modelo)) out[AVIACAO_MODELO_CATEGORY_ID] = modelo;
+      const responsavel = hydrateAviacaoResponsavelValue(hydrated, row.observacao, row.profissionalNome);
+      if (responsavel) out[AVIACAO_RESPONSAVEL_CATEGORY_ID] = responsavel;
+      const urgencia = inline[AVIACAO_INLINE_OBSERVACAO_FIELD_ID];
+      if (urgencia && !looksLikeAviacaoUuid(urgencia)) out[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] = urgencia;
+      const hangarId = resolveAviacaoHangarIdFromRow(row);
+      if (hangarId) out[AVIACAO_HANGAR_CATEGORY_ID] = hangarId;
+      if (inline[AVIACAO_FIELD_HOBBS]) out[AVIACAO_FIELD_HOBBS] = inline[AVIACAO_FIELD_HOBBS]!;
+      if (inline[AVIACAO_FIELD_COMBUSTIVEL]) out[AVIACAO_FIELD_COMBUSTIVEL] = inline[AVIACAO_FIELD_COMBUSTIVEL]!;
+      if (inline[AVIACAO_FIELD_SERVICOS]) out[AVIACAO_FIELD_SERVICOS] = inline[AVIACAO_FIELD_SERVICOS]!;
       return out;
     }
     if (docasMode) {
@@ -232,6 +211,24 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   );
   const triagemLabel = triagemTab?.label ?? "Entrada na fila";
 
+  const aviacaoHangarOptions = useMemo(
+    () =>
+      aviacaoMode
+        ? resolveAviacaoSelectOptions(AVIACAO_HANGAR_CATEGORY_ID, { profissionais, locais, servicos })
+        : [],
+    [aviacaoMode, profissionais, locais, servicos]
+  );
+
+  const aviacaoServicosOptions = useMemo(
+    () => (aviacaoMode ? resolveAviacaoServicosSolicitadosOptions(servicos) : []),
+    [aviacaoMode, servicos]
+  );
+
+  const aviacaoServicosSelected = useMemo(
+    () => parseAviacaoServicosSolicitados(formValues[AVIACAO_FIELD_SERVICOS]),
+    [formValues]
+  );
+
   useEffect(() => {
     void loadLookupOptions();
   }, [loadLookupOptions]);
@@ -287,58 +284,16 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   }
 
   useEffect(() => {
-    if (!aviacaoMode) return;
-    const inlineFields = parseAviacaoCadastroFields(row.observacao);
-    const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
-      profissional_id: row.profissional_id,
-      local_id: row.local_id,
-      especialidade_id: row.especialidade_id,
-    });
-    const lookups = { profissionais, locais, servicos };
-    setFormValues((prev) => {
-      const next = { ...prev };
-      for (const cat of enabledCategories) {
-        if (cat.id === AVIACAO_RESPONSAVEL_CATEGORY_ID) {
-          const v = hydrateAviacaoResponsavelValue(hydrated, row.observacao, row.profissionalNome);
-          if (v) next[cat.id] = v;
-        } else if (isAviacaoRigidSelectField(cat.id)) {
-          if (cat.id === AVIACAO_HANGAR_CATEGORY_ID) {
-            const opts = resolveAviacaoSelectOptions(cat.id, lookups);
-            const v = hydrateAviacaoHangarSelectValue(row, opts);
-            if (v) next[cat.id] = v;
-          } else {
-            const opts = resolveAviacaoSelectOptions(cat.id, lookups);
-            const v = hydrateAviacaoFormValue(cat.id, hydrated, row.observacao, opts);
-            if (v) next[cat.id] = v;
-          }
-        } else if (isAviacaoFreeTextField(cat.id)) {
-          const opts = resolveAviacaoSelectOptions(cat.id, lookups);
-          const v = hydrateAviacaoFreeTextValue(cat.id, hydrated, row.observacao, opts);
-          if (v) next[cat.id] = v;
-        } else if (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID && isAviacaoUrgenciaSelectMode(servicos)) {
-          const opts = resolveAviacaoSelectOptions(cat.id, lookups);
-          const v = hydrateAviacaoFormValue(cat.id, hydrated, row.observacao, opts);
-          if (v) next[cat.id] = v;
-        } else if (isAviacaoObservacaoInlineField(cat.id, servicos) && !isAviacaoFreeTextField(cat.id)) {
-          const t = inlineFields[cat.id];
-          if (t) next[cat.id] = t;
-        }
-      }
-      return next;
-    });
-  }, [
-    aviacaoMode,
-    row.observacao,
-    row.cadastro_valores,
-    row.profissional_id,
-    row.local_id,
-    row.especialidade_id,
-    tenantConfig.cadastroCategories,
-    enabledCategories,
-    profissionais,
-    locais,
-    servicos,
-  ]);
+    if (!aviacaoMode || locais.length === 0) return;
+    const opts = resolveAviacaoSelectOptions(AVIACAO_HANGAR_CATEGORY_ID, { profissionais, locais, servicos });
+    const hangarId = hydrateAviacaoHangarSelectValue(row, opts);
+    if (!hangarId) return;
+    setFormValues((prev) =>
+      prev[AVIACAO_HANGAR_CATEGORY_ID] === hangarId
+        ? prev
+        : { ...prev, [AVIACAO_HANGAR_CATEGORY_ID]: hangarId }
+    );
+  }, [aviacaoMode, row, locais, profissionais, servicos]);
 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
@@ -350,110 +305,166 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const showDocasHoraAgendada = docasMode;
   const showAviacaoHoraAgendada = aviacaoMode;
 
-  function renderCategoryField(cat: (typeof enabledCategories)[number]) {
-    if (aviacaoMode && isAviacaoInlineTextField(cat.id)) {
-      return (
-        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {resolveAviacaoCategoryLabel(cat)}
+  const FIELD_CLASS =
+    "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50";
+  const LABEL_CLASS = "block text-xs font-medium text-zinc-600 dark:text-zinc-400";
+  const REQUIRED_MARK = <span className="text-red-600 dark:text-red-400"> *</span>;
+
+  function patchField(fieldId: string, value: string) {
+    setFormValues((prev) => ({ ...prev, [fieldId]: value }));
+  }
+
+  function toggleAviacaoServico(id: string) {
+    const next = aviacaoServicosSelected.includes(id)
+      ? aviacaoServicosSelected.filter((x) => x !== id)
+      : [...aviacaoServicosSelected, id];
+    patchField(AVIACAO_FIELD_SERVICOS, serializeAviacaoServicosSolicitados(next));
+  }
+
+  function renderAviacaoEditForm() {
+    return (
+      <>
+        <label className={LABEL_CLASS}>
+          Prefixo da Aeronave
+          {REQUIRED_MARK}
           <input
             type="text"
-            value={formValues[cat.id] ?? ""}
+            value={formValues[AVIACAO_PREFIXO_CATEGORY_ID] ?? ""}
             disabled={busy}
-            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            onChange={(e) => patchField(AVIACAO_PREFIXO_CATEGORY_ID, e.target.value)}
+            className={FIELD_CLASS}
             autoComplete="off"
           />
         </label>
-      );
-    }
 
-    if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
-      const freeTextOpts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
-      const datalistId =
-        cat.id === AVIACAO_MODELO_CATEGORY_ID
-          ? AVIACAO_MODELO_MODAL_DATALIST_ID
-          : AVIACAO_PREFIXO_MODAL_DATALIST_ID;
-      return (
-        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {resolveAviacaoCategoryLabel(cat)}
+        <label className={LABEL_CLASS}>
+          Modelo da Aeronave
           <input
             type="text"
-            list={datalistId}
-            value={formValues[cat.id] ?? ""}
+            value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
             disabled={busy}
-            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            onChange={(e) => patchField(AVIACAO_MODELO_CATEGORY_ID, e.target.value)}
+            className={FIELD_CLASS}
             autoComplete="off"
           />
-          <datalist id={datalistId}>
-            {freeTextOpts.map((m) => (
-              <option key={m.id} value={m.nome ?? m.id} />
-            ))}
-          </datalist>
         </label>
-      );
-    }
 
-    if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
-      const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
-      return (
-        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {resolveAviacaoCategoryLabel(cat)}
+        <label className={LABEL_CLASS}>
+          Nome do Cliente / Operador
+          <input
+            type="text"
+            value={nomeCliente}
+            disabled={busy}
+            onChange={(e) => setNomeCliente(e.target.value)}
+            className={FIELD_CLASS}
+            autoComplete="off"
+          />
+        </label>
+
+        <label className={LABEL_CLASS}>
+          Responsável / Mecânico
+          <input
+            type="text"
+            value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchField(AVIACAO_RESPONSAVEL_CATEGORY_ID, e.target.value)}
+            className={FIELD_CLASS}
+            autoComplete="off"
+          />
+        </label>
+
+        <label className={LABEL_CLASS}>
+          Urgência da Peça
+          <input
+            type="text"
+            value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchField(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, e.target.value)}
+            className={FIELD_CLASS}
+            autoComplete="off"
+          />
+        </label>
+
+        <label className={LABEL_CLASS}>
+          Vaga / Hangar / Box
+          {REQUIRED_MARK}
           <select
-            value={formValues[cat.id] ?? ""}
+            value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
             disabled={busy}
-            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            onChange={(e) => patchField(AVIACAO_HANGAR_CATEGORY_ID, e.target.value)}
+            className={FIELD_CLASS}
           >
             <option value="">—</option>
-            {opts.map((m) => (
+            {aviacaoHangarOptions.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.nome ?? m.id}
               </option>
             ))}
           </select>
         </label>
-      );
-    }
 
-    if (aviacaoMode && cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
-      if (isAviacaoUrgenciaSelectMode(servicos)) {
-        const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
-        return (
-          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {resolveAviacaoCategoryLabel(cat)}
-            <select
-              value={formValues[cat.id] ?? ""}
-              disabled={busy}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            >
-              <option value="">—</option>
-              {opts.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nome ?? m.id}
-                </option>
-              ))}
-            </select>
-          </label>
-        );
-      }
-      if (isAviacaoObservacaoInlineField(cat.id, servicos)) {
-        return (
-          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {resolveAviacaoCategoryLabel(cat)}
-            <input
-              type="text"
-              value={formValues[cat.id] ?? ""}
-              disabled={busy}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
-          </label>
-        );
-      }
-    }
+        <label className={LABEL_CLASS}>
+          Horas de Voo (Hobbs)
+          {REQUIRED_MARK}
+          <input
+            type="text"
+            inputMode="decimal"
+            value={formValues[AVIACAO_FIELD_HOBBS] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchField(AVIACAO_FIELD_HOBBS, e.target.value)}
+            className={FIELD_CLASS}
+          />
+        </label>
 
+        <label className={LABEL_CLASS}>
+          Nível de Combustível
+          {REQUIRED_MARK}
+          <select
+            value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchField(AVIACAO_FIELD_COMBUSTIVEL, e.target.value)}
+            className={FIELD_CLASS}
+          >
+            <option value="">—</option>
+            {AVIACAO_COMBUSTIVEL_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <fieldset className={LABEL_CLASS}>
+          <legend className="mb-1">
+            Serviços Solicitados
+            {REQUIRED_MARK}
+          </legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+            {aviacaoServicosOptions.length > 0 ? (
+              aviacaoServicosOptions.map((svc) => (
+                <label key={svc.id} className="inline-flex cursor-pointer items-center gap-2 font-normal">
+                  <input
+                    type="checkbox"
+                    checked={aviacaoServicosSelected.includes(svc.id)}
+                    disabled={busy}
+                    onChange={() => toggleAviacaoServico(svc.id)}
+                    className="size-3.5 rounded border-zinc-300"
+                  />
+                  {svc.nome ?? svc.id}
+                </label>
+              ))
+            ) : (
+              <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
+                Cadastre serviços na base ativa para habilitar esta seleção.
+              </p>
+            )}
+          </div>
+        </fieldset>
+      </>
+    );
+  }
+
+  function renderCategoryField(cat: (typeof enabledCategories)[number]) {
     if (docasMode && isDocasTextField(cat.id)) {
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
@@ -496,6 +507,14 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (aviacaoMode) {
+      const requiredErr = validateAviacaoRequiredFormValues(formValues);
+      if (requiredErr) {
+        setError(requiredErr);
+        return;
+      }
+    }
+
     setBusy(true);
     setError(null);
 
@@ -555,23 +574,9 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       const toTabId = triagemTab?.id;
       let fieldsWithTimeline = aviacaoFields;
       if (toTabId && fromTabId !== toTabId) {
-        let justification: string | undefined;
-        if (requiresAviacaoPecaJustification(toTabId)) {
-          const input = window.prompt(
-            "Justificativa obrigatória para Aguardando Peças:",
-            ""
-          );
-          if (!input?.trim()) {
-            setError("Justificativa obrigatória para mover para Aguardando Peças.");
-            setBusy(false);
-            return;
-          }
-          justification = input.trim();
-        }
         fieldsWithTimeline = appendAviacaoTimelineEntry(fieldsWithTimeline, {
           action: resolveAviacaoTabActionLabel(fromTabId, toTabId),
           user: "Operador",
-          detail: justification,
         });
       }
 
@@ -643,14 +648,33 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         </p>
       )}
 
-      {queueTabs.length > 0 ? (
-        <div>
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {aviacaoMode ? "Estágio na rampa" : triagemLabel}
+      {queueTabs.length > 0 && !aviacaoMode ? (
+        <label className={LABEL_CLASS}>
+          {triagemLabel}
+          <select
+            value={triagemTabId}
+            onChange={(e) => handleTriagemChange(e.target.value)}
+            className={FIELD_CLASS}
+          >
+            {queueTabs
+              .filter((t) => t.preset !== "todos")
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+          </select>
+        </label>
+      ) : null}
+
+      {aviacaoMode ? (
+        <>
+          <label className={LABEL_CLASS}>
+            Estágio na rampa
             <select
               value={triagemTabId}
               onChange={(e) => handleTriagemChange(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+              className={FIELD_CLASS}
             >
               {queueTabs
                 .filter((t) => t.preset !== "todos")
@@ -661,33 +685,26 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
                 ))}
             </select>
           </label>
-          {aviacaoMode ? (
-            <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-400">
-              As setas do card pulam &quot;Aguardando Peças&quot;. Para ativar esse gargalo, selecione-o
-              aqui — a justificativa será solicitada ao salvar.
-              {triagemTabId === AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS
-                ? " Justificativa obrigatória neste estágio."
-                : null}
-            </p>
+          {renderAviacaoEditForm()}
+        </>
+      ) : (
+        <>
+          {rf.showClienteNome ? (
+            <label className={LABEL_CLASS}>
+              Nome do cliente
+              <input
+                type="text"
+                value={nomeCliente}
+                disabled={busy}
+                onChange={(e) => setNomeCliente(e.target.value)}
+                className={FIELD_CLASS}
+                autoComplete="off"
+              />
+            </label>
           ) : null}
-        </div>
-      ) : null}
-
-      {aviacaoMode || rf.showClienteNome ? (
-        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {aviacaoMode ? "Nome do Cliente / Operador" : "Nome do cliente"}
-          <input
-            type="text"
-            value={nomeCliente}
-            disabled={busy}
-            onChange={(e) => setNomeCliente(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            autoComplete="off"
-          />
-        </label>
-      ) : null}
-
-      {enabledCategories.map((cat) => renderCategoryField(cat))}
+          {enabledCategories.map((cat) => renderCategoryField(cat))}
+        </>
+      )}
 
       {(showDocasHoraAgendada || showAviacaoHoraAgendada || rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">

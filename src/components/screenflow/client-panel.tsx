@@ -6,10 +6,7 @@ import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissiona
 import {
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
   AVIACAO_HANGAR_CATEGORY_ID,
-  AVIACAO_MODELO_CATEGORY_ID,
-  AVIACAO_MODELO_DATALIST_ID,
   AVIACAO_PREFIXO_CATEGORY_ID,
-  AVIACAO_PREFIXO_DATALIST_ID,
   buildAviacaoCategoryPatch,
   formatAviacaoObservacaoForDisplay,
   hydrateAviacaoFormValue,
@@ -161,24 +158,6 @@ export const ClientPanel = memo(function ClientPanel({
     return sortAviacaoPanelCategories(visible);
   }, [enabledCategories, aviacaoMode]);
 
-  const prefixoDatalistOptions = useMemo(() => {
-    if (!aviacaoMode) return [];
-    return resolveAviacaoSelectOptions(AVIACAO_PREFIXO_CATEGORY_ID, {
-      profissionais,
-      locais,
-      servicos,
-    });
-  }, [aviacaoMode, profissionais, locais, servicos]);
-
-  const modeloDatalistOptions = useMemo(() => {
-    if (!aviacaoMode) return [];
-    return resolveAviacaoSelectOptions(AVIACAO_MODELO_CATEGORY_ID, {
-      profissionais,
-      locais,
-      servicos,
-    });
-  }, [aviacaoMode, profissionais, locais, servicos]);
-
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
     if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
       return resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
@@ -264,16 +243,11 @@ export const ClientPanel = memo(function ClientPanel({
     }
 
     if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
-      const datalistId =
-        cat.id === AVIACAO_MODELO_CATEGORY_ID
-          ? AVIACAO_MODELO_DATALIST_ID
-          : AVIACAO_PREFIXO_DATALIST_ID;
       return (
         <label key={cat.id} className={AVIACAO_PANEL_FIELD_CLASS}>
           <span className="block h-4 truncate leading-4">{label}</span>
           <input
             type="text"
-            list={datalistId}
             value={categoryValues[cat.id] ?? ""}
             disabled={fieldDisabled}
             onChange={(e) => patchAviacaoFreeTextField(cat.id, e.target.value)}
@@ -364,9 +338,7 @@ export const ClientPanel = memo(function ClientPanel({
         const t = inlineFields[cat.id];
         if (t) next[cat.id] = t;
       } else if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
-        const opts =
-          cat.id === AVIACAO_MODELO_CATEGORY_ID ? modeloDatalistOptions : prefixoDatalistOptions;
-        const v = hydrateAviacaoFreeTextValue(cat.id, vals, selected.observacao, opts);
+        const v = hydrateAviacaoFreeTextValue(cat.id, vals, selected.observacao, []);
         if (v) next[cat.id] = v;
       } else if (
         aviacaoMode &&
@@ -399,8 +371,6 @@ export const ClientPanel = memo(function ClientPanel({
     profissionais,
     locais,
     servicos,
-    prefixoDatalistOptions,
-    modeloDatalistOptions,
   ]);
 
   const tvValue = selected?.tv_id ?? "";
@@ -572,21 +542,6 @@ export const ClientPanel = memo(function ClientPanel({
           </button>
         </div>
       </section>
-
-      {aviacaoMode ? (
-        <>
-          <datalist id={AVIACAO_PREFIXO_DATALIST_ID}>
-            {prefixoDatalistOptions.map((opt) => (
-              <option key={opt.id} value={opt.nome ?? opt.id} />
-            ))}
-          </datalist>
-          <datalist id={AVIACAO_MODELO_DATALIST_ID}>
-            {modeloDatalistOptions.map((opt) => (
-              <option key={opt.id} value={opt.nome ?? opt.id} />
-            ))}
-          </datalist>
-        </>
-      ) : null}
 
     </>
   );

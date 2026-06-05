@@ -55,7 +55,6 @@ import {
   normalizeAviacaoTabId,
   parseAviacaoCadastroFields,
   parseAviacaoFilaTabId,
-  requiresAviacaoPecaJustification,
   resolveAviacaoQuickCrudConfig,
   resolveAviacaoQueueTabs,
   resolveAviacaoTabActionLabel,
@@ -849,20 +848,10 @@ export default function Home() {
   );
 
   const advanceAviacaoLogistics = useCallback(
-    async (targetTabId: string, status?: string, opts?: { justification?: string; action?: string }) => {
+    async (targetTabId: string, status?: string, opts?: { action?: string }) => {
       if (!selectedId || !selected) return;
       const tab = findAviacaoQueueTabById(visibleQueueTabs, targetTabId);
       if (!tab) return;
-
-      let justification = opts?.justification?.trim();
-      if (requiresAviacaoPecaJustification(targetTabId) && !justification) {
-        const input = window.prompt(
-          "Justificativa obrigatória para Aguardando Peças:",
-          ""
-        );
-        if (!input?.trim()) return;
-        justification = input.trim();
-      }
 
       const fromTabId = parseAviacaoFilaTabId(selected.observacao);
       let aviacaoFields = parseAviacaoCadastroFields(selected.observacao);
@@ -884,7 +873,6 @@ export default function Home() {
       aviacaoFields = appendAviacaoTimelineEntry(aviacaoFields, {
         action,
         user: userLabel,
-        detail: justification,
       });
 
       const observacao = mergeAviacaoObservacao({
