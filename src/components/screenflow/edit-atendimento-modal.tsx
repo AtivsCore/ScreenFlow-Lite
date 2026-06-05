@@ -15,6 +15,8 @@ import {
   mergeAviacaoObservacao,
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryLabel,
+  resolveAviacaoComboboxOptions,
+  resolveAviacaoQuickCrudTable,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasSavePayload,
@@ -137,14 +139,25 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [quickCrud, setQuickCrud] = useState<{ title: string; table: string } | null>(null);
+  const [quickCrud, setQuickCrud] = useState<{
+    title: string;
+    table: string;
+    categoryId?: string;
+  } | null>(null);
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
     const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
-    setQuickCrud({ title, table: cadastroCategoryCrudTable(cat) });
+    setQuickCrud({
+      title,
+      table: aviacaoMode ? resolveAviacaoQuickCrudTable(cat) : cadastroCategoryCrudTable(cat),
+      categoryId: aviacaoMode ? cat.id : undefined,
+    });
   }
 
   function comboboxOptionsFor(cat: CadastroCategoryEntry) {
+    if (aviacaoMode) {
+      return resolveAviacaoComboboxOptions(cat.id, { profissionais, servicos });
+    }
     if (cat.tableKey === "profissionais") {
       return profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }));
     }
@@ -193,6 +206,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       return (
         <AviacaoHybridCombobox
           key={cat.id}
+          instanceId={cat.id}
           label={resolveAviacaoCategoryLabel(cat)}
           value={formValues[cat.id] ?? ""}
           options={comboboxOptionsFor(cat)}
@@ -437,6 +451,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         title={quickCrud.title}
         table={quickCrud.table}
         tenantId={row.tenant_id}
+        cadastroCategoryId={quickCrud.categoryId}
         onClose={() => setQuickCrud(null)}
         onSaved={() => void loadLookupOptions()}
       />

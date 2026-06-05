@@ -12,7 +12,12 @@ import {
   parseFilaPreset,
 } from "@/lib/fila-preset";
 import { STATUS_UPDATE, type QueueTabId } from "@/lib/atendimentos-lite";
-import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
+import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
+import {
+  cadastroCategoryCrudTable,
+  type CadastroCategoryEntry,
+  type QueueTabEntry,
+} from "@/lib/tenant-config";
 
 /** Slug do segmento no Master / `segmentoAplicado` (Aviação e Logística de Manutenção). */
 export const AVIACAO_SEGMENT_ID = "aviacao_mro" as const;
@@ -100,6 +105,152 @@ export function resolveAviacaoCategoryLabel(
   cat: Pick<CadastroCategoryEntry, "id" | "label">
 ): string {
   return AVIACAO_CATEGORY_DISPLAY_LABELS[cat.id] ?? cat.label;
+}
+
+export type AviacaoComboboxOption = { id: string; label: string };
+
+export type AviacaoLookupRow = {
+  id: string;
+  nome: string | null;
+  ordem?: number | null;
+  especialidade?: string | null;
+};
+
+/** Faixas de `ordem` em `servicos` para isolar prefixos, modelos e urgência na aviação. */
+export const AVIACAO_SERVICOS_BUCKET: Record<string, { min: number; max: number }> = {
+  "av-c3": { min: 100_000, max: 199_999 },
+  "av-c4": { min: 200_000, max: 299_999 },
+  "av-c5": { min: 300_000, max: 399_999 },
+};
+
+const AVIACAO_SCOPE_TAG_PREFIX = "__sf:aviacao:";
+
+/** Prefixos de aeronave legados gravados por engano em `profissionais`. */
+export function isLikelyAircraftPrefix(nome: string | null | undefined): boolean {
+  return /^[A-Z]{2}-[A-Z0-9]{2,}$/i.test((nome ?? "").trim());
+}
+
+export function isAviacaoServicosBucketCategory(categoryId: string): boolean {
+  return categoryId in AVIACAO_SERVICOS_BUCKET;
+}
+
+export function filterServicosForAviacaoCategory(
+  categoryId: string,
+  servicos: AviacaoLookupRow[]
+): AviacaoLookupRow[] {
+  const bucket = AVIACAO_SERVICOS_BUCKET[categoryId];
+  if (!bucket) {
+    return servicos.filter((s) => (s.ordem ?? 0) < 100_000);
+  }
+  return servicos.filter((s) => {
+    const ordem = s.ordem ?? 0;
+    return ordem >= bucket.min && ordem <= bucket.max;
+  });
+}
+
+export function filterProfissionaisForAviacaoMecanico(
+  profissionais: AviacaoLookupRow[]
+): AviacaoLookupRow[] {
+  return profissionais.filter((p) => {
+    const esp = p.especialidade?.trim();
+    if (esp?.startsWith(AVIACAO_SCOPE_TAG_PREFIX)) return false;
+    if (isLikelyAircraftPrefix(p.nome)) return false;
+    return true;
+  });
+}
+
+export function filterProfissionaisForAviacaoPrefixoLegacy(
+  profissionais: AviacaoLookupRow[]
+): AviacaoLookupRow[] {
+  return profissionais.filter((p) => isLikelyAircraftPrefix(p.nome));
+}
+
+export function resolveAviacaoComboboxOptions(
+  categoryId: string,
+  lookups: {
+    profissionais: AviacaoLookupRow[];
+    servicos: AviacaoLookupRow[];
+  }
+): AviacaoComboboxOption[] {
+  const toOption = (row: AviacaoLookupRow, label?: string): AviacaoComboboxOption => ({
+    id: row.id,
+    label: (label ?? row.nome ?? row.id).trim(),
+  });
+
+  if (categoryId === "av-c1") {
+    return filterProfissionaisForAviacaoMecanico(lookups.profissionais)
+      .map((row) => toOption(row))
+      .filter((o) => o.label);
+  }
+
+  if (categoryId === "av-c3") {
+    const fromServicos = filterServicosForAviacaoCategory("av-c3", lookups.servicos).map((row) =>
+      toOption(row)
+    );
+    const legacy = filterProfissionaisForAviacaoPrefixoLegacy(lookups.profissionais).map((row) =>
+      toOption(row)
+    );
+    const seen = new Set<string>();
+    return [...fromServicos, ...legacy].filter((o) => {
+      const key = o.label.toLowerCase();
+      if (!o.label || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  if (categoryId === "av-c4") {
+    return filterServicosForAviacaoCategory("av-c4", lookups.servicos)
+      .map((row) => toOption(row))
+      .filter((o) => o.label);
+  }
+
+  return [];
+}
+
+export function nextAviacaoServicosOrdem(
+  categoryId: string,
+  existingRows: AviacaoLookupRow[]
+): number | null {
+  const bucket = AVIACAO_SERVICOS_BUCKET[categoryId];
+  if (!bucket) return null;
+  const inBucket = existingRows.filter((s) => {
+    const ordem = s.ordem ?? 0;
+    return ordem >= bucket.min && ordem <= bucket.max;
+  });
+  const maxOrdem = inBucket.reduce(
+    (max, row) => Math.max(max, row.ordem ?? bucket.min - 1),
+    bucket.min - 1
+  );
+  return Math.min(maxOrdem + 1, bucket.max);
+}
+
+/** Tabela CRUD correta por categoria da aviação (ignora `tableKey` legado salvo no tenant). */
+export function resolveAviacaoQuickCrudTable(cat: CadastroCategoryEntry): string {
+  if (cat.id === "av-c1") return "profissionais";
+  if (cat.id === AVIACAO_HANGAR_CATEGORY_ID) return "locais";
+  if (cat.id === "av-c3" || cat.id === "av-c4" || cat.id === "av-c5") {
+    return SERVICES_CRUD_TABLE;
+  }
+  return cadastroCategoryCrudTable(cat);
+}
+
+export function filterAviacaoCrudRows(
+  categoryId: string,
+  table: string,
+  rows: AviacaoLookupRow[]
+): AviacaoLookupRow[] {
+  if (table === "profissionais" || table === "profissionais_lite") {
+    if (categoryId === "av-c1") return filterProfissionaisForAviacaoMecanico(rows);
+    if (categoryId === "av-c3") return filterProfissionaisForAviacaoPrefixoLegacy(rows);
+    return rows;
+  }
+  if (table.includes("servico") || table === "servicos") {
+    if (isAviacaoServicosBucketCategory(categoryId)) {
+      return filterServicosForAviacaoCategory(categoryId, rows);
+    }
+  }
+  return rows;
 }
 
 export function isAviacaoRequiredCategory(categoryId: string): boolean {
@@ -403,6 +554,7 @@ export function buildAviacaoCategoryPatch(
   for (const id of AVIACAO_TEXT_FIELD_IDS) {
     const t = categoryValues[id]?.trim();
     if (t) aviacaoFields[id] = t;
+    else delete aviacaoFields[id];
   }
   const observacao = mergeAviacaoObservacao({
     current: currentObservacao,

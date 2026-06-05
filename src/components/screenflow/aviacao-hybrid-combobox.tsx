@@ -1,11 +1,13 @@
 "use client";
 
+import type { AviacaoComboboxOption } from "@/lib/aviacao-logistics";
 import { Plus, X } from "lucide-react";
-import { useId, useMemo } from "react";
+import { useMemo } from "react";
 
-export type AviacaoComboboxOption = { id: string; label: string };
+export type { AviacaoComboboxOption };
 
 type AviacaoHybridComboboxProps = {
+  instanceId: string;
   label: string;
   value: string;
   options: AviacaoComboboxOption[];
@@ -19,6 +21,7 @@ type AviacaoHybridComboboxProps = {
 };
 
 export function AviacaoHybridCombobox({
+  instanceId,
   label,
   value,
   options,
@@ -30,7 +33,7 @@ export function AviacaoHybridCombobox({
   wrapperClassName,
   requiredMark,
 }: AviacaoHybridComboboxProps) {
-  const listId = useId();
+  const listId = `sf-datalist-${instanceId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const isCompact = size === "compact";
 
   const suggestions = useMemo(() => {

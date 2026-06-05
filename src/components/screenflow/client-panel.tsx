@@ -14,6 +14,8 @@ import {
   mergeAviacaoObservacao,
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryLabel,
+  resolveAviacaoComboboxOptions,
+  resolveAviacaoQuickCrudTable,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasCategoryPatch,
@@ -35,7 +37,7 @@ import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 
 type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
-type QuickCrud = { title: string; table: string };
+type QuickCrud = { title: string; table: string; categoryId?: string };
 
 const AVIACAO_PANEL_FIELD_CLASS =
   "col-span-1 min-w-0 block text-[10px] font-medium text-zinc-600 dark:text-zinc-400";
@@ -140,6 +142,7 @@ export const ClientPanel = memo(function ClientPanel({
   const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
   const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
   const optionsLoadedRef = useRef<string | null>(null);
+  const aviacaoPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const enabledCategories = useMemo(
     () => cadastroCategories.filter((c) => c.enabled),
@@ -155,7 +158,11 @@ export const ClientPanel = memo(function ClientPanel({
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
     const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
-    setQuickCrud({ title, table: cadastroCategoryCrudTable(cat) });
+    setQuickCrud({
+      title,
+      table: aviacaoMode ? resolveAviacaoQuickCrudTable(cat) : cadastroCategoryCrudTable(cat),
+      categoryId: aviacaoMode ? cat.id : undefined,
+    });
   }
 
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
@@ -202,20 +209,29 @@ export const ClientPanel = memo(function ClientPanel({
     void onPatch({ observacao });
   }
 
+  const flushAviacaoTextPatch = useCallback(
+    (next: Record<string, string>) => {
+      if (!selected) return;
+      const payload = buildAviacaoCategoryPatch(next, cadastroCategories, selected.observacao);
+      void onPatch(payload);
+    },
+    [selected, cadastroCategories, onPatch]
+  );
+
   function patchAviacaoTextField(categoryId: string, value: string) {
     if (!selected) return;
     const next = { ...categoryValues, [categoryId]: value };
     setCategoryValues(next);
-    const aviacaoFields = { ...parseAviacaoCadastroFields(selected.observacao), [categoryId]: value };
-    const observacao = mergeAviacaoObservacao({
-      current: selected.observacao,
-      aviacaoFields,
-      preserveTabWhenUnset: true,
-    });
-    void onPatch({ observacao });
+    if (aviacaoPatchTimerRef.current) clearTimeout(aviacaoPatchTimerRef.current);
+    aviacaoPatchTimerRef.current = setTimeout(() => {
+      flushAviacaoTextPatch(next);
+    }, 400);
   }
 
   function comboboxOptionsFor(cat: CadastroCategoryEntry) {
+    if (aviacaoMode) {
+      return resolveAviacaoComboboxOptions(cat.id, { profissionais, servicos });
+    }
     return optionsFor(cat).map((x) => ({ id: x.id, label: x.nome ?? x.id }));
   }
 
@@ -241,10 +257,11 @@ export const ClientPanel = memo(function ClientPanel({
       return (
         <AviacaoHybridCombobox
           key={cat.id}
+          instanceId={cat.id}
           label={label}
           value={categoryValues[cat.id] ?? ""}
           options={comboboxOptionsFor(cat)}
-          disabled={selectDisabled}
+          disabled={fieldDisabled}
           quickAddDisabled={quickAddDisabled}
           onChange={(v) => patchAviacaoTextField(cat.id, v)}
           onQuickAdd={() => openCrudForCategory(cat)}
@@ -271,7 +288,7 @@ export const ClientPanel = memo(function ClientPanel({
           </span>
           <select
             value={categoryValues[cat.id] ?? ""}
-            disabled={selectDisabled}
+            disabled={fieldDisabled}
             onChange={(e) => patchCategoryValue(cat.id, e.target.value)}
             className={AVIACAO_PANEL_CONTROL_CLASS}
           >
@@ -329,6 +346,12 @@ export const ClientPanel = memo(function ClientPanel({
   }, [loadOptions]);
 
   useEffect(() => {
+    return () => {
+      if (aviacaoPatchTimerRef.current) clearTimeout(aviacaoPatchTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!selected) {
       setCategoryValues({});
       return;
@@ -356,7 +379,8 @@ export const ClientPanel = memo(function ClientPanel({
   }, [selected?.id, selected?.cadastro_valores, selected?.observacao, enabledCategories, docasMode, aviacaoMode]);
 
   const tvValue = selected?.tv_id ?? "";
-  const selectDisabled = !selected || !canMutate || pending;
+  const fieldDisabled = !selected || !canMutate;
+  const selectDisabled = fieldDisabled || pending;
   const quickAddDisabled = !supabase;
   const prioStyle = selected
     ? classificacaoBadgeStyle(selected.classificacao_prioridade, selected.prioridade)
@@ -491,6 +515,7 @@ export const ClientPanel = memo(function ClientPanel({
           title={quickCrud.title}
           table={quickCrud.table}
           tenantId={tenantId}
+          cadastroCategoryId={quickCrud.categoryId}
           onClose={() => setQuickCrud(null)}
           onSaved={() => {
             optionsLoadedRef.current = null;

@@ -189,7 +189,7 @@ const AVIACAO = makePreset(
   [
     cat("av-c1", "Responsável / Mecânico", "profissionais"),
     cat("av-c2", "Vaga / Hangar / Box Alocado", "locais"),
-    cat("av-c3", "Prefixo da Aeronave", "profissionais"),
+    cat("av-c3", "Prefixo da Aeronave", "servicos"),
     cat("av-c4", "Modelo da Aeronave", "servicos"),
     cat("av-c5", "Urgência da Peça", "servicos"),
   ],

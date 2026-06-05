@@ -1,6 +1,12 @@
 "use client";
 
 import {
+  filterAviacaoCrudRows,
+  isAviacaoServicosBucketCategory,
+  nextAviacaoServicosOrdem,
+  type AviacaoLookupRow,
+} from "@/lib/aviacao-logistics";
+import {
   isMissingServicesTableError,
   isServicesTableCandidate,
   SERVICES_CRUD_TABLE,
@@ -24,6 +30,8 @@ type CrudEntityModalProps = {
   title: string;
   table: string;
   tenantId?: string | null;
+  /** Quando definido (ex.: `av-c3`), filtra e grava na gaveta correta da aviação. */
+  cadastroCategoryId?: string | null;
   onSaved?: () => void;
 };
 
@@ -34,6 +42,7 @@ export function CrudEntityModal({
   title,
   table,
   tenantId,
+  cadastroCategoryId,
   onSaved,
 }: CrudEntityModalProps) {
   const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
@@ -133,10 +142,14 @@ export function CrudEntityModal({
       setRows([]);
     } else {
       setEffectiveTable(tbl);
-      setRows(((data as unknown) as (BaseRow | ServicoRow | ProfissionalRow)[] | null) ?? []);
+      const raw = ((data as unknown) as (BaseRow | ServicoRow | ProfissionalRow)[] | null) ?? [];
+      const scoped = cadastroCategoryId
+        ? filterAviacaoCrudRows(cadastroCategoryId, tbl, raw as AviacaoLookupRow[])
+        : raw;
+      setRows(scoped as (BaseRow | ServicoRow | ProfissionalRow)[]);
     }
     setLoading(false);
-  }, [supabase, table, open, effectiveTenantId, needsServicesResolve, needsReorder, ordemSupported, ensureTable, isProfissionais]);
+  }, [supabase, table, open, effectiveTenantId, needsServicesResolve, needsReorder, ordemSupported, ensureTable, isProfissionais, cadastroCategoryId]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -189,11 +202,19 @@ export function CrudEntityModal({
     }
 
     if (needsReorder && ordemSupported) {
-      const maxOrdem = rows.reduce((max, r) => {
-        const o = "ordem" in r && typeof r.ordem === "number" ? r.ordem : 0;
-        return Math.max(max, o);
-      }, -1);
-      payload.ordem = maxOrdem + 1;
+      const bucketOrdem =
+        cadastroCategoryId && isAviacaoServicosBucketCategory(cadastroCategoryId)
+          ? nextAviacaoServicosOrdem(cadastroCategoryId, rows as AviacaoLookupRow[])
+          : null;
+      if (bucketOrdem !== null) {
+        payload.ordem = bucketOrdem;
+      } else {
+        const maxOrdem = rows.reduce((max, r) => {
+          const o = "ordem" in r && typeof r.ordem === "number" ? r.ordem : 0;
+          return Math.max(max, o);
+        }, -1);
+        payload.ordem = maxOrdem + 1;
+      }
     }
 
     let { error: err } = await supabase.from(tbl).insert(payload);
