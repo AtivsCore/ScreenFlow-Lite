@@ -2,8 +2,8 @@ import type { QueueTabId } from "@/lib/atendimentos-lite";
 import { resolveClassificacaoPrioridade } from "@/lib/classificacao-prioridade";
 import type { QueueTabEntry } from "@/lib/tenant-config";
 
-/** Remove todas as tags `__sf_fila:...__` (presets e abas customizadas). */
-const FILA_TAG_GLOBAL = /__sf_fila:[^\s_]+(?::[^\s_]+)?__/gi;
+/** Remove todas as tags `__sf_fila:...__` (presets, abas customizadas e ids com `_`). */
+const FILA_TAG_GLOBAL = /__sf_fila:[\s\S]*?__/gi;
 
 /** Marcador de cadastro Docas em observação (textos livres — ver docas-logistics). */
 const DOCAS_DATA_TAG_GLOBAL = /__sf_docas:[\s\S]*?__/gi;
@@ -35,7 +35,7 @@ function normalizeKanbanTabId(id: string): string {
 }
 
 const MARKER_PARSE = /^__sf_fila:([a-z]+)__(?:\r?\n|$)/i;
-const TAB_MARKER_PARSE = /^__sf_fila:tab:([a-z0-9-]+)__(?:\r?\n|$)/i;
+const TAB_MARKER_PARSE = /^__sf_fila:tab:([a-z0-9_-]+)__(?:\r?\n|$)/i;
 
 const VALID_PRESETS = new Set<QueueTabId>([
   "todos",
@@ -83,7 +83,7 @@ export function parseFilaTabId(observacao: string | null | undefined): string | 
   const trimmed = observacao.trimStart();
   const m = TAB_MARKER_PARSE.exec(trimmed);
   if (m?.[1]) return m[1];
-  const inline = observacao.match(/__sf_fila:tab:([a-z0-9-]+)__/i);
+  const inline = observacao.match(/__sf_fila:tab:([a-z0-9_-]+)__/i);
   return inline?.[1] ?? null;
 }
 

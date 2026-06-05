@@ -149,13 +149,35 @@ export function getAviacaoTabIndex(
   return findAviacaoActiveColumnIndex(tabId, activeColumns);
 }
 
+/** Lê a tag de coluna canônica (primeira linha — a mais recente gravada). */
+export function parseAviacaoFilaTabId(observacao: string | null | undefined): string | null {
+  if (!observacao) return null;
+  const leading = observacao.trimStart().match(/^__sf_fila:tab:([a-z0-9_-]+)__/i);
+  if (leading?.[1]) return leading[1];
+  return parseFilaTabId(observacao);
+}
+
+/** Remove metadados técnicos antes de regravar (evita acúmulo de tags). */
+export function sanitizeObservacaoForAviacaoSave(
+  observacao: string | null | undefined
+): string | null {
+  if (!observacao) return null;
+  const text = observacao
+    .replace(AVIACAO_DATA_TAG_RE, "")
+    .replace(AVIACAO_FILA_TAG_RE, "")
+    .replace(/^[ \t]*\r?\n+/gm, "")
+    .replace(/\r?\n{3,}/g, "\n\n")
+    .trim();
+  return text || null;
+}
+
 /** Resolve o id da coluna gravada na observação (ou a primeira coluna ativa). */
 export function resolveAviacaoTabIdFromObservacao(
   observacao: string | null | undefined,
   activeColumns: Pick<QueueTabEntry, "id">[]
 ): string | null {
   if (activeColumns.length === 0) return null;
-  const raw = parseFilaTabId(observacao);
+  const raw = parseAviacaoFilaTabId(observacao);
   if (raw && findAviacaoActiveColumnIndex(raw, activeColumns) >= 0) return raw;
   return activeColumns[0]?.id ?? null;
 }
@@ -223,14 +245,14 @@ export function resolveAviacaoKanbanColumnLabel(tab: Pick<QueueTabEntry, "id" | 
 export function formatAviacaoObservacaoForDisplay(
   observacao: string | null | undefined
 ): string {
-  if (!observacao) return "";
-  const stripped = observacao.replace(AVIACAO_DATA_TAG_RE, "").replace(AVIACAO_FILA_TAG_RE, "");
-  const clean = formatObservacaoForDisplay(stripped)
+  const clean = sanitizeObservacaoForAviacaoSave(observacao);
+  if (!clean) return "";
+  const text = clean
     .replace(AVIACAO_OBSERVACAO_CLINIC_RESIDUAL_RE, "")
     .replace(/[ \t]*\r?\n+/gm, "\n")
     .trim();
-  if (!clean || AVIACAO_RAW_TAG_LEAK_RE.test(clean)) return "";
-  return clean;
+  if (!text || AVIACAO_RAW_TAG_LEAK_RE.test(text)) return "";
+  return text;
 }
 
 /** Status de chamada na TV conforme a etapa (quando aplicável). */
@@ -290,7 +312,7 @@ export function mergeAviacaoObservacao(params: {
   const userText =
     params.userObservacaoText !== undefined
       ? (params.userObservacaoText?.trim() || "")
-      : formatObservacaoForDisplay(current);
+      : (sanitizeObservacaoForAviacaoSave(current) ?? "");
 
   let withFila: string | null = userText || null;
 
@@ -300,7 +322,7 @@ export function mergeAviacaoObservacao(params: {
       rawPreset === "todos" || !rawPreset ? "ordem" : (rawPreset as QueueTabId);
     withFila = embedFilaPreset(withFila, preset, params.tab.id);
   } else if (params.preserveTabWhenUnset !== false) {
-    const tabId = parseFilaTabId(current);
+    const tabId = parseAviacaoFilaTabId(current);
     if (tabId) {
       withFila = embedFilaPreset(withFila, "outros", tabId);
     } else {
