@@ -16,6 +16,7 @@ import {
   hydrateAviacaoFormValue,
   hydrateAviacaoFreeTextValue,
   isAviacaoFreeTextField,
+  looksLikeAviacaoUuid,
   isAviacaoObservacaoInlineField,
   isAviacaoRigidSelectField,
   isAviacaoSegment,
@@ -105,7 +106,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       for (const cat of enabledCategories) {
         if (isAviacaoFreeTextField(cat.id)) {
           const t = inlineFields[cat.id];
-          if (t) out[cat.id] = t;
+          if (t && !looksLikeAviacaoUuid(t)) out[cat.id] = t;
         } else if (isAviacaoObservacaoInlineField(cat.id) && !isAviacaoFreeTextField(cat.id)) {
           const t = inlineFields[cat.id];
           if (t) out[cat.id] = t;

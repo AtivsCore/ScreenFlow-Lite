@@ -74,6 +74,9 @@ type ClientPanelProps = {
     observacao?: string | null;
   }) => Promise<void>;
   tenantId?: string | null;
+  /** Bases/aeroportos do usuário (somente aviação). */
+  tenantOptions?: Opt[];
+  onTenantChange?: (tenantId: string) => void;
 };
 
 function SelectWithQuickAdd({
@@ -141,6 +144,8 @@ export const ClientPanel = memo(function ClientPanel({
   onLimpar,
   onPatch,
   tenantId,
+  tenantOptions = [],
+  onTenantChange,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
@@ -148,7 +153,6 @@ export const ClientPanel = memo(function ClientPanel({
   const [tvs, setTvs] = useState<Opt[]>([]);
   const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
   const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
-  const [tenantNome, setTenantNome] = useState<string | null>(null);
   const optionsLoadedRef = useRef<string | null>(null);
   const aviacaoFreeTextPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -392,26 +396,6 @@ export const ClientPanel = memo(function ClientPanel({
   }, [loadOptions]);
 
   useEffect(() => {
-    if (!aviacaoMode || !supabase || !tenantId?.trim()) {
-      setTenantNome(null);
-      return;
-    }
-    let cancelled = false;
-    void supabase
-      .from("tenants")
-      .select("nome")
-      .eq("id", tenantId.trim())
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled) return;
-        setTenantNome((data as { nome: string | null } | null)?.nome?.trim() ?? null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [aviacaoMode, supabase, tenantId]);
-
-  useEffect(() => {
     return () => {
       if (aviacaoFreeTextPatchTimerRef.current) clearTimeout(aviacaoFreeTextPatchTimerRef.current);
     };
@@ -496,19 +480,17 @@ export const ClientPanel = memo(function ClientPanel({
           { local_id: selected.local_id, localNome: selected.localNome }
         )?.trim() ?? null
       : null;
-  const selectedDisplayName = aviacaoMode
-    ? tenantNome
-    : docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
+  const selectedDisplayName = docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
 
   return (
     <>
       <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/50">
         <div className="min-h-[3.5rem]">
           <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            {aviacaoMode ? "Base / Aeroporto" : "Cliente selecionado"}
+            Cliente selecionado
           </p>
           <div className="mt-1 flex min-h-[1.75rem] min-w-0 items-center gap-2">
-            {selected || aviacaoMode ? (
+            {selected ? (
               <>
                 <p className="shrink-0 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
                   {selectedDisplayName ?? "—"}
@@ -541,10 +523,34 @@ export const ClientPanel = memo(function ClientPanel({
         <div
           className={
             aviacaoMode
-              ? "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3"
+              ? "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 lg:gap-3"
               : "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]"
           }
         >
+          {aviacaoMode ? (
+            <label className={AVIACAO_PANEL_FIELD_CLASS}>
+              <span className="block h-4 truncate leading-4">Base / Aeroporto</span>
+              <select
+                value={tenantId ?? ""}
+                disabled={!canMutate || tenantOptions.length === 0}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v) onTenantChange?.(v);
+                }}
+                className={AVIACAO_PANEL_CONTROL_CLASS}
+              >
+                {tenantOptions.length === 0 ? (
+                  <option value={tenantId ?? ""}>{tenantId ?? "—"}</option>
+                ) : (
+                  tenantOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nome ?? t.id}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+          ) : null}
           {panelCategories.map((cat) => renderCategoryField(cat))}
 
           {!aviacaoMode ? (

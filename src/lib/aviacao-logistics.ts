@@ -389,15 +389,18 @@ export function hydrateAviacaoFreeTextValue(
   observacao: string | null | undefined,
   options: Array<{ id: string; nome: string | null }>
 ): string {
+  const resolveLabel = (raw: string): string => {
+    if (!looksLikeAviacaoUuid(raw)) return raw;
+    const match = options.find((o) => o.id === raw);
+    return match?.nome?.trim() ?? "";
+  };
+
   const inline = parseAviacaoCadastroFields(observacao)[categoryId]?.trim();
-  if (inline) return inline;
+  if (inline) return resolveLabel(inline);
 
   const stored = cadastroValores[categoryId]?.trim();
   if (!stored) return "";
-  if (!looksLikeAviacaoUuid(stored)) return stored;
-
-  const match = options.find((o) => o.id === stored);
-  return match?.nome?.trim() ?? stored;
+  return resolveLabel(stored);
 }
 
 /** @deprecated Use `hydrateAviacaoFreeTextValue`. */

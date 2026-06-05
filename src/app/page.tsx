@@ -64,7 +64,11 @@ import {
 } from "@/lib/docas-logistics";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
-import { fetchSessionTenantId } from "@/lib/session-tenant";
+import {
+  fetchSessionTenantId,
+  fetchSessionTenants,
+  type SessionTenantOption,
+} from "@/lib/session-tenant";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
@@ -154,8 +158,17 @@ export default function Home() {
 
   const [fallbackTenantId, setFallbackTenantId] = useState<string | null>(null);
   const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
+  const [aviacaoBaseTenantId, setAviacaoBaseTenantId] = useState<string | null>(null);
+  const [aviacaoTenantOptions, setAviacaoTenantOptions] = useState<SessionTenantOption[]>([]);
 
-  const effectiveTenantId = sessionTenantId ?? tenantIdFromRows ?? ENV_TENANT_ID ?? fallbackTenantId;
+  const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
+  const aviacaoLogisticsActive = isAviacaoSegment(tenantConfig.segmentoAplicado);
+
+  const defaultTenantId = sessionTenantId ?? tenantIdFromRows ?? ENV_TENANT_ID ?? fallbackTenantId;
+  const effectiveTenantId =
+    aviacaoLogisticsActive && aviacaoBaseTenantId
+      ? aviacaoBaseTenantId
+      : defaultTenantId;
 
   useEffect(() => {
     if (!supabase || !sessionReady) return;
@@ -167,6 +180,34 @@ export default function Home() {
       cancelled = true;
     };
   }, [supabase, sessionReady]);
+
+  useEffect(() => {
+    if (!supabase || !sessionReady || !aviacaoLogisticsActive) {
+      setAviacaoTenantOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchSessionTenants(supabase).then((opts) => {
+      if (cancelled) return;
+      setAviacaoTenantOptions(opts);
+      setAviacaoBaseTenantId((prev) => {
+        if (prev && opts.some((o) => o.id === prev)) return prev;
+        const preferred =
+          sessionTenantId && opts.some((o) => o.id === sessionTenantId)
+            ? sessionTenantId
+            : opts[0]?.id ?? null;
+        return preferred;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, sessionReady, aviacaoLogisticsActive, sessionTenantId]);
+
+  const handleAviacaoBaseChange = useCallback((tid: string) => {
+    setAviacaoBaseTenantId(tid);
+    setSelectedId(null);
+  }, []);
 
   useEffect(() => {
     if (!supabase || !sessionReady) return;
@@ -281,9 +322,6 @@ export default function Home() {
     () => resolveVisibleQueueTabs(tenantConfig),
     [tenantConfig]
   );
-
-  const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
-  const aviacaoLogisticsActive = isAviacaoSegment(tenantConfig.segmentoAplicado);
 
   const aviacaoActiveColumns = useMemo(
     () => (aviacaoLogisticsActive ? getAviacaoActiveColumns(visibleQueueTabs) : []),
@@ -962,6 +1000,8 @@ export default function Home() {
             cadastroCategories={tenantConfig.cadastroCategories}
             segmentoAplicado={tenantConfig.segmentoAplicado}
             tenantId={effectiveTenantId}
+            tenantOptions={aviacaoLogisticsActive ? aviacaoTenantOptions : undefined}
+            onTenantChange={aviacaoLogisticsActive ? handleAviacaoBaseChange : undefined}
             onChamar={() => {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
