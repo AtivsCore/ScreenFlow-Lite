@@ -5,6 +5,7 @@ import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
+  AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_MODELO_CATEGORY_ID,
   AVIACAO_MODELO_DATALIST_ID,
   AVIACAO_PREFIXO_CATEGORY_ID,
@@ -13,6 +14,7 @@ import {
   formatAviacaoObservacaoForDisplay,
   hydrateAviacaoFormValue,
   hydrateAviacaoFreeTextValue,
+  hydrateAviacaoHangarSelectValue,
   isAviacaoFreeTextField,
   isAviacaoObservacaoInlineField,
   isAviacaoRigidSelectField,
@@ -375,7 +377,10 @@ export const ClientPanel = memo(function ClientPanel({
         if (t) next[cat.id] = t;
       } else if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
         const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
-        const v = hydrateAviacaoFormValue(cat.id, vals, selected.observacao, opts);
+        const v =
+          cat.id === AVIACAO_HANGAR_CATEGORY_ID
+            ? hydrateAviacaoHangarSelectValue(selected, opts)
+            : hydrateAviacaoFormValue(cat.id, vals, selected.observacao, opts);
         if (v) next[cat.id] = v;
       } else {
         const v = vals[cat.id];
@@ -387,6 +392,7 @@ export const ClientPanel = memo(function ClientPanel({
     selected?.id,
     selected?.cadastro_valores,
     selected?.observacao,
+    selected?.local_id,
     enabledCategories,
     docasMode,
     aviacaoMode,

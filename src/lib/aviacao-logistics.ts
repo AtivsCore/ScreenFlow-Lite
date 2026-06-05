@@ -96,8 +96,14 @@ export function canCreateAviacaoBase(tenantCount: number, proActive = false): bo
 
 export const AVIACAO_HANGAR_TAG_WIDTH_CLASS = "w-[10.5rem]";
 
-/** Campos com `<select>` fixo (UUID em `cadastro_valores`). */
-export const AVIACAO_RIGID_SELECT_FIELD_IDS = ["av-c1", "av-c2"] as const;
+/** Responsável / mecânico — texto livre inline na tag `__sf_aviacao:`. */
+export const AVIACAO_RESPONSAVEL_CATEGORY_ID = "av-c1" as const;
+
+/** Campos com `<select>` fixo (UUID em `cadastro_valores`) — somente hangar/box. */
+export const AVIACAO_RIGID_SELECT_FIELD_IDS = ["av-c2"] as const;
+
+/** Texto livre inline (sem datalist), ex.: mecânico responsável. */
+export const AVIACAO_INLINE_TEXT_FIELD_IDS = [AVIACAO_RESPONSAVEL_CATEGORY_ID] as const;
 
 /** Prefixo da aeronave — texto livre com datalist opcional (bucket 100k). */
 export const AVIACAO_PREFIXO_CATEGORY_ID = "av-c3" as const;
@@ -263,6 +269,11 @@ export function isAviacaoFreeTextField(categoryId: string): boolean {
   return (AVIACAO_FREE_TEXT_FIELD_IDS as readonly string[]).includes(categoryId);
 }
 
+/** Texto livre inline na tag `__sf_aviacao:` (ex.: Responsável / Mecânico). */
+export function isAviacaoInlineTextField(categoryId: string): boolean {
+  return (AVIACAO_INLINE_TEXT_FIELD_IDS as readonly string[]).includes(categoryId);
+}
+
 /** @deprecated Use `isAviacaoFreeTextField`. */
 export function isAviacaoPrefixoFreeTextField(categoryId: string): boolean {
   return isAviacaoFreeTextField(categoryId);
@@ -296,6 +307,7 @@ export function isAviacaoObservacaoInlineField(
   servicos?: AviacaoLookupRow[]
 ): boolean {
   if (isAviacaoFreeTextField(categoryId)) return true;
+  if (isAviacaoInlineTextField(categoryId)) return true;
   if (categoryId !== AVIACAO_INLINE_OBSERVACAO_FIELD_ID) return false;
   if (!servicos) return true;
   return !isAviacaoUrgenciaSelectMode(servicos);
@@ -522,6 +534,34 @@ export function hydrateAviacaoPrefixoValue(
     observacao,
     options
   );
+}
+
+/** Hidrata o `<select>` de hangar considerando `local_id` legado e `cadastro_valores`. */
+export function hydrateAviacaoHangarSelectValue(
+  row: Pick<AtendimentoLite, "observacao" | "cadastro_valores" | "local_id">,
+  options: Array<{ id: string; nome: string | null }>
+): string {
+  const fromRow = resolveAviacaoHangarIdFromRow(row);
+  if (fromRow) return fromRow;
+  return hydrateAviacaoFormValue(
+    AVIACAO_HANGAR_CATEGORY_ID,
+    row.cadastro_valores ?? {},
+    row.observacao,
+    options
+  );
+}
+
+/** Hidrata o nome do mecânico/responsável (texto livre ou legado de profissional). */
+export function hydrateAviacaoResponsavelValue(
+  cadastroValores: CadastroValores,
+  observacao: string | null | undefined,
+  profissionalNome?: string | null
+): string {
+  const inline = parseAviacaoCadastroFields(observacao)[AVIACAO_RESPONSAVEL_CATEGORY_ID]?.trim();
+  if (inline && !looksLikeAviacaoUuid(inline)) return inline;
+  const stored = cadastroValores[AVIACAO_RESPONSAVEL_CATEGORY_ID]?.trim();
+  if (stored && !looksLikeAviacaoUuid(stored)) return stored;
+  return profissionalNome?.trim() ?? "";
 }
 
 export function hydrateAviacaoFormValue(
@@ -1047,6 +1087,7 @@ export function buildAviacaoSavePayload(
       selectValues[cat.id] = raw;
     } else if (
       isAviacaoFreeTextField(cat.id) ||
+      isAviacaoInlineTextField(cat.id) ||
       (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID && !looksLikeAviacaoUuid(raw))
     ) {
       aviacaoFields[cat.id] = raw;
@@ -1065,6 +1106,7 @@ export function buildAviacaoSavePayload(
       ...selectValues,
       [AVIACAO_PREFIXO_CATEGORY_ID]: "",
       [AVIACAO_MODELO_CATEGORY_ID]: "",
+      [AVIACAO_RESPONSAVEL_CATEGORY_ID]: "",
     },
     categories
   );
@@ -1096,6 +1138,7 @@ export function buildAviacaoCategoryPatch(
       ...selectOnly,
       [AVIACAO_PREFIXO_CATEGORY_ID]: "",
       [AVIACAO_MODELO_CATEGORY_ID]: "",
+      [AVIACAO_RESPONSAVEL_CATEGORY_ID]: "",
     },
     categories
   );
@@ -1104,6 +1147,11 @@ export function buildAviacaoCategoryPatch(
     delete aviacaoFields[id];
   }
   for (const id of AVIACAO_FREE_TEXT_FIELD_IDS) {
+    const value = categoryValues[id]?.trim();
+    if (value) aviacaoFields[id] = value;
+    else delete aviacaoFields[id];
+  }
+  for (const id of AVIACAO_INLINE_TEXT_FIELD_IDS) {
     const value = categoryValues[id]?.trim();
     if (value) aviacaoFields[id] = value;
     else delete aviacaoFields[id];
@@ -1130,7 +1178,11 @@ export function resolveAviacaoCategoryDisplay(
   categories: CadastroCategoryEntry[],
   legacy?: CadastroLegacyContext
 ): string | null {
-  if (isAviacaoFreeTextField(categoryId) || categoryId === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
+  if (
+    isAviacaoFreeTextField(categoryId) ||
+    isAviacaoInlineTextField(categoryId) ||
+    categoryId === AVIACAO_INLINE_OBSERVACAO_FIELD_ID
+  ) {
     const inline = parseAviacaoCadastroFields(observacao)[categoryId];
     if (inline) return inline;
   }

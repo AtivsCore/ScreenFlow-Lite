@@ -12,7 +12,9 @@ import {
   buildAviacaoSavePayload,
   AVIACAO_FIELD_ANEXOS,
   AVIACAO_QUEUE_TAB,
+  AVIACAO_RESPONSAVEL_CATEGORY_ID,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
+  AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_MODELO_CATEGORY_ID,
   AVIACAO_MODELO_MODAL_DATALIST_ID,
   AVIACAO_PREFIXO_MODAL_DATALIST_ID,
@@ -20,7 +22,10 @@ import {
   formatAviacaoTimelineLine,
   hydrateAviacaoFormValue,
   hydrateAviacaoFreeTextValue,
+  hydrateAviacaoHangarSelectValue,
+  hydrateAviacaoResponsavelValue,
   isAviacaoFreeTextField,
+  isAviacaoInlineTextField,
   looksLikeAviacaoUuid,
   isAviacaoObservacaoInlineField,
   isAviacaoRigidSelectField,
@@ -33,6 +38,7 @@ import {
   parseAviacaoTimeline,
   requiresAviacaoPecaJustification,
   resolveAviacaoCategoryLabel,
+  resolveAviacaoHangarIdFromRow,
   resolveAviacaoQueueTabs,
   resolveAviacaoSelectOptions,
   resolveAviacaoTabActionLabel,
@@ -59,8 +65,8 @@ import {
 } from "@/lib/hora-marcada";
 import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Clock, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
@@ -118,18 +124,26 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       });
       const out: Record<string, string> = {};
       for (const cat of enabledCategories) {
-        if (isAviacaoFreeTextField(cat.id)) {
+        if (cat.id === AVIACAO_RESPONSAVEL_CATEGORY_ID) {
+          const v = hydrateAviacaoResponsavelValue(hydrated, row.observacao, row.profissionalNome);
+          if (v) out[cat.id] = v;
+        } else if (isAviacaoFreeTextField(cat.id)) {
           const t = inlineFields[cat.id];
           if (t && !looksLikeAviacaoUuid(t)) out[cat.id] = t;
         } else if (isAviacaoObservacaoInlineField(cat.id) && !isAviacaoFreeTextField(cat.id)) {
           const t = inlineFields[cat.id];
           if (t) out[cat.id] = t;
         } else if (isAviacaoRigidSelectField(cat.id)) {
-          const v = hydrated[cat.id];
-          if (v) out[cat.id] = v;
-          else {
-            const legacy = inlineFields[cat.id];
-            if (legacy) out[cat.id] = legacy;
+          if (cat.id === AVIACAO_HANGAR_CATEGORY_ID) {
+            const hangarId = resolveAviacaoHangarIdFromRow(row);
+            if (hangarId) out[cat.id] = hangarId;
+          } else {
+            const v = hydrated[cat.id];
+            if (v) out[cat.id] = v;
+            else {
+              const legacy = inlineFields[cat.id];
+              if (legacy) out[cat.id] = legacy;
+            }
           }
         } else if (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
           const v = hydrated[cat.id];
@@ -189,6 +203,8 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingAnexos, setPendingAnexos] = useState<AviacaoAnexo[]>(() =>
     aviacaoMode ? parseAviacaoAnexos(row.observacao) : []
   );
@@ -282,10 +298,19 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     setFormValues((prev) => {
       const next = { ...prev };
       for (const cat of enabledCategories) {
-        if (isAviacaoRigidSelectField(cat.id)) {
-          const opts = resolveAviacaoSelectOptions(cat.id, lookups);
-          const v = hydrateAviacaoFormValue(cat.id, hydrated, row.observacao, opts);
+        if (cat.id === AVIACAO_RESPONSAVEL_CATEGORY_ID) {
+          const v = hydrateAviacaoResponsavelValue(hydrated, row.observacao, row.profissionalNome);
           if (v) next[cat.id] = v;
+        } else if (isAviacaoRigidSelectField(cat.id)) {
+          if (cat.id === AVIACAO_HANGAR_CATEGORY_ID) {
+            const opts = resolveAviacaoSelectOptions(cat.id, lookups);
+            const v = hydrateAviacaoHangarSelectValue(row, opts);
+            if (v) next[cat.id] = v;
+          } else {
+            const opts = resolveAviacaoSelectOptions(cat.id, lookups);
+            const v = hydrateAviacaoFormValue(cat.id, hydrated, row.observacao, opts);
+            if (v) next[cat.id] = v;
+          }
         } else if (isAviacaoFreeTextField(cat.id)) {
           const opts = resolveAviacaoSelectOptions(cat.id, lookups);
           const v = hydrateAviacaoFreeTextValue(cat.id, hydrated, row.observacao, opts);
@@ -326,6 +351,22 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const showAviacaoHoraAgendada = aviacaoMode;
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
+    if (aviacaoMode && isAviacaoInlineTextField(cat.id)) {
+      return (
+        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          {resolveAviacaoCategoryLabel(cat)}
+          <input
+            type="text"
+            value={formValues[cat.id] ?? ""}
+            disabled={busy}
+            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            autoComplete="off"
+          />
+        </label>
+      );
+    }
+
     if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
       const freeTextOpts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
       const datalistId =
@@ -458,19 +499,36 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     setBusy(true);
     setError(null);
 
-    if (row.paciente_id) {
-      const { error: pe } = await supabase
-        .from("pacientes")
-        .update({ nome: nomeCliente.trim() || "" })
-        .eq("id", row.paciente_id);
-      if (pe) {
-        setError(pe.message);
-        setBusy(false);
-        return;
+    let patch: Record<string, unknown> = {};
+
+    const trimmedNome = nomeCliente.trim();
+    if (trimmedNome) {
+      if (row.paciente_id) {
+        const { error: pe } = await supabase
+          .from("pacientes")
+          .update({ nome: trimmedNome })
+          .eq("id", row.paciente_id);
+        if (pe) {
+          setError(pe.message);
+          setBusy(false);
+          return;
+        }
+      } else if (aviacaoMode && row.tenant_id) {
+        const { data: pRow, error: pe } = await supabase
+          .from("pacientes")
+          .insert({ nome: trimmedNome, tenant_id: row.tenant_id })
+          .select("id")
+          .single();
+        if (pe || !pRow) {
+          setError(pe?.message ?? "Falha ao vincular operador/cliente.");
+          setBusy(false);
+          return;
+        }
+        patch.paciente_id = (pRow as { id: string }).id;
       }
     }
 
-    let patch: Record<string, unknown>;
+    let atendimentoPatch: Record<string, unknown>;
     if (docasMode) {
       const { cadastroPayload, docasFields } = buildDocasSavePayload(
         formValues,
@@ -483,7 +541,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         preserveTabWhenUnset: true,
         userObservacaoText: observacaoBase.trim() || null,
       });
-      patch = { ...cadastroPayload, observacao };
+      atendimentoPatch = { ...cadastroPayload, observacao };
     } else if (aviacaoMode) {
       const { cadastroPayload, aviacaoFields } = buildAviacaoSavePayload(
         formValues,
@@ -524,32 +582,35 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         preserveTabWhenUnset: true,
         userObservacaoText: observacaoBase.trim() || null,
       });
-      patch = { ...cadastroPayload, observacao };
+      atendimentoPatch = { ...cadastroPayload, observacao };
     } else {
-      patch = {
+      atendimentoPatch = {
         ...buildCadastroPayload(formValues, tenantConfig.cadastroCategories),
         observacao: embedObservacaoForQueueTab(observacaoBase.trim() || null, triagemTab),
       };
     }
 
     if (law) {
-      patch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
-      patch.classificacao_prioridade = classificacao;
+      atendimentoPatch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
+      atendimentoPatch.classificacao_prioridade = classificacao;
     }
 
     const wantsHora =
       docasMode || aviacaoMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
     if (wantsHora && horaMarcada.trim()) {
       if (allowFullDatetime && !docasMode && !aviacaoMode) {
-        patch.hora_marcada = datetimeLocalToIso(horaMarcada) ?? horaMarcada.trim();
+        atendimentoPatch.hora_marcada = datetimeLocalToIso(horaMarcada) ?? horaMarcada.trim();
       } else {
-        patch.hora_marcada = mergeHoraMarcadaPreserveDate(row.hora_marcada, horaMarcada);
+        atendimentoPatch.hora_marcada = mergeHoraMarcadaPreserveDate(row.hora_marcada, horaMarcada);
       }
     } else if (!docasMode && !aviacaoMode && triagemTab?.preset === "encaixe") {
-      patch.hora_marcada = null;
+      atendimentoPatch.hora_marcada = null;
     }
 
-    const { error: ae } = await supabase.from("atendimentos_lite").update(patch).eq("id", row.id);
+    const { error: ae } = await supabase
+      .from("atendimentos_lite")
+      .update({ ...atendimentoPatch, ...patch })
+      .eq("id", row.id);
 
     if (ae) {
       setError(ae.message);
@@ -563,6 +624,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   }
 
   const visibleFields =
+    aviacaoMode ||
     rf.showClienteNome ||
     queueTabs.length > 0 ||
     enabledCategories.length > 0 ||
@@ -611,14 +673,16 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         </div>
       ) : null}
 
-      {rf.showClienteNome ? (
+      {aviacaoMode || rf.showClienteNome ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Nome do cliente
+          {aviacaoMode ? "Nome do Cliente / Operador" : "Nome do cliente"}
           <input
+            type="text"
             value={nomeCliente}
+            disabled={busy}
             onChange={(e) => setNomeCliente(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            disabled={!row.paciente_id}
+            autoComplete="off"
           />
         </label>
       ) : null}
@@ -650,11 +714,12 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
       ) : null}
 
-      {rf.showObservacao ? (
+      {rf.showObservacao || aviacaoMode ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           Observações
           <textarea
             value={observacaoBase}
+            disabled={busy}
             onChange={(e) => setObservacaoBase(e.target.value)}
             rows={3}
             className="mt-1 w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
@@ -664,27 +729,64 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
 
       {aviacaoMode ? (
         <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
-          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Anexos / Fotos</p>
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Anexos / Arquivos</p>
           <p className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">
-            Evidências de avarias de entrada/saída (bucket {AVIACAO_STORAGE_BUCKET}).
+            Imagens de avarias, ordens de serviço ou PDFs de laudos técnicos.
           </p>
+          <div
+            role="button"
+            tabIndex={0}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!busy && !uploadBusy) setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (!busy && !uploadBusy) void handleAviacaoUpload(e.dataTransfer.files);
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+            }}
+            className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-4 text-center transition ${
+              dragOver
+                ? "border-sky-400 bg-sky-50 dark:border-sky-600 dark:bg-sky-950/30"
+                : "border-zinc-300 bg-zinc-50/80 hover:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/40 dark:hover:border-zinc-500"
+            } ${busy || uploadBusy ? "pointer-events-none opacity-50" : ""}`}
+          >
+            <Upload className="size-5 text-zinc-500 dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
+            <span className="text-[11px] font-medium text-zinc-700 dark:text-zinc-200">
+              {uploadBusy ? "Enviando…" : "Arraste arquivos ou clique para selecionar"}
+            </span>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Imagens e PDF — múltiplos arquivos</span>
+          </div>
           <input
+            ref={fileInputRef}
             type="file"
-            accept="image/*,.pdf"
+            accept="image/*,.pdf,application/pdf"
             multiple
             disabled={busy || uploadBusy}
-            onChange={(e) => void handleAviacaoUpload(e.target.files)}
-            className="mt-2 w-full text-[10px] text-zinc-600 file:mr-2 file:rounded file:border-0 file:bg-zinc-200 file:px-2 file:py-1 file:text-[10px] dark:text-zinc-300 dark:file:bg-zinc-700"
+            onChange={(e) => {
+              void handleAviacaoUpload(e.target.files);
+              e.target.value = "";
+            }}
+            className="sr-only"
           />
           {pendingAnexos.length > 0 ? (
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-3 space-y-1.5">
               {pendingAnexos.map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-2 text-[10px]">
+                <li
+                  key={a.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[11px] dark:border-zinc-700 dark:bg-zinc-900/60"
+                >
                   <a
                     href={a.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="truncate text-blue-600 hover:underline dark:text-blue-400"
+                    download={a.name}
+                    className="min-w-0 truncate text-blue-600 hover:underline dark:text-blue-400"
                   >
                     {a.name}
                   </a>
