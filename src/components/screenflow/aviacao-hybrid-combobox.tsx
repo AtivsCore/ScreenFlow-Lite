@@ -12,9 +12,10 @@ type AviacaoHybridComboboxProps = {
   value: string;
   options: AviacaoComboboxOption[];
   disabled?: boolean;
+  showQuickAdd?: boolean;
   quickAddDisabled?: boolean;
   onChange: (value: string) => void;
-  onQuickAdd: () => void;
+  onQuickAdd?: () => void;
   size?: "compact" | "modal";
   wrapperClassName?: string;
   requiredMark?: React.ReactNode;
@@ -26,6 +27,7 @@ export function AviacaoHybridCombobox({
   value,
   options,
   disabled = false,
+  showQuickAdd = true,
   quickAddDisabled = false,
   onChange,
   onQuickAdd,
@@ -60,28 +62,35 @@ export function AviacaoHybridCombobox({
 
   return (
     <label className={wrapper}>
-      <span
-        className={
-          isCompact
-            ? "flex h-4 items-center justify-between gap-1"
-            : "flex items-center justify-between gap-1"
-        }
-      >
-        <span className={isCompact ? "min-w-0 truncate leading-4" : undefined}>
+      {showQuickAdd ? (
+        <span
+          className={
+            isCompact
+              ? "flex h-4 items-center justify-between gap-1"
+              : "flex items-center justify-between gap-1"
+          }
+        >
+          <span className={isCompact ? "min-w-0 truncate leading-4" : undefined}>
+            {label}
+            {requiredMark}
+          </span>
+          <button
+            type="button"
+            title={`Cadastrar ${label.toLowerCase()}`}
+            disabled={quickAddDisabled}
+            onClick={onQuickAdd}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <Plus className="size-3" strokeWidth={2} aria-hidden />
+            <span className="sr-only">Cadastrar {label}</span>
+          </button>
+        </span>
+      ) : (
+        <span className={isCompact ? "block h-4 truncate leading-4" : undefined}>
           {label}
           {requiredMark}
         </span>
-        <button
-          type="button"
-          title={`Cadastrar ${label.toLowerCase()}`}
-          disabled={quickAddDisabled}
-          onClick={onQuickAdd}
-          className="inline-flex size-5 shrink-0 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          <Plus className="size-3" strokeWidth={2} aria-hidden />
-          <span className="sr-only">Cadastrar {label}</span>
-        </button>
-      </span>
+      )}
 
       <div className={isCompact ? "relative mt-0.5" : "relative"}>
         <input

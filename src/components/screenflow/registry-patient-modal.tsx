@@ -12,12 +12,10 @@ import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
-import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { AviacaoHybridCombobox } from "@/components/screenflow/aviacao-hybrid-combobox";
-import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import {
   buildAviacaoRegistryObservacao,
   buildAviacaoSavePayload,
@@ -29,7 +27,6 @@ import {
   isAviacaoTextField,
   resolveAviacaoCategoryLabel,
   resolveAviacaoComboboxOptions,
-  resolveAviacaoQuickCrudTable,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasRegistryObservacao,
@@ -83,24 +80,14 @@ export function RegistryPatientModal({
 
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
-  const [quickCrud, setQuickCrud] = useState<{
-    title: string;
-    table: string;
-    categoryId?: string;
-  } | null>(null);
-
-  function openCrudForCategory(cat: CadastroCategoryEntry) {
-    const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
-    setQuickCrud({
-      title,
-      table: aviacaoMode ? resolveAviacaoQuickCrudTable(cat) : cadastroCategoryCrudTable(cat),
-      categoryId: aviacaoMode ? cat.id : undefined,
-    });
-  }
 
   function comboboxOptionsFor(cat: CadastroCategoryEntry) {
     if (aviacaoMode) {
-      return resolveAviacaoComboboxOptions(cat.id, { profissionais, servicos });
+      return resolveAviacaoComboboxOptions(cat.id, enabledCategories, {
+        profissionais,
+        locais,
+        servicos,
+      });
     }
     if (cat.tableKey === "profissionais") {
       return profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }));
@@ -145,9 +132,8 @@ export function RegistryPatientModal({
           value={formValues[cat.id] ?? ""}
           options={comboboxOptionsFor(cat)}
           disabled={busy}
-          quickAddDisabled={!supabase}
+          showQuickAdd={false}
           onChange={(v) => setFormValues((prev) => ({ ...prev, [cat.id]: v }))}
-          onQuickAdd={() => openCrudForCategory(cat)}
           size="modal"
           requiredMark={requiredMark}
         />
@@ -423,7 +409,6 @@ export function RegistryPatientModal({
     rf.showObservacao;
 
   return (
-    <>
     <Modal open={open} title="Novo registro" onClose={onClose} widthClassName="max-w-md">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         {!visibleFields && (
@@ -521,19 +506,5 @@ export function RegistryPatientModal({
         </button>
       </form>
     </Modal>
-
-    {quickCrud ? (
-      <CrudEntityModal
-        open
-        supabase={supabase}
-        title={quickCrud.title}
-        table={quickCrud.table}
-        tenantId={effectiveTenantId}
-        cadastroCategoryId={quickCrud.categoryId}
-        onClose={() => setQuickCrud(null)}
-        onSaved={() => void loadLookupOptions()}
-      />
-    ) : null}
-    </>
   );
 }

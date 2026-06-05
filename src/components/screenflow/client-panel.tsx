@@ -15,7 +15,6 @@ import {
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryLabel,
   resolveAviacaoComboboxOptions,
-  resolveAviacaoQuickCrudTable,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasCategoryPatch,
@@ -37,7 +36,7 @@ import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 
 type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
-type QuickCrud = { title: string; table: string; categoryId?: string };
+type QuickCrud = { title: string; table: string };
 
 const AVIACAO_PANEL_FIELD_CLASS =
   "col-span-1 min-w-0 block text-[10px] font-medium text-zinc-600 dark:text-zinc-400";
@@ -158,11 +157,7 @@ export const ClientPanel = memo(function ClientPanel({
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
     const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
-    setQuickCrud({
-      title,
-      table: aviacaoMode ? resolveAviacaoQuickCrudTable(cat) : cadastroCategoryCrudTable(cat),
-      categoryId: aviacaoMode ? cat.id : undefined,
-    });
+    setQuickCrud({ title, table: cadastroCategoryCrudTable(cat) });
   }
 
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
@@ -230,7 +225,11 @@ export const ClientPanel = memo(function ClientPanel({
 
   function comboboxOptionsFor(cat: CadastroCategoryEntry) {
     if (aviacaoMode) {
-      return resolveAviacaoComboboxOptions(cat.id, { profissionais, servicos });
+      return resolveAviacaoComboboxOptions(cat.id, cadastroCategories, {
+        profissionais,
+        locais,
+        servicos,
+      });
     }
     return optionsFor(cat).map((x) => ({ id: x.id, label: x.nome ?? x.id }));
   }
@@ -317,11 +316,9 @@ export const ClientPanel = memo(function ClientPanel({
     );
   }
 
-  const loadOptions = useCallback(async () => {
+  const fetchLookupData = useCallback(async () => {
     if (!supabase) return;
     const tid = tenantId?.trim();
-    const cacheKey = `${tid ?? ""}`;
-    if (optionsLoadedRef.current === cacheKey) return;
 
     const [p, l, sResult, t] = await Promise.all([
       tid
@@ -337,8 +334,18 @@ export const ClientPanel = memo(function ClientPanel({
     setLocais(((l.error ? null : l.data) as Opt[] | null) ?? []);
     setServicos(sResult.data);
     setTvs(((t.error ? null : t.data) as Opt[] | null) ?? []);
-    optionsLoadedRef.current = cacheKey;
   }, [supabase, tenantId]);
+
+  const loadOptions = useCallback(async () => {
+    const cacheKey = `${tenantId?.trim() ?? ""}`;
+    if (optionsLoadedRef.current === cacheKey) return;
+    await fetchLookupData();
+    optionsLoadedRef.current = cacheKey;
+  }, [fetchLookupData, tenantId]);
+
+  const refreshOptions = useCallback(async () => {
+    await fetchLookupData();
+  }, [fetchLookupData]);
 
   useEffect(() => {
     optionsLoadedRef.current = null;
@@ -515,11 +522,9 @@ export const ClientPanel = memo(function ClientPanel({
           title={quickCrud.title}
           table={quickCrud.table}
           tenantId={tenantId}
-          cadastroCategoryId={quickCrud.categoryId}
           onClose={() => setQuickCrud(null)}
           onSaved={() => {
-            optionsLoadedRef.current = null;
-            void loadOptions();
+            void refreshOptions();
           }}
         />
       )}

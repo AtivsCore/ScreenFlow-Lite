@@ -16,7 +16,6 @@ import {
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryLabel,
   resolveAviacaoComboboxOptions,
-  resolveAviacaoQuickCrudTable,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasSavePayload,
@@ -38,13 +37,11 @@ import {
   mergeHoraMarcadaPreserveDate,
 } from "@/lib/hora-marcada";
 import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
-import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { AviacaoHybridCombobox } from "@/components/screenflow/aviacao-hybrid-combobox";
-import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
 type OptRow = { id: string; nome: string | null };
@@ -139,24 +136,13 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [quickCrud, setQuickCrud] = useState<{
-    title: string;
-    table: string;
-    categoryId?: string;
-  } | null>(null);
-
-  function openCrudForCategory(cat: CadastroCategoryEntry) {
-    const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
-    setQuickCrud({
-      title,
-      table: aviacaoMode ? resolveAviacaoQuickCrudTable(cat) : cadastroCategoryCrudTable(cat),
-      categoryId: aviacaoMode ? cat.id : undefined,
-    });
-  }
-
   function comboboxOptionsFor(cat: CadastroCategoryEntry) {
     if (aviacaoMode) {
-      return resolveAviacaoComboboxOptions(cat.id, { profissionais, servicos });
+      return resolveAviacaoComboboxOptions(cat.id, enabledCategories, {
+        profissionais,
+        locais,
+        servicos,
+      });
     }
     if (cat.tableKey === "profissionais") {
       return profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }));
@@ -211,9 +197,8 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
           value={formValues[cat.id] ?? ""}
           options={comboboxOptionsFor(cat)}
           disabled={busy}
-          quickAddDisabled={false}
+          showQuickAdd={false}
           onChange={(v) => setFormValues((prev) => ({ ...prev, [cat.id]: v }))}
-          onQuickAdd={() => openCrudForCategory(cat)}
           size="modal"
         />
       );
@@ -353,7 +338,6 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     rf.showObservacao;
 
   return (
-    <>
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       {!visibleFields && (
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -443,20 +427,6 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         {busy ? "Salvando…" : "Salvar"}
       </button>
     </form>
-
-    {quickCrud ? (
-      <CrudEntityModal
-        open
-        supabase={supabase}
-        title={quickCrud.title}
-        table={quickCrud.table}
-        tenantId={row.tenant_id}
-        cadastroCategoryId={quickCrud.categoryId}
-        onClose={() => setQuickCrud(null)}
-        onSaved={() => void loadLookupOptions()}
-      />
-    ) : null}
-    </>
   );
 }
 
