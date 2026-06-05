@@ -1133,6 +1133,10 @@ export default function Home() {
         initialMainTab={settingsInitialTab}
         onConfigUpdated={(c) => setTenantConfig(c)}
         onDataChanged={() => void refreshRows()}
+        onRequestSegmentConfig={() => {
+          setSettingsOpen(false);
+          setSegmentOpen(true);
+        }}
       />
 
       <RegistryPatientModal

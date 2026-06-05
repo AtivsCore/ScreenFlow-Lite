@@ -35,6 +35,11 @@ type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
 type QuickCrud = { title: string; table: string };
 
+const AVIACAO_PANEL_FIELD_CLASS =
+  "col-span-1 min-w-0 block text-[10px] font-medium text-zinc-600 dark:text-zinc-400";
+const AVIACAO_PANEL_CONTROL_CLASS =
+  "mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50";
+
 type ClientPanelProps = {
   selected: AtendimentoLite | null;
   loading: boolean;
@@ -234,15 +239,48 @@ export const ClientPanel = memo(function ClientPanel({
 
     if (aviacaoMode && isAviacaoTextField(cat.id)) {
       return (
-        <label key={cat.id} className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
-          {label}
+        <label key={cat.id} className={AVIACAO_PANEL_FIELD_CLASS}>
+          <span className="block h-4 truncate leading-4">{label}</span>
           <input
             type="text"
             value={categoryValues[cat.id] ?? ""}
             disabled={selectDisabled}
             onChange={(e) => patchAviacaoTextField(cat.id, e.target.value)}
-            className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+            className={AVIACAO_PANEL_CONTROL_CLASS}
           />
+        </label>
+      );
+    }
+
+    if (aviacaoMode) {
+      return (
+        <label key={cat.id} className={AVIACAO_PANEL_FIELD_CLASS}>
+          <span className="flex h-4 items-center justify-between gap-1">
+            <span className="min-w-0 truncate leading-4">{label}</span>
+            <button
+              type="button"
+              title={`Cadastrar ${label.toLowerCase()}`}
+              disabled={quickAddDisabled}
+              onClick={() => openCrudForCategory(cat)}
+              className="inline-flex size-5 shrink-0 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              <Plus className="size-3" strokeWidth={2} aria-hidden />
+              <span className="sr-only">Cadastrar {label}</span>
+            </button>
+          </span>
+          <select
+            value={categoryValues[cat.id] ?? ""}
+            disabled={selectDisabled}
+            onChange={(e) => patchCategoryValue(cat.id, e.target.value)}
+            className={AVIACAO_PANEL_CONTROL_CLASS}
+          >
+            <option value="">—</option>
+            {optionsFor(cat).map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.nome ?? x.id}
+              </option>
+            ))}
+          </select>
         </label>
       );
     }
@@ -382,8 +420,14 @@ export const ClientPanel = memo(function ClientPanel({
         >
           {panelCategories.map((cat) => renderCategoryField(cat))}
 
-          <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
-            TV
+          <label
+            className={
+              aviacaoMode
+                ? AVIACAO_PANEL_FIELD_CLASS
+                : "block text-[10px] font-medium text-zinc-600 dark:text-zinc-400"
+            }
+          >
+            <span className={aviacaoMode ? "block h-4 truncate leading-4" : undefined}>TV</span>
             <select
               value={tvValue}
               disabled={selectDisabled}
@@ -391,7 +435,7 @@ export const ClientPanel = memo(function ClientPanel({
                 const v = e.target.value;
                 void onPatch({ tv_id: v || null });
               }}
-              className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+              className={aviacaoMode ? AVIACAO_PANEL_CONTROL_CLASS : "mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"}
             >
               <option value="">—</option>
               {tvs.map((x) => (

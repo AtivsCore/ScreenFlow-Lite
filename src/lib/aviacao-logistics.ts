@@ -65,6 +65,10 @@ export const AVIACAO_CATEGORY_DISPLAY_LABELS: Partial<Record<string, string>> = 
 const AVIACAO_OBSERVACAO_CLINIC_RESIDUAL_RE =
   /\b(?:Medical\s+Dark\s+Mode|Acessibilidade(?:\s+Visual)?|Modo\s+Escuro\s+Médico)\b/gi;
 
+/** Tags técnicas que não devem vazar no card (inclui ids com `_`, ex.: `aguardando_peca`). */
+const AVIACAO_FILA_TAG_RE = /__sf_fila:[\s\S]*?__/gi;
+const AVIACAO_RAW_TAG_LEAK_RE = /__sf_(?:fila|aviacao|docas):/i;
+
 export const AVIACAO_REQUIRED_CATEGORY_IDS = ["av-c3"] as const;
 
 export const AVIACAO_DATA_TAG_RE = /__sf_aviacao:[\s\S]*?__/gi;
@@ -219,12 +223,14 @@ export function resolveAviacaoKanbanColumnLabel(tab: Pick<QueueTabEntry, "id" | 
 export function formatAviacaoObservacaoForDisplay(
   observacao: string | null | undefined
 ): string {
-  const clean = formatObservacaoForDisplay(observacao);
-  if (!clean) return "";
-  return clean
+  if (!observacao) return "";
+  const stripped = observacao.replace(AVIACAO_DATA_TAG_RE, "").replace(AVIACAO_FILA_TAG_RE, "");
+  const clean = formatObservacaoForDisplay(stripped)
     .replace(AVIACAO_OBSERVACAO_CLINIC_RESIDUAL_RE, "")
     .replace(/[ \t]*\r?\n+/gm, "\n")
     .trim();
+  if (!clean || AVIACAO_RAW_TAG_LEAK_RE.test(clean)) return "";
+  return clean;
 }
 
 /** Status de chamada na TV conforme a etapa (quando aplicável). */

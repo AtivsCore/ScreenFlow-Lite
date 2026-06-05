@@ -15,6 +15,7 @@ import {
   type QueueTabPreset,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
+import { isAviacaoSegment } from "@/lib/aviacao-logistics";
 import { isProPlan } from "@/lib/plan-tier";
 import { GoogleSheetsProSection } from "@/components/screenflow/google-sheets-pro-section";
 import { Briefcase, ChevronDown, ChevronUp, ClipboardList, Layers, MapPin, Palette, Settings2, UserCheck } from "lucide-react";
@@ -32,6 +33,7 @@ type SettingsHubModalProps = {
   initialMainTab?: MainTab;
   onConfigUpdated: (next: ResolvedTenantConfig) => void;
   onDataChanged?: () => void;
+  onRequestSegmentConfig?: () => void;
 };
 
 type MainTab = "fluxo" | "geral" | "cadastros";
@@ -59,6 +61,7 @@ export function SettingsHubModal({
   initialMainTab = "fluxo",
   onConfigUpdated,
   onDataChanged,
+  onRequestSegmentConfig,
 }: SettingsHubModalProps) {
   const [mainTab, setMainTab] = useState<MainTab>("fluxo");
   const [draft, setDraft] = useState<ResolvedTenantConfig>(config);
@@ -71,6 +74,17 @@ export function SettingsHubModal({
   const [customTypeName, setCustomTypeName] = useState("");
 
   const prevOpenRef = useRef(false);
+  const aviacaoMode = isAviacaoSegment(config.segmentoAplicado);
+
+  function guardAviacaoRestore(): boolean {
+    if (!aviacaoMode) return false;
+    window.alert(
+      "No segmento Aviação (MRO), o reset padrão da clínica não se aplica. Re-aplique o preset de aviação em Configuração de Segmento para restaurar o fluxo com segurança."
+    );
+    onClose();
+    onRequestSegmentConfig?.();
+    return true;
+  }
 
   useEffect(() => {
     if (open && !prevOpenRef.current) {
@@ -217,12 +231,13 @@ export function SettingsHubModal({
               <button
                 type="button"
                 className="shrink-0 rounded-lg border border-zinc-300 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                onClick={() =>
+                onClick={() => {
+                  if (guardAviacaoRestore()) return;
                   updateDraft((d) => ({
                     ...d,
                     queueTabs: restoreDefaultQueueTabs(),
-                  }))
-                }
+                  }));
+                }}
               >
                 Restaurar Padrão
               </button>
@@ -604,9 +619,10 @@ export function SettingsHubModal({
               <button
                 type="button"
                 className="shrink-0 rounded-lg border border-zinc-300 px-2.5 py-1 text-[10px] font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                onClick={() =>
-                  patchCadastroCategories(() => restoreDefaultCadastroCategories())
-                }
+                onClick={() => {
+                  if (guardAviacaoRestore()) return;
+                  patchCadastroCategories(() => restoreDefaultCadastroCategories());
+                }}
               >
                 Restaurar Padrão
               </button>
