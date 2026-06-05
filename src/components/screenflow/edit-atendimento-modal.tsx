@@ -9,15 +9,16 @@ import {
 import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-valores";
 import {
   buildAviacaoSavePayload,
-  isAviacaoHangarSelectField,
-  isAviacaoHybridComboboxField,
-  isAviacaoRegistryFreeTextField,
+  AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
+  hydrateAviacaoFormValue,
+  isAviacaoObservacaoInlineField,
+  isAviacaoRigidSelectField,
   isAviacaoSegment,
-  isAviacaoTextField,
+  isAviacaoUrgenciaSelectMode,
   mergeAviacaoObservacao,
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryLabel,
-  resolveAviacaoComboboxOptions,
+  resolveAviacaoSelectOptions,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasSavePayload,
@@ -43,7 +44,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { AviacaoHybridCombobox } from "@/components/screenflow/aviacao-hybrid-combobox";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
 type OptRow = { id: string; nome: string | null };
@@ -89,11 +89,8 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
 
   const initialTriagemTabId = resolveRowQueueTabId(row, queueTabs) || queueTabs[0]?.id || "";
   const initialFormValues = useMemo(() => {
-    if (docasMode || aviacaoMode) {
-      const inlineFields = docasMode
-        ? parseDocasCadastroFields(row.observacao)
-        : parseAviacaoCadastroFields(row.observacao);
-      const isTextField = docasMode ? isDocasTextField : isAviacaoTextField;
+    if (aviacaoMode) {
+      const inlineFields = parseAviacaoCadastroFields(row.observacao);
       const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
         profissional_id: row.profissional_id,
         local_id: row.local_id,
@@ -101,7 +98,37 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       });
       const out: Record<string, string> = {};
       for (const cat of enabledCategories) {
-        if (isTextField(cat.id)) {
+        if (isAviacaoObservacaoInlineField(cat.id)) {
+          const t = inlineFields[cat.id];
+          if (t) out[cat.id] = t;
+        } else if (isAviacaoRigidSelectField(cat.id)) {
+          const v = hydrated[cat.id];
+          if (v) out[cat.id] = v;
+          else {
+            const legacy = inlineFields[cat.id];
+            if (legacy) out[cat.id] = legacy;
+          }
+        } else if (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
+          const v = hydrated[cat.id];
+          if (v) out[cat.id] = v;
+          else {
+            const t = inlineFields[cat.id];
+            if (t) out[cat.id] = t;
+          }
+        }
+      }
+      return out;
+    }
+    if (docasMode) {
+      const inlineFields = parseDocasCadastroFields(row.observacao);
+      const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
+        profissional_id: row.profissional_id,
+        local_id: row.local_id,
+        especialidade_id: row.especialidade_id,
+      });
+      const out: Record<string, string> = {};
+      for (const cat of enabledCategories) {
+        if (isDocasTextField(cat.id)) {
           const t = inlineFields[cat.id];
           if (t) out[cat.id] = t;
         } else {
@@ -138,23 +165,6 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  function comboboxOptionsFor(cat: CadastroCategoryEntry) {
-    if (aviacaoMode) {
-      return resolveAviacaoComboboxOptions(cat.id, enabledCategories, {
-        profissionais,
-        locais,
-        servicos,
-      });
-    }
-    if (cat.tableKey === "profissionais") {
-      return profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }));
-    }
-    if (cat.tableKey === "locais") {
-      return locais.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
-    }
-    return servicos.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
-  }
-
   const loadLookupOptions = useCallback(async () => {
     const tid = row.tenant_id?.trim();
     const profQuery = tid
@@ -179,6 +189,47 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     void loadLookupOptions();
   }, [loadLookupOptions]);
 
+  useEffect(() => {
+    if (!aviacaoMode) return;
+    const inlineFields = parseAviacaoCadastroFields(row.observacao);
+    const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
+      profissional_id: row.profissional_id,
+      local_id: row.local_id,
+      especialidade_id: row.especialidade_id,
+    });
+    const lookups = { profissionais, locais, servicos };
+    setFormValues((prev) => {
+      const next = { ...prev };
+      for (const cat of enabledCategories) {
+        if (isAviacaoRigidSelectField(cat.id)) {
+          const opts = resolveAviacaoSelectOptions(cat.id, lookups);
+          const v = hydrateAviacaoFormValue(cat.id, hydrated, row.observacao, opts);
+          if (v) next[cat.id] = v;
+        } else if (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID && isAviacaoUrgenciaSelectMode(servicos)) {
+          const opts = resolveAviacaoSelectOptions(cat.id, lookups);
+          const v = hydrateAviacaoFormValue(cat.id, hydrated, row.observacao, opts);
+          if (v) next[cat.id] = v;
+        } else if (isAviacaoObservacaoInlineField(cat.id, servicos)) {
+          const t = inlineFields[cat.id];
+          if (t) next[cat.id] = t;
+        }
+      }
+      return next;
+    });
+  }, [
+    aviacaoMode,
+    row.observacao,
+    row.cadastro_valores,
+    row.profissional_id,
+    row.local_id,
+    row.especialidade_id,
+    tenantConfig.cadastroCategories,
+    enabledCategories,
+    profissionais,
+    locais,
+    servicos,
+  ]);
+
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
     if (docasMode || aviacaoMode) return;
@@ -190,7 +241,8 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const showAviacaoHoraAgendada = aviacaoMode;
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
-    if (aviacaoMode && isAviacaoHangarSelectField(cat.id)) {
+    if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
+      const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           {resolveAviacaoCategoryLabel(cat)}
@@ -201,7 +253,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
           >
             <option value="">—</option>
-            {locais.map((m) => (
+            {opts.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.nome ?? m.id}
               </option>
@@ -211,35 +263,42 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       );
     }
 
-    if (aviacaoMode && isAviacaoRegistryFreeTextField(cat.id)) {
-      return (
-        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {resolveAviacaoCategoryLabel(cat)}
-          <input
-            type="text"
-            value={formValues[cat.id] ?? ""}
-            disabled={busy}
-            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-          />
-        </label>
-      );
-    }
-
-    if (aviacaoMode && isAviacaoHybridComboboxField(cat.id)) {
-      return (
-        <AviacaoHybridCombobox
-          key={cat.id}
-          instanceId={cat.id}
-          label={resolveAviacaoCategoryLabel(cat)}
-          value={formValues[cat.id] ?? ""}
-          options={comboboxOptionsFor(cat)}
-          disabled={busy}
-          showQuickAdd={false}
-          onChange={(v) => setFormValues((prev) => ({ ...prev, [cat.id]: v }))}
-          size="modal"
-        />
-      );
+    if (aviacaoMode && cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
+      if (isAviacaoUrgenciaSelectMode(servicos)) {
+        const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
+        return (
+          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {resolveAviacaoCategoryLabel(cat)}
+            <select
+              value={formValues[cat.id] ?? ""}
+              disabled={busy}
+              onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            >
+              <option value="">—</option>
+              {opts.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome ?? m.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      }
+      if (isAviacaoObservacaoInlineField(cat.id, servicos)) {
+        return (
+          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {resolveAviacaoCategoryLabel(cat)}
+            <input
+              type="text"
+              value={formValues[cat.id] ?? ""}
+              disabled={busy}
+              onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            />
+          </label>
+        );
+      }
     }
 
     if (docasMode && isDocasTextField(cat.id)) {

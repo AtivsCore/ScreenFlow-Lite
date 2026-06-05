@@ -15,20 +15,19 @@ import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-c
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { AviacaoHybridCombobox } from "@/components/screenflow/aviacao-hybrid-combobox";
 import {
   buildAviacaoRegistryObservacao,
   buildAviacaoSavePayload,
+  AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
   AVIACAO_QUEUE_TAB,
   AVIACAO_REQUIRED_CATEGORY_IDS,
-  isAviacaoHangarSelectField,
-  isAviacaoHybridComboboxField,
-  isAviacaoRegistryFreeTextField,
+  isAviacaoObservacaoInlineField,
+  isAviacaoRigidSelectField,
   isAviacaoRequiredCategory,
   isAviacaoSegment,
-  isAviacaoTextField,
+  isAviacaoUrgenciaSelectMode,
   resolveAviacaoCategoryLabel,
-  resolveAviacaoComboboxOptions,
+  resolveAviacaoSelectOptions,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasRegistryObservacao,
@@ -83,23 +82,6 @@ export function RegistryPatientModal({
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
 
-  function comboboxOptionsFor(cat: CadastroCategoryEntry) {
-    if (aviacaoMode) {
-      return resolveAviacaoComboboxOptions(cat.id, enabledCategories, {
-        profissionais,
-        locais,
-        servicos,
-      });
-    }
-    if (cat.tableKey === "profissionais") {
-      return profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }));
-    }
-    if (cat.tableKey === "locais") {
-      return locais.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
-    }
-    return servicos.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
-  }
-
   const loadLookupOptions = useCallback(async () => {
     if (!supabase) return;
     const tid = effectiveTenantId;
@@ -125,7 +107,8 @@ export function RegistryPatientModal({
       <span className="text-red-600 dark:text-red-400"> *</span>
     ) : null;
 
-    if (aviacaoMode && isAviacaoHangarSelectField(cat.id)) {
+    if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
+      const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           {resolveAviacaoCategoryLabel(cat)}
@@ -137,7 +120,7 @@ export function RegistryPatientModal({
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
           >
             <option value="">—</option>
-            {locais.map((m) => (
+            {opts.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.nome ?? m.id}
               </option>
@@ -147,37 +130,44 @@ export function RegistryPatientModal({
       );
     }
 
-    if (aviacaoMode && isAviacaoRegistryFreeTextField(cat.id)) {
-      return (
-        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {resolveAviacaoCategoryLabel(cat)}
-          {requiredMark}
-          <input
-            type="text"
-            value={formValues[cat.id] ?? ""}
-            disabled={busy}
-            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-          />
-        </label>
-      );
-    }
-
-    if (aviacaoMode && isAviacaoHybridComboboxField(cat.id)) {
-      return (
-        <AviacaoHybridCombobox
-          key={cat.id}
-          instanceId={cat.id}
-          label={resolveAviacaoCategoryLabel(cat)}
-          value={formValues[cat.id] ?? ""}
-          options={comboboxOptionsFor(cat)}
-          disabled={busy}
-          showQuickAdd={false}
-          onChange={(v) => setFormValues((prev) => ({ ...prev, [cat.id]: v }))}
-          size="modal"
-          requiredMark={requiredMark}
-        />
-      );
+    if (aviacaoMode && cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
+      if (isAviacaoUrgenciaSelectMode(servicos)) {
+        const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
+        return (
+          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {resolveAviacaoCategoryLabel(cat)}
+            {requiredMark}
+            <select
+              value={formValues[cat.id] ?? ""}
+              disabled={busy}
+              onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            >
+              <option value="">—</option>
+              {opts.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome ?? m.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      }
+      if (isAviacaoObservacaoInlineField(cat.id, servicos)) {
+        return (
+          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {resolveAviacaoCategoryLabel(cat)}
+            {requiredMark}
+            <input
+              type="text"
+              value={formValues[cat.id] ?? ""}
+              disabled={busy}
+              onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            />
+          </label>
+        );
+      }
     }
 
     if (docasMode && isDocasTextField(cat.id)) {

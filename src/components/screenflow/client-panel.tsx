@@ -3,21 +3,19 @@
 import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valores";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
-import { AviacaoHybridCombobox } from "@/components/screenflow/aviacao-hybrid-combobox";
 import {
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
   buildAviacaoCategoryPatch,
   formatAviacaoObservacaoForDisplay,
-  AVIACAO_HANGAR_CATEGORY_ID,
-  isAviacaoHangarSelectField,
-  isAviacaoHybridComboboxField,
+  hydrateAviacaoFormValue,
+  isAviacaoObservacaoInlineField,
+  isAviacaoRigidSelectField,
   isAviacaoSegment,
-  isAviacaoTextField,
-  mergeAviacaoObservacao,
   parseAviacaoCadastroFields,
+  resolveAviacaoCategoryDisplay,
   resolveAviacaoCategoryLabel,
-  resolveAviacaoComboboxOptions,
   resolveAviacaoCrudTable,
+  resolveAviacaoSelectOptions,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasCategoryPatch,
@@ -144,11 +142,20 @@ export const ClientPanel = memo(function ClientPanel({
   const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
   const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
   const optionsLoadedRef = useRef<string | null>(null);
-  const aviacaoPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const enabledCategories = useMemo(
     () => cadastroCategories.filter((c) => c.enabled),
     [cadastroCategories]
+  );
+  const cadastroLookups = useMemo(
+    () => ({
+      profissionais: new Map(
+        profissionais.map((p) => [p.id, formatProfissionalLabel(p)] as const)
+      ),
+      locais: new Map(locais.map((l) => [l.id, l.nome ?? l.id] as const)),
+      servicos: new Map(servicos.map((s) => [s.id, s.nome ?? s.id] as const)),
+    }),
+    [profissionais, locais, servicos]
   );
   const docasMode = isDocasSegment(segmentoAplicado);
   const aviacaoMode = isAviacaoSegment(segmentoAplicado);
@@ -168,8 +175,8 @@ export const ClientPanel = memo(function ClientPanel({
   }
 
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
-    if (aviacaoMode && cat.id === AVIACAO_HANGAR_CATEGORY_ID) {
-      return locais;
+    if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
+      return resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
     }
     switch (cat.tableKey) {
       case "profissionais":
@@ -214,36 +221,6 @@ export const ClientPanel = memo(function ClientPanel({
     void onPatch({ observacao });
   }
 
-  const flushAviacaoTextPatch = useCallback(
-    (next: Record<string, string>) => {
-      if (!selected) return;
-      const payload = buildAviacaoCategoryPatch(next, cadastroCategories, selected.observacao);
-      void onPatch(payload);
-    },
-    [selected, cadastroCategories, onPatch]
-  );
-
-  function patchAviacaoTextField(categoryId: string, value: string) {
-    if (!selected) return;
-    const next = { ...categoryValues, [categoryId]: value };
-    setCategoryValues(next);
-    if (aviacaoPatchTimerRef.current) clearTimeout(aviacaoPatchTimerRef.current);
-    aviacaoPatchTimerRef.current = setTimeout(() => {
-      flushAviacaoTextPatch(next);
-    }, 400);
-  }
-
-  function comboboxOptionsFor(cat: CadastroCategoryEntry) {
-    if (aviacaoMode) {
-      return resolveAviacaoComboboxOptions(cat.id, cadastroCategories, {
-        profissionais,
-        locais,
-        servicos,
-      });
-    }
-    return optionsFor(cat).map((x) => ({ id: x.id, label: x.nome ?? x.id }));
-  }
-
   function renderCategoryField(cat: CadastroCategoryEntry) {
     const label = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
 
@@ -262,7 +239,8 @@ export const ClientPanel = memo(function ClientPanel({
       );
     }
 
-    if (aviacaoMode && isAviacaoHangarSelectField(cat.id)) {
+    if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
+      const opts = optionsFor(cat);
       return (
         <label key={cat.id} className={AVIACAO_PANEL_FIELD_CLASS}>
           <span className="flex h-4 items-center justify-between gap-1">
@@ -285,30 +263,13 @@ export const ClientPanel = memo(function ClientPanel({
             className={AVIACAO_PANEL_CONTROL_CLASS}
           >
             <option value="">—</option>
-            {locais.map((x) => (
+            {opts.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.nome ?? x.id}
               </option>
             ))}
           </select>
         </label>
-      );
-    }
-
-    if (aviacaoMode && isAviacaoHybridComboboxField(cat.id)) {
-      return (
-        <AviacaoHybridCombobox
-          key={cat.id}
-          instanceId={cat.id}
-          label={label}
-          value={categoryValues[cat.id] ?? ""}
-          options={comboboxOptionsFor(cat)}
-          disabled={fieldDisabled}
-          quickAddDisabled={quickAddDisabled}
-          onChange={(v) => patchAviacaoTextField(cat.id, v)}
-          onQuickAdd={() => openCrudForCategory(cat)}
-          size="compact"
-        />
       );
     }
 
@@ -363,12 +324,6 @@ export const ClientPanel = memo(function ClientPanel({
   }, [loadOptions]);
 
   useEffect(() => {
-    return () => {
-      if (aviacaoPatchTimerRef.current) clearTimeout(aviacaoPatchTimerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!selected) {
       setCategoryValues({});
       return;
@@ -381,19 +336,33 @@ export const ClientPanel = memo(function ClientPanel({
         : {};
     const next: Record<string, string> = {};
     for (const cat of enabledCategories) {
-      if (
-        (docasMode && isDocasTextField(cat.id)) ||
-        (aviacaoMode && isAviacaoTextField(cat.id))
-      ) {
+      if (docasMode && isDocasTextField(cat.id)) {
         const t = inlineFields[cat.id];
         if (t) next[cat.id] = t;
+      } else if (aviacaoMode && isAviacaoObservacaoInlineField(cat.id, servicos)) {
+        const t = inlineFields[cat.id];
+        if (t) next[cat.id] = t;
+      } else if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
+        const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
+        const v = hydrateAviacaoFormValue(cat.id, vals, selected.observacao, opts);
+        if (v) next[cat.id] = v;
       } else {
         const v = vals[cat.id];
         if (v) next[cat.id] = v;
       }
     }
     setCategoryValues(next);
-  }, [selected?.id, selected?.cadastro_valores, selected?.observacao, enabledCategories, docasMode, aviacaoMode]);
+  }, [
+    selected?.id,
+    selected?.cadastro_valores,
+    selected?.observacao,
+    enabledCategories,
+    docasMode,
+    aviacaoMode,
+    profissionais,
+    locais,
+    servicos,
+  ]);
 
   const tvValue = selected?.tv_id ?? "";
   const fieldDisabled = !selected || !canMutate;
@@ -412,7 +381,16 @@ export const ClientPanel = memo(function ClientPanel({
   const docasPlaca =
     docasMode && selected ? parseDocasCadastroFields(selected.observacao)["doc-c1"]?.trim() : null;
   const aviacaoPrefixo =
-    aviacaoMode && selected ? parseAviacaoCadastroFields(selected.observacao)["av-c3"]?.trim() : null;
+    aviacaoMode && selected
+      ? resolveAviacaoCategoryDisplay(
+          "av-c3",
+          selected.observacao,
+          selected.cadastro_valores ?? {},
+          cadastroLookups,
+          cadastroCategories,
+          { local_id: selected.local_id, localNome: selected.localNome }
+        )?.trim() ?? null
+      : null;
   const selectedDisplayName = docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
 
   return (
