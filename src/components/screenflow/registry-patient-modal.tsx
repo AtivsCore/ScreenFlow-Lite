@@ -19,7 +19,6 @@ import {
   appendAviacaoTimelineEntry,
   buildAviacaoRegistryObservacao,
   buildAviacaoSavePayload,
-  AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
   AVIACAO_COMBUSTIVEL_OPTIONS,
   AVIACAO_FIELD_COMBUSTIVEL,
   AVIACAO_FIELD_HOBBS,
@@ -31,15 +30,8 @@ import {
   AVIACAO_PREFIXO_CATEGORY_ID,
   AVIACAO_PREFIXO_MODAL_DATALIST_ID,
   AVIACAO_QUEUE_TAB,
-  AVIACAO_REQUIRED_CATEGORY_IDS,
-  isAviacaoFreeTextField,
-  isAviacaoObservacaoInlineField,
-  isAviacaoRigidSelectField,
-  isAviacaoRequiredCategory,
   isAviacaoSegment,
-  isAviacaoUrgenciaSelectMode,
   parseAviacaoServicosSolicitados,
-  resolveAviacaoCategoryLabel,
   resolveAviacaoQueueTabs,
   resolveAviacaoSelectOptions,
   resolveAviacaoServicosSolicitadosOptions,
@@ -58,6 +50,13 @@ import { buildHoraMarcadaTodayIso } from "@/lib/hora-marcada";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
 type OptRow = { id: string; nome: string | null };
+
+const REGISTRY_FIELD_CLASS =
+  "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50";
+const REGISTRY_LABEL_CLASS = "block text-xs font-medium text-zinc-600 dark:text-zinc-400";
+const REGISTRY_REQUIRED_MARK = (
+  <span className="text-red-600 dark:text-red-400"> *</span>
+);
 
 type RegistryPatientModalProps = {
   open: boolean;
@@ -100,15 +99,6 @@ export function RegistryPatientModal({
     [sessionTenantId, tenantId]
   );
 
-  const aviacaoRegistryCategories = useMemo(() => {
-    if (!aviacaoMode) return enabledCategories;
-    const hidden = new Set<string>([
-      ...AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
-      AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
-    ]);
-    return enabledCategories.filter((c) => !hidden.has(c.id));
-  }, [aviacaoMode, enabledCategories]);
-
   const loadLookupOptions = useCallback(async () => {
     if (!supabase) return;
     const tid = effectiveTenantId;
@@ -126,119 +116,9 @@ export function RegistryPatientModal({
     setLocais((l.data as OptRow[] | null) ?? []);
   }, [supabase, effectiveTenantId]);
 
-  function resolveAviacaoRegistryCategoryLabel(cat: CadastroCategoryEntry): string {
-    const stored = resolveAviacaoCategoryLabel(cat);
-    if (
-      cat.id === AVIACAO_PREFIXO_CATEGORY_ID ||
-      cat.id === AVIACAO_MODELO_CATEGORY_ID ||
-      /lista de prefixos/i.test(stored)
-    ) {
-      return "Modelo da Aeronave";
-    }
-    return stored;
-  }
-
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
-    const isRequired =
-      (docasMode && isDocasRequiredCategory(cat.id)) ||
-      (aviacaoMode && isAviacaoRequiredCategory(cat.id));
-    const requiredMark = isRequired ? (
-      <span className="text-red-600 dark:text-red-400"> *</span>
-    ) : null;
-    const categoryLabel = aviacaoMode
-      ? resolveAviacaoRegistryCategoryLabel(cat)
-      : cat.label;
-
-    if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
-      const freeTextOpts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
-      const datalistId =
-        cat.id === AVIACAO_MODELO_CATEGORY_ID
-          ? AVIACAO_MODELO_MODAL_DATALIST_ID
-          : AVIACAO_PREFIXO_MODAL_DATALIST_ID;
-      return (
-        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {categoryLabel}
-          {requiredMark}
-          <input
-            type="text"
-            list={datalistId}
-            value={formValues[cat.id] ?? ""}
-            disabled={busy}
-            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            autoComplete="off"
-          />
-          <datalist id={datalistId}>
-            {freeTextOpts.map((m) => (
-              <option key={m.id} value={m.nome ?? m.id} />
-            ))}
-          </datalist>
-        </label>
-      );
-    }
-
-    if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
-      const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
-      return (
-        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {categoryLabel}
-          {requiredMark}
-          <select
-            value={formValues[cat.id] ?? ""}
-            disabled={busy}
-            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-          >
-            <option value="">—</option>
-            {opts.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nome ?? m.id}
-              </option>
-            ))}
-          </select>
-        </label>
-      );
-    }
-
-    if (aviacaoMode && cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
-      if (isAviacaoUrgenciaSelectMode(servicos)) {
-        const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
-        return (
-          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {categoryLabel}
-            {requiredMark}
-            <select
-              value={formValues[cat.id] ?? ""}
-              disabled={busy}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            >
-              <option value="">—</option>
-              {opts.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.nome ?? m.id}
-                </option>
-              ))}
-            </select>
-          </label>
-        );
-      }
-      if (isAviacaoObservacaoInlineField(cat.id, servicos)) {
-        return (
-          <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {categoryLabel}
-            {requiredMark}
-            <input
-              type="text"
-              value={formValues[cat.id] ?? ""}
-              disabled={busy}
-              onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
-          </label>
-        );
-      }
-    }
+    const isRequired = docasMode && isDocasRequiredCategory(cat.id);
+    const requiredMark = isRequired ? REGISTRY_REQUIRED_MARK : null;
 
     if (docasMode && isDocasTextField(cat.id)) {
       return (
@@ -303,6 +183,43 @@ export function RegistryPatientModal({
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [locais, setLocais] = useState<OptRow[]>([]);
 
+  const aviacaoLookups = useMemo(
+    () => ({ profissionais, locais, servicos }),
+    [profissionais, locais, servicos]
+  );
+
+  const aviacaoPrefixoDatalist = useMemo(
+    () =>
+      aviacaoMode
+        ? resolveAviacaoSelectOptions(AVIACAO_PREFIXO_CATEGORY_ID, aviacaoLookups)
+        : [],
+    [aviacaoMode, aviacaoLookups]
+  );
+
+  const aviacaoModeloDatalist = useMemo(
+    () =>
+      aviacaoMode
+        ? resolveAviacaoSelectOptions(AVIACAO_MODELO_CATEGORY_ID, aviacaoLookups)
+        : [],
+    [aviacaoMode, aviacaoLookups]
+  );
+
+  const aviacaoHangarOptions = useMemo(
+    () =>
+      aviacaoMode
+        ? resolveAviacaoSelectOptions(AVIACAO_HANGAR_CATEGORY_ID, aviacaoLookups)
+        : [],
+    [aviacaoMode, aviacaoLookups]
+  );
+
+  const aviacaoUrgenciaOptions = useMemo(
+    () =>
+      aviacaoMode
+        ? resolveAviacaoSelectOptions(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, aviacaoLookups)
+        : [],
+    [aviacaoMode, aviacaoLookups]
+  );
+
   const aviacaoServicosOptions = useMemo(
     () => (aviacaoMode ? resolveAviacaoServicosSolicitadosOptions(servicos) : []),
     [aviacaoMode, servicos]
@@ -312,6 +229,10 @@ export function RegistryPatientModal({
     () => parseAviacaoServicosSolicitados(formValues[AVIACAO_FIELD_SERVICOS]),
     [formValues]
   );
+
+  function patchAviacaoField(fieldId: string, value: string) {
+    setFormValues((prev) => ({ ...prev, [fieldId]: value }));
+  }
 
   function toggleAviacaoServico(id: string) {
     const next = aviacaoServicosSelected.includes(id)
@@ -364,7 +285,6 @@ export function RegistryPatientModal({
     if (tab?.preset !== "hora") setHoraMarcada("");
   }
 
-  const showAviacaoHoraAgendada = aviacaoMode;
   const showDocasHoraAgendada = docasMode;
   const showHoraHoje = !docasMode && !aviacaoMode && triagemTab?.preset === "hora";
 
@@ -419,6 +339,10 @@ export function RegistryPatientModal({
       }
       if (!formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()) {
         setError("Vaga / Hangar / Box é obrigatório.");
+        return;
+      }
+      if (aviacaoServicosSelected.length === 0) {
+        setError("Selecione ao menos um serviço solicitado.");
         return;
       }
     }
@@ -533,15 +457,190 @@ export function RegistryPatientModal({
     setBusy(false);
   }
 
-  const visibleFields =
-    rf.showClienteNome ||
-    queueTabs.length > 0 ||
-    enabledCategories.length > 0 ||
-    rf.showHoraMarcada ||
-    showDocasHoraAgendada ||
-    showAviacaoHoraAgendada ||
-    law ||
-    rf.showObservacao;
+  const visibleFields = aviacaoMode
+    ? true
+    : rf.showClienteNome ||
+      queueTabs.length > 0 ||
+      enabledCategories.length > 0 ||
+      rf.showHoraMarcada ||
+      showDocasHoraAgendada ||
+      law ||
+      rf.showObservacao;
+
+  function renderAviacaoRegistryForm() {
+    return (
+      <>
+        <label className={REGISTRY_LABEL_CLASS}>
+          Estágio
+          <select
+            value={triagemTabId}
+            disabled
+            className={`${REGISTRY_FIELD_CLASS} disabled:cursor-not-allowed disabled:opacity-70`}
+          >
+            <option value={AVIACAO_QUEUE_TAB.TRIAGEM}>Triagem / Check-in</option>
+          </select>
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Prefixo da Aeronave
+          {REGISTRY_REQUIRED_MARK}
+          <input
+            type="text"
+            list={AVIACAO_PREFIXO_MODAL_DATALIST_ID}
+            value={formValues[AVIACAO_PREFIXO_CATEGORY_ID] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchAviacaoField(AVIACAO_PREFIXO_CATEGORY_ID, e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+            autoComplete="off"
+          />
+          <datalist id={AVIACAO_PREFIXO_MODAL_DATALIST_ID}>
+            {aviacaoPrefixoDatalist.map((m) => (
+              <option key={m.id} value={m.nome ?? m.id} />
+            ))}
+          </datalist>
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Urgência da Peça
+          <select
+            value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchAviacaoField(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+          >
+            <option value="">—</option>
+            {aviacaoUrgenciaOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nome ?? m.id}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Modelo da Aeronave
+          <input
+            type="text"
+            list={AVIACAO_MODELO_MODAL_DATALIST_ID}
+            value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchAviacaoField(AVIACAO_MODELO_CATEGORY_ID, e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+            autoComplete="off"
+          />
+          <datalist id={AVIACAO_MODELO_MODAL_DATALIST_ID}>
+            {aviacaoModeloDatalist.map((m) => (
+              <option key={m.id} value={m.nome ?? m.id} />
+            ))}
+          </datalist>
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Vaga / Hangar / Box
+          {REGISTRY_REQUIRED_MARK}
+          <select
+            value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchAviacaoField(AVIACAO_HANGAR_CATEGORY_ID, e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+          >
+            <option value="">—</option>
+            {aviacaoHangarOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nome ?? m.id}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Horas de Voo (Hobbs)
+          {REGISTRY_REQUIRED_MARK}
+          <input
+            type="text"
+            inputMode="decimal"
+            value={formValues[AVIACAO_FIELD_HOBBS] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchAviacaoField(AVIACAO_FIELD_HOBBS, e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+          />
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Nível de Combustível
+          {REGISTRY_REQUIRED_MARK}
+          <select
+            value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
+            disabled={busy}
+            onChange={(e) => patchAviacaoField(AVIACAO_FIELD_COMBUSTIVEL, e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+          >
+            <option value="">—</option>
+            {AVIACAO_COMBUSTIVEL_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <fieldset className={REGISTRY_LABEL_CLASS}>
+          <legend className="mb-1">
+            Serviços Solicitados
+            {REGISTRY_REQUIRED_MARK}
+          </legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+            {aviacaoServicosOptions.length > 0 ? (
+              aviacaoServicosOptions.map((svc) => (
+                <label
+                  key={svc.id}
+                  className="inline-flex cursor-pointer items-center gap-2 font-normal"
+                >
+                  <input
+                    type="checkbox"
+                    checked={aviacaoServicosSelected.includes(svc.id)}
+                    disabled={busy}
+                    onChange={() => toggleAviacaoServico(svc.id)}
+                    className="size-3.5 rounded border-zinc-300"
+                  />
+                  {svc.nome ?? svc.id}
+                </label>
+              ))
+            ) : (
+              <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
+                Cadastre serviços na base ativa para habilitar esta seleção.
+              </p>
+            )}
+          </div>
+        </fieldset>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          <span className="flex items-center gap-1.5">
+            <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
+            ETA — Horário estimado de pouso
+          </span>
+          <input
+            type="time"
+            value={horaMarcada}
+            disabled={busy}
+            onChange={(e) => setHoraMarcada(e.target.value)}
+            className={REGISTRY_FIELD_CLASS}
+          />
+        </label>
+
+        <label className={REGISTRY_LABEL_CLASS}>
+          Observações
+          <textarea
+            value={observacaoBase}
+            disabled={busy}
+            onChange={(e) => setObservacaoBase(e.target.value)}
+            rows={3}
+            className={`${REGISTRY_FIELD_CLASS} resize-none`}
+          />
+        </label>
+      </>
+    );
+  }
 
   return (
     <Modal open={open} title="Novo registro" onClose={onClose} widthClassName="max-w-md">
@@ -552,150 +651,86 @@ export function RegistryPatientModal({
           </p>
         )}
 
-        {queueTabs.length > 0 ? (
+        {aviacaoMode ? (
+          renderAviacaoRegistryForm()
+        ) : (
           <>
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              {aviacaoMode ? "Estágio" : triagemLabel}
-              <select
-                value={triagemTabId}
-                disabled={aviacaoMode || busy}
-                onChange={(e) => handleTriagemChange(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 disabled:cursor-not-allowed disabled:opacity-70 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-              >
-                {aviacaoMode ? (
-                  <option value={AVIACAO_QUEUE_TAB.TRIAGEM}>Triagem / Check-in</option>
-                ) : (
-                  queueTabs.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.label}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-            {showHoraHoje ? (
-              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                Horário marcado (hoje)
+            {queueTabs.length > 0 ? (
+              <>
+                <label className={REGISTRY_LABEL_CLASS}>
+                  {triagemLabel}
+                  <select
+                    value={triagemTabId}
+                    disabled={busy}
+                    onChange={(e) => handleTriagemChange(e.target.value)}
+                    className={REGISTRY_FIELD_CLASS}
+                  >
+                    {queueTabs.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {showHoraHoje ? (
+                  <label className={REGISTRY_LABEL_CLASS}>
+                    Horário marcado (hoje)
+                    <input
+                      type="time"
+                      value={horaMarcada}
+                      onChange={(e) => setHoraMarcada(e.target.value)}
+                      className={REGISTRY_FIELD_CLASS}
+                    />
+                  </label>
+                ) : null}
+              </>
+            ) : null}
+
+            {rf.showClienteNome ? (
+              <label className={REGISTRY_LABEL_CLASS}>
+                Nome do cliente
+                <input
+                  value={nomeCliente}
+                  onChange={(e) => setNomeCliente(e.target.value)}
+                  className={REGISTRY_FIELD_CLASS}
+                />
+              </label>
+            ) : null}
+
+            {enabledCategories.map((cat) => renderCategoryField(cat))}
+
+            {showDocasHoraAgendada ? (
+              <label className={REGISTRY_LABEL_CLASS}>
+                <span className="flex items-center gap-1.5">
+                  <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
+                  Horário agendado
+                </span>
                 <input
                   type="time"
                   value={horaMarcada}
                   onChange={(e) => setHoraMarcada(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+                  className={REGISTRY_FIELD_CLASS}
+                />
+              </label>
+            ) : null}
+
+            {law ? (
+              <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
+            ) : null}
+
+            {rf.showObservacao ? (
+              <label className={REGISTRY_LABEL_CLASS}>
+                Observações
+                <textarea
+                  value={observacaoBase}
+                  onChange={(e) => setObservacaoBase(e.target.value)}
+                  rows={3}
+                  className={`${REGISTRY_FIELD_CLASS} resize-none`}
                 />
               </label>
             ) : null}
           </>
-        ) : null}
-
-        {rf.showClienteNome ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {aviacaoMode ? (
-              <>
-                Prefixo da Aeronave
-                <span className="text-red-600 dark:text-red-400"> *</span>
-              </>
-            ) : (
-              "Nome do cliente"
-            )}
-            <input
-              value={nomeCliente}
-              onChange={(e) => setNomeCliente(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
-          </label>
-        ) : null}
-
-        {(aviacaoMode ? aviacaoRegistryCategories : enabledCategories).map((cat) =>
-          renderCategoryField(cat)
         )}
-
-        {aviacaoMode ? (
-          <>
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              Horas de Voo (Hobbs)
-              <span className="text-red-600 dark:text-red-400"> *</span>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={formValues[AVIACAO_FIELD_HOBBS] ?? ""}
-                disabled={busy}
-                onChange={(e) =>
-                  setFormValues((prev) => ({ ...prev, [AVIACAO_FIELD_HOBBS]: e.target.value }))
-                }
-                className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-              />
-            </label>
-            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              Nível de Combustível
-              <span className="text-red-600 dark:text-red-400"> *</span>
-              <select
-                value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
-                disabled={busy}
-                onChange={(e) =>
-                  setFormValues((prev) => ({ ...prev, [AVIACAO_FIELD_COMBUSTIVEL]: e.target.value }))
-                }
-                className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-              >
-                <option value="">—</option>
-                {AVIACAO_COMBUSTIVEL_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {aviacaoServicosOptions.length > 0 ? (
-              <fieldset className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                <legend className="mb-1">Serviços Solicitados</legend>
-                <div className="flex flex-col gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
-                  {aviacaoServicosOptions.map((svc) => (
-                    <label key={svc.id} className="inline-flex cursor-pointer items-center gap-2 font-normal">
-                      <input
-                        type="checkbox"
-                        checked={aviacaoServicosSelected.includes(svc.id)}
-                        disabled={busy}
-                        onChange={() => toggleAviacaoServico(svc.id)}
-                        className="size-3.5 rounded border-zinc-300"
-                      />
-                      {svc.nome ?? svc.id}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            ) : null}
-          </>
-        ) : null}
-
-        {showDocasHoraAgendada || showAviacaoHoraAgendada ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            <span className="flex items-center gap-1.5">
-              <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
-              {showAviacaoHoraAgendada ? "ETA — Horário estimado de pouso" : "Horário agendado"}
-            </span>
-            <input
-              type="time"
-              value={horaMarcada}
-              onChange={(e) => setHoraMarcada(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
-          </label>
-        ) : null}
-
-        {law ? (
-          <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
-        ) : null}
-
-        {rf.showObservacao ? (
-          <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Observações
-            <textarea
-              value={observacaoBase}
-              onChange={(e) => setObservacaoBase(e.target.value)}
-              rows={3}
-              className="mt-1 w-full resize-none rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            />
-          </label>
-        ) : null}
 
         {error && (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
