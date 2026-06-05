@@ -15,6 +15,7 @@ import {
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryLabel,
   resolveAviacaoComboboxOptions,
+  resolveAviacaoCrudTable,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasCategoryPatch,
@@ -36,7 +37,7 @@ import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 
 type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
-type QuickCrud = { title: string; table: string };
+type QuickCrud = { title: string; table: string; categoryId?: string };
 
 const AVIACAO_PANEL_FIELD_CLASS =
   "col-span-1 min-w-0 block text-[10px] font-medium text-zinc-600 dark:text-zinc-400";
@@ -157,7 +158,11 @@ export const ClientPanel = memo(function ClientPanel({
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
     const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
-    setQuickCrud({ title, table: cadastroCategoryCrudTable(cat) });
+    setQuickCrud({
+      title,
+      table: aviacaoMode ? resolveAviacaoCrudTable(cat.id) : cadastroCategoryCrudTable(cat),
+      categoryId: aviacaoMode ? cat.id : undefined,
+    });
   }
 
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
@@ -522,6 +527,7 @@ export const ClientPanel = memo(function ClientPanel({
           title={quickCrud.title}
           table={quickCrud.table}
           tenantId={tenantId}
+          cadastroCategoryId={quickCrud.categoryId}
           onClose={() => setQuickCrud(null)}
           onSaved={() => {
             void refreshOptions();

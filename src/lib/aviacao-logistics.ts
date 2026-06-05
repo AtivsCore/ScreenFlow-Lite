@@ -12,6 +12,7 @@ import {
   parseFilaPreset,
 } from "@/lib/fila-preset";
 import { STATUS_UPDATE, type QueueTabId } from "@/lib/atendimentos-lite";
+import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
 
@@ -49,8 +50,38 @@ export const AVIACAO_STEP_LABELS: Record<AviacaoQueueTabId, string> = {
 
 export const AVIACAO_HANGAR_TAG_WIDTH_CLASS = "w-[10.5rem]";
 
-/** Campos de texto livre (não vão para UUID). */
-export const AVIACAO_TEXT_FIELD_IDS = ["av-c1", "av-c3", "av-c4"] as const;
+/** Campos de texto livre persistidos na tag `__sf_aviacao:` (não vão para UUID). */
+export const AVIACAO_TEXT_FIELD_IDS = ["av-c1", "av-c3", "av-c4", "av-c5"] as const;
+
+/** Campos híbridos (combobox) no cabeçalho — exclui `av-c5` (texto puro no modal). */
+export const AVIACAO_HYBRID_COMBOBOX_FIELD_IDS = ["av-c1", "av-c3", "av-c4"] as const;
+
+/**
+ * Gavetas virtuais isoladas por slot de formulário.
+ * Categorias 3–5 compartilham a tabela física `servicos`, mas com buckets de `ordem` distintos.
+ */
+export type AviacaoDrawerKey =
+  | "profissionais"
+  | "locais"
+  | "servicos_prefixo"
+  | "categoria_custom_4"
+  | "categoria_custom_5";
+
+export const AVIACAO_FIELD_DRAWER_KEY: Record<string, AviacaoDrawerKey> = {
+  "av-c1": "profissionais",
+  "av-c2": "locais",
+  "av-c3": "servicos_prefixo",
+  "av-c4": "categoria_custom_4",
+  "av-c5": "categoria_custom_5",
+};
+
+export const AVIACAO_DRAWER_SERVICOS_BUCKET: Partial<
+  Record<AviacaoDrawerKey, { min: number; max: number }>
+> = {
+  servicos_prefixo: { min: 100_000, max: 199_999 },
+  categoria_custom_4: { min: 200_000, max: 299_999 },
+  categoria_custom_5: { min: 300_000, max: 399_999 },
+};
 
 /** Hangar / box (select UUID em `locais`). */
 export const AVIACAO_HANGAR_CATEGORY_ID = "av-c2";
@@ -92,9 +123,86 @@ export function isAviacaoTextField(categoryId: string): boolean {
   return (AVIACAO_TEXT_FIELD_IDS as readonly string[]).includes(categoryId);
 }
 
-/** Campos híbridos (combobox: sugestão da lista + texto livre). */
+/** Combobox híbrido no cabeçalho (sugestão + texto livre). */
 export function isAviacaoHybridComboboxField(categoryId: string): boolean {
-  return isAviacaoTextField(categoryId);
+  return (AVIACAO_HYBRID_COMBOBOX_FIELD_IDS as readonly string[]).includes(categoryId);
+}
+
+/** Urgência da peça: texto livre simples (sem listas) nos modais. */
+export function isAviacaoRegistryFreeTextField(categoryId: string): boolean {
+  return categoryId === "av-c5";
+}
+
+export function resolveAviacaoDrawerKey(fieldId: string): AviacaoDrawerKey | null {
+  return AVIACAO_FIELD_DRAWER_KEY[fieldId] ?? null;
+}
+
+export function isAviacaoDrawerServicosBacked(drawer: AviacaoDrawerKey): boolean {
+  return drawer in AVIACAO_DRAWER_SERVICOS_BUCKET;
+}
+
+export function filterServicosForAviacaoDrawer(
+  drawer: AviacaoDrawerKey,
+  servicos: AviacaoLookupRow[]
+): AviacaoLookupRow[] {
+  const bucket = AVIACAO_DRAWER_SERVICOS_BUCKET[drawer];
+  if (!bucket) {
+    return servicos.filter((s) => (s.ordem ?? 0) < 100_000);
+  }
+  return servicos.filter((s) => {
+    const ordem = s.ordem ?? 0;
+    return ordem >= bucket.min && ordem <= bucket.max;
+  });
+}
+
+export function resolveAviacaoCrudTable(fieldId: string): string {
+  const drawer = resolveAviacaoDrawerKey(fieldId);
+  if (drawer === "profissionais") return "profissionais";
+  if (drawer === "locais") return "locais";
+  if (drawer && isAviacaoDrawerServicosBacked(drawer)) return SERVICES_CRUD_TABLE;
+  return SERVICES_CRUD_TABLE;
+}
+
+export function filterAviacaoCrudRowsByField(
+  fieldId: string,
+  table: string,
+  rows: AviacaoLookupRow[]
+): AviacaoLookupRow[] {
+  const drawer = resolveAviacaoDrawerKey(fieldId);
+  if (!drawer) return rows;
+
+  if (table === "profissionais" || table === "profissionais_lite") {
+    return drawer === "profissionais" ? rows : [];
+  }
+  if (table === "locais") {
+    return drawer === "locais" ? rows : [];
+  }
+  if (table.includes("servico") || table === "servicos") {
+    if (isAviacaoDrawerServicosBacked(drawer)) {
+      return filterServicosForAviacaoDrawer(drawer, rows);
+    }
+    return drawer === "profissionais" || drawer === "locais" ? [] : rows;
+  }
+  return rows;
+}
+
+export function nextAviacaoDrawerServicosOrdem(
+  fieldId: string,
+  existingRows: AviacaoLookupRow[]
+): number | null {
+  const drawer = resolveAviacaoDrawerKey(fieldId);
+  if (!drawer || !isAviacaoDrawerServicosBacked(drawer)) return null;
+  const bucket = AVIACAO_DRAWER_SERVICOS_BUCKET[drawer];
+  if (!bucket) return null;
+  const inBucket = existingRows.filter((s) => {
+    const ordem = s.ordem ?? 0;
+    return ordem >= bucket.min && ordem <= bucket.max;
+  });
+  const maxOrdem = inBucket.reduce(
+    (max, row) => Math.max(max, row.ordem ?? bucket.min - 1),
+    bucket.min - 1
+  );
+  return Math.min(maxOrdem + 1, bucket.max);
 }
 
 export function resolveAviacaoCategoryLabel(
@@ -142,39 +250,46 @@ export function findAviacaoCategoryForField(
   });
 }
 
-/** Sugestões do combobox conforme `tableKey` da categoria ativa no tenant (dinâmico). */
+/** Sugestões do combobox pela gaveta virtual isolada do slot (ex.: `av-c4` ≠ `av-c3`). */
 export function resolveAviacaoComboboxOptions(
   fieldId: string,
-  categories: CadastroCategoryEntry[],
+  _categories: CadastroCategoryEntry[],
   lookups: {
     profissionais: AviacaoLookupRow[];
     locais: AviacaoLookupRow[];
     servicos: AviacaoLookupRow[];
   }
 ): AviacaoComboboxOption[] {
-  const cat = findAviacaoCategoryForField(fieldId, categories);
-  if (!cat) return [];
+  const drawer = resolveAviacaoDrawerKey(fieldId);
+  if (!drawer) return [];
 
   const toOptions = (
     rows: AviacaoLookupRow[],
     labelFor?: (row: AviacaoLookupRow) => string
-  ): AviacaoComboboxOption[] =>
-    rows
-      .map((row) => ({
-        id: row.id,
-        label: (labelFor?.(row) ?? row.nome ?? row.id).trim(),
-      }))
-      .filter((o) => o.label);
+  ): AviacaoComboboxOption[] => {
+    const seen = new Set<string>();
+    const out: AviacaoComboboxOption[] = [];
+    for (const row of rows) {
+      const label = (labelFor?.(row) ?? row.nome ?? row.id).trim();
+      if (!label) continue;
+      const key = label.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ id: row.id, label });
+    }
+    return out;
+  };
 
-  switch (cat.tableKey) {
+  switch (drawer) {
     case "profissionais":
       return toOptions(lookups.profissionais, (row) =>
         formatProfissionalLabel(row as ProfissionalRow)
       );
     case "locais":
       return toOptions(lookups.locais);
-    case "servicos":
-      return toOptions(lookups.servicos);
+    case "servicos_prefixo":
+    case "categoria_custom_4":
+      return toOptions(filterServicosForAviacaoDrawer(drawer, lookups.servicos));
     default:
       return [];
   }
