@@ -22,7 +22,7 @@ export function AviacaoHangarStepper({
 }: AviacaoHangarStepperProps) {
   return (
     <div
-      className="flex w-full shrink-0 items-center justify-center gap-0.5 rounded-md border border-sky-200 bg-sky-50/80 p-0.5 dark:border-sky-900/60 dark:bg-sky-950/30"
+      className="flex shrink-0 items-center justify-center gap-0.5 rounded-md border border-sky-200 bg-sky-50/80 p-0.5 dark:border-sky-900/60 dark:bg-sky-950/30"
       role="group"
       aria-label="Navegação do fluxo de hangaragem"
     >

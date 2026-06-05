@@ -185,7 +185,7 @@ const AVIACAO = makePreset(
   "✈️",
   "Aviação e Logística de Manutenção (MRO)",
   "Piloto / Responsável, Vaga / Hangar, Prefixo da Aeronave, Modelo, Urgência da Peça",
-  "Triagem → Aguardando Peça → Em Execução → Teste de Voo → Liberado",
+  "Triagem → Em Manutenção → Em Execução → Teste de Voo → Liberado",
   [
     cat("av-c1", "Piloto / Responsável", "profissionais"),
     cat("av-c2", "Vaga / Hangar / Box Alocado", "locais"),
@@ -195,7 +195,7 @@ const AVIACAO = makePreset(
   ],
   [
     aviacaoTab(AVIACAO_QUEUE_TAB.TRIAGEM, "Triagem"),
-    aviacaoTab(AVIACAO_QUEUE_TAB.AGUARDANDO_PECA, "Aguardando Peça"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.AGUARDANDO_PECA, "Em Manutenção"),
     aviacaoTab(AVIACAO_QUEUE_TAB.EM_EXECUCAO, "Em Execução"),
     aviacaoTab(AVIACAO_QUEUE_TAB.TESTE_VOO, "Teste de Voo"),
     aviacaoTab(AVIACAO_QUEUE_TAB.LIBERADO, "Liberado"),

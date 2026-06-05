@@ -4,6 +4,7 @@ import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valor
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
+  AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
   buildAviacaoCategoryPatch,
   isAviacaoSegment,
   isAviacaoTextField,
@@ -137,6 +138,11 @@ export const ClientPanel = memo(function ClientPanel({
   );
   const docasMode = isDocasSegment(segmentoAplicado);
   const aviacaoMode = isAviacaoSegment(segmentoAplicado);
+  const panelCategories = useMemo(() => {
+    if (!aviacaoMode) return enabledCategories;
+    const hidden = new Set<string>(AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS);
+    return enabledCategories.filter((c) => !hidden.has(c.id));
+  }, [enabledCategories, aviacaoMode]);
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
     setQuickCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) });
@@ -352,8 +358,14 @@ export const ClientPanel = memo(function ClientPanel({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]">
-          {enabledCategories.map((cat) => renderCategoryField(cat))}
+        <div
+          className={
+            aviacaoMode
+              ? "grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+              : "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]"
+          }
+        >
+          {panelCategories.map((cat) => renderCategoryField(cat))}
 
           <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
             TV

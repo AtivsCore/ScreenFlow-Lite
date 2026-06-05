@@ -536,8 +536,8 @@ export function QueueSection({
       className="flex h-full min-h-0 w-full max-w-full flex-1 flex-col overflow-x-hidden overflow-y-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
     >
       <div className="shrink-0 border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <div className="flex w-full items-center justify-between gap-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             <h2 className="shrink-0 text-xs font-semibold text-zinc-800 dark:text-zinc-100">Fila em tempo real</h2>
             <button
               type="button"
@@ -548,6 +548,9 @@ export function QueueSection({
             >
               <Plus className="size-3.5" strokeWidth={2} aria-hidden />
             </button>
+          </div>
+
+          <div className="flex min-w-0 flex-1 items-center justify-center px-1">
             {docasLogisticsActive && docasCurrentStep && docasStepLabel && onDocasStepPrev && onDocasStepNext ? (
               <DocasStatusStepper
                 stepLabel={docasStepLabel}
@@ -571,7 +574,7 @@ export function QueueSection({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               aria-pressed={notesInline}

@@ -40,7 +40,7 @@ export const AVIACAO_PIPELINE_ORDER: readonly AviacaoQueueTabId[] = [
 
 export const AVIACAO_STEP_LABELS: Record<AviacaoQueueTabId, string> = {
   [AVIACAO_QUEUE_TAB.TRIAGEM]: "TRIAGEM",
-  [AVIACAO_QUEUE_TAB.AGUARDANDO_PECA]: "AGUARDANDO PEÇA",
+  [AVIACAO_QUEUE_TAB.AGUARDANDO_PECA]: "EM MANUTENÇÃO",
   [AVIACAO_QUEUE_TAB.EM_EXECUCAO]: "EM EXECUÇÃO",
   [AVIACAO_QUEUE_TAB.TESTE_VOO]: "TESTE DE VOO",
   [AVIACAO_QUEUE_TAB.LIBERADO]: "LIBERADO",
@@ -53,6 +53,9 @@ export const AVIACAO_TEXT_FIELD_IDS = ["av-c1", "av-c3", "av-c4"] as const;
 
 /** Hangar / box (select UUID em `locais`). */
 export const AVIACAO_HANGAR_CATEGORY_ID = "av-c2";
+
+/** Categorias ocultas no painel superior do cliente (aviacao_mro). */
+export const AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS = ["av-c5"] as const;
 
 export const AVIACAO_REQUIRED_CATEGORY_IDS = ["av-c3"] as const;
 
@@ -351,9 +354,7 @@ export function resolveAviacaoKanbanMeta(
   const prefixo =
     resolveAviacaoCategoryDisplay("av-c3", row.observacao, row.cadastro_valores ?? {}, lookups, categories, legacyCtx) ??
     null;
-  const piloto =
-    resolveAviacaoCategoryDisplay("av-c1", row.observacao, row.cadastro_valores ?? {}, lookups, categories, legacyCtx) ??
-    null;
+  const pilotoCliente = row.nome?.trim() || null;
   const modelo =
     resolveAviacaoCategoryDisplay("av-c4", row.observacao, row.cadastro_valores ?? {}, lookups, categories, legacyCtx) ??
     null;
@@ -369,7 +370,7 @@ export function resolveAviacaoKanbanMeta(
 
   return {
     title: prefixo ?? row.nome?.trim() ?? "—",
-    profissional: piloto,
+    profissional: pilotoCliente,
     local: null,
     servico: modelo,
     hangarLabel: hangar,
