@@ -185,7 +185,7 @@ const AVIACAO = makePreset(
   "✈️",
   "Aviação e Logística de Manutenção (MRO)",
   "Responsável / Mecânico, Vaga / Hangar, Prefixo da Aeronave, Modelo, Urgência da Peça",
-  "Triagem → Em Manutenção → Em Execução → Teste de Voo → Liberado",
+  "Triagem → Em Manutenção → Aguardando Peças → Inspeção/QC → Teste de Voo → Estética → Liberado",
   [
     cat("av-c1", "Responsável / Mecânico", "profissionais"),
     cat("av-c2", "Vaga / Hangar / Box Alocado", "locais"),
@@ -194,11 +194,13 @@ const AVIACAO = makePreset(
     cat("av-c5", "Urgência da Peça", "servicos"),
   ],
   [
-    aviacaoTab(AVIACAO_QUEUE_TAB.TRIAGEM, "Triagem"),
-    aviacaoTab(AVIACAO_QUEUE_TAB.AGUARDANDO_PECA, "Em Manutenção"),
-    aviacaoTab(AVIACAO_QUEUE_TAB.EM_EXECUCAO, "Em Execução"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.TRIAGEM, "Triagem / Check-in"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.EM_MANUTENCAO, "Em Manutenção"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS, "Aguardando Peças"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.INSPECAO_QC, "Inspeção / QC"),
     aviacaoTab(AVIACAO_QUEUE_TAB.TESTE_VOO, "Teste de Voo"),
-    aviacaoTab(AVIACAO_QUEUE_TAB.LIBERADO, "Liberado"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.ESTETICA_LAVAGEM, "Estética / Lavagem"),
+    aviacaoTab(AVIACAO_QUEUE_TAB.LIBERADO, "Liberado / Pronto"),
   ],
   { showClienteNome: false, showHoraMarcada: false, showObservacao: true }
 );

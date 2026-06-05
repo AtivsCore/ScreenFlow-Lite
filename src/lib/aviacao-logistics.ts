@@ -14,19 +14,23 @@ import {
 import { STATUS_UPDATE, type QueueTabId } from "@/lib/atendimentos-lite";
 import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
-import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
+import type { CadastroCategoryEntry, QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
+import { TODOS_QUEUE_TAB } from "@/lib/tenant-config";
+import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 
 /** Slug do segmento no Master / `segmentoAplicado` (Aviação e Logística de Manutenção). */
 export const AVIACAO_SEGMENT_ID = "aviacao_mro" as const;
 
 export const AVIACAO_HANGAR_UNALLOCATED_LABEL = "NÃO ALOCADO";
 
-/** IDs estáveis das colunas do fluxo híbrido (marcador `__sf_fila:tab:…__`). */
+/** IDs estáveis das 7 colunas do fluxo MRO (marcador `__sf_fila:tab:…__`). */
 export const AVIACAO_QUEUE_TAB = {
   TRIAGEM: "triagem",
-  AGUARDANDO_PECA: "aguardando_peca",
-  EM_EXECUCAO: "em_execucao",
+  EM_MANUTENCAO: "em_manutencao",
+  AGUARDANDO_PECAS: "aguardando_pecas",
+  INSPECAO_QC: "inspecao_qc",
   TESTE_VOO: "teste_voo",
+  ESTETICA_LAVAGEM: "estetica_lavagem",
   LIBERADO: "liberado",
 } as const;
 
@@ -34,19 +38,43 @@ export type AviacaoQueueTabId = (typeof AVIACAO_QUEUE_TAB)[keyof typeof AVIACAO_
 
 export const AVIACAO_PIPELINE_ORDER: readonly AviacaoQueueTabId[] = [
   AVIACAO_QUEUE_TAB.TRIAGEM,
-  AVIACAO_QUEUE_TAB.AGUARDANDO_PECA,
-  AVIACAO_QUEUE_TAB.EM_EXECUCAO,
+  AVIACAO_QUEUE_TAB.EM_MANUTENCAO,
+  AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS,
+  AVIACAO_QUEUE_TAB.INSPECAO_QC,
   AVIACAO_QUEUE_TAB.TESTE_VOO,
+  AVIACAO_QUEUE_TAB.ESTETICA_LAVAGEM,
   AVIACAO_QUEUE_TAB.LIBERADO,
 ];
 
 export const AVIACAO_STEP_LABELS: Record<AviacaoQueueTabId, string> = {
-  [AVIACAO_QUEUE_TAB.TRIAGEM]: "TRIAGEM",
-  [AVIACAO_QUEUE_TAB.AGUARDANDO_PECA]: "EM MANUTENÇÃO",
-  [AVIACAO_QUEUE_TAB.EM_EXECUCAO]: "EM EXECUÇÃO",
+  [AVIACAO_QUEUE_TAB.TRIAGEM]: "TRIAGEM / CHECK-IN",
+  [AVIACAO_QUEUE_TAB.EM_MANUTENCAO]: "EM MANUTENÇÃO",
+  [AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS]: "AGUARDANDO PEÇAS",
+  [AVIACAO_QUEUE_TAB.INSPECAO_QC]: "INSPEÇÃO / QC",
   [AVIACAO_QUEUE_TAB.TESTE_VOO]: "TESTE DE VOO",
-  [AVIACAO_QUEUE_TAB.LIBERADO]: "LIBERADO",
+  [AVIACAO_QUEUE_TAB.ESTETICA_LAVAGEM]: "ESTÉTICA / LAVAGEM",
+  [AVIACAO_QUEUE_TAB.LIBERADO]: "LIBERADO / PRONTO",
 };
+
+/** Campos inline extras na tag `__sf_aviacao:` (MRO). */
+export const AVIACAO_FIELD_HOBBS = "av-hobbs" as const;
+export const AVIACAO_FIELD_COMBUSTIVEL = "av-comb" as const;
+export const AVIACAO_FIELD_SERVICOS = "av-svc" as const;
+export const AVIACAO_FIELD_ANEXOS = "av-anex" as const;
+export const AVIACAO_FIELD_TIMELINE = "av-tml" as const;
+
+export const AVIACAO_EXTENDED_INLINE_FIELD_IDS = [
+  AVIACAO_FIELD_HOBBS,
+  AVIACAO_FIELD_COMBUSTIVEL,
+  AVIACAO_FIELD_SERVICOS,
+  AVIACAO_FIELD_ANEXOS,
+  AVIACAO_FIELD_TIMELINE,
+] as const;
+
+export const AVIACAO_COMBUSTIVEL_OPTIONS = ["Vazio", "1/4", "1/2", "3/4", "Full"] as const;
+export type AviacaoCombustivelLevel = (typeof AVIACAO_COMBUSTIVEL_OPTIONS)[number];
+
+export const AVIACAO_STORAGE_BUCKET = "aviacao-anexos" as const;
 
 export const AVIACAO_HANGAR_TAG_WIDTH_CLASS = "w-[10.5rem]";
 
@@ -124,18 +152,42 @@ const AVIACAO_OBSERVACAO_CLINIC_RESIDUAL_RE =
 const AVIACAO_FILA_TAG_RE = /__sf_fila:[\s\S]*?__/gi;
 const AVIACAO_RAW_TAG_LEAK_RE = /__sf_(?:fila|aviacao|docas):/i;
 
-export const AVIACAO_REQUIRED_CATEGORY_IDS = ["av-c3"] as const;
+export const AVIACAO_REQUIRED_CATEGORY_IDS = ["av-c3", AVIACAO_FIELD_HOBBS, AVIACAO_FIELD_COMBUSTIVEL] as const;
 
 export const AVIACAO_DATA_TAG_RE = /__sf_aviacao:[\s\S]*?__/gi;
 
 const AVIACAO_DATA_PARSE = /__sf_aviacao:([\s\S]*?)__/i;
 
+/** Migração do fluxo legado de 5 colunas para o MRO de 7 colunas. */
 const LEGACY_TAB_ALIASES: Record<string, AviacaoQueueTabId> = {
   "av-t1": AVIACAO_QUEUE_TAB.TRIAGEM,
-  "av-t2": AVIACAO_QUEUE_TAB.AGUARDANDO_PECA,
-  "av-t3": AVIACAO_QUEUE_TAB.EM_EXECUCAO,
+  "av-t2": AVIACAO_QUEUE_TAB.EM_MANUTENCAO,
+  "av-t3": AVIACAO_QUEUE_TAB.INSPECAO_QC,
   "av-t4": AVIACAO_QUEUE_TAB.TESTE_VOO,
   "av-t5": AVIACAO_QUEUE_TAB.LIBERADO,
+  aguardando_peca: AVIACAO_QUEUE_TAB.EM_MANUTENCAO,
+  em_execucao: AVIACAO_QUEUE_TAB.INSPECAO_QC,
+};
+
+export type AviacaoTimelineEntry = {
+  ts: string;
+  action: string;
+  user: string;
+  detail?: string;
+};
+
+export type AviacaoAnexo = {
+  id: string;
+  name: string;
+  mime: string;
+  uploadedAt: string;
+  url: string;
+};
+
+export type AviacaoQueueFilterOptions = {
+  priorityOnly?: boolean;
+  hideAguardandoPecas?: boolean;
+  hangarIds?: string[];
 };
 
 export function isAviacaoSegment(segmentoAplicado: string | null | undefined): boolean {
@@ -444,6 +496,170 @@ export function isAviacaoRequiredCategory(categoryId: string): boolean {
   return (AVIACAO_REQUIRED_CATEGORY_IDS as readonly string[]).includes(categoryId);
 }
 
+export function isAviacaoExtendedInlineField(fieldId: string): boolean {
+  return (AVIACAO_EXTENDED_INLINE_FIELD_IDS as readonly string[]).includes(fieldId);
+}
+
+/** Serviços operacionais (Manutenção, Estética, CVA…) — bucket geral, ordem < 100k. */
+export function resolveAviacaoServicosSolicitadosOptions(
+  servicos: AviacaoLookupRow[]
+): Array<{ id: string; nome: string | null }> {
+  return servicos
+    .filter((s) => (s.ordem ?? 0) < 100_000)
+    .map((s) => ({ id: s.id, nome: s.nome }));
+}
+
+export function parseAviacaoServicosSolicitados(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function serializeAviacaoServicosSolicitados(ids: string[]): string {
+  return ids.filter(Boolean).join(",");
+}
+
+export function parseAviacaoTimeline(observacao: string | null | undefined): AviacaoTimelineEntry[] {
+  const raw = parseAviacaoCadastroFields(observacao)[AVIACAO_FIELD_TIMELINE];
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((e): e is AviacaoTimelineEntry => {
+        if (!e || typeof e !== "object") return false;
+        const o = e as Record<string, unknown>;
+        return (
+          typeof o.ts === "string" &&
+          typeof o.action === "string" &&
+          typeof o.user === "string"
+        );
+      })
+      .sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts));
+  } catch {
+    return [];
+  }
+}
+
+export function parseAviacaoAnexos(observacao: string | null | undefined): AviacaoAnexo[] {
+  const raw = parseAviacaoCadastroFields(observacao)[AVIACAO_FIELD_ANEXOS];
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((e): e is AviacaoAnexo => {
+      if (!e || typeof e !== "object") return false;
+      const o = e as Record<string, unknown>;
+      return (
+        typeof o.id === "string" &&
+        typeof o.name === "string" &&
+        typeof o.mime === "string" &&
+        typeof o.uploadedAt === "string" &&
+        typeof o.url === "string"
+      );
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function appendAviacaoTimelineEntry(
+  fields: AviacaoCadastroFields,
+  entry: { action: string; user: string; detail?: string; ts?: string }
+): AviacaoCadastroFields {
+  const existing = parseAviacaoTimeline(
+    embedAviacaoCadastroFields(null, fields)
+  );
+  const next: AviacaoTimelineEntry = {
+    ts: entry.ts ?? new Date().toISOString(),
+    action: entry.action,
+    user: entry.user,
+    ...(entry.detail?.trim() ? { detail: entry.detail.trim() } : {}),
+  };
+  return {
+    ...fields,
+    [AVIACAO_FIELD_TIMELINE]: JSON.stringify([...existing, next]),
+  };
+}
+
+export function formatAviacaoTimelineLine(entry: AviacaoTimelineEntry): string {
+  const when = new Date(entry.ts).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const detail = entry.detail ? ` — ${entry.detail}` : "";
+  return `${when} | ${entry.action} | ${entry.user}${detail}`;
+}
+
+export function buildAviacaoCanonicalQueueTabs(): QueueTabEntry[] {
+  return [
+    { id: AVIACAO_QUEUE_TAB.TRIAGEM, preset: "outros", label: "Triagem / Check-in", customTypeLabel: "Triagem / Check-in" },
+    { id: AVIACAO_QUEUE_TAB.EM_MANUTENCAO, preset: "outros", label: "Em Manutenção", customTypeLabel: "Em Manutenção" },
+    { id: AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS, preset: "outros", label: "Aguardando Peças", customTypeLabel: "Aguardando Peças" },
+    { id: AVIACAO_QUEUE_TAB.INSPECAO_QC, preset: "outros", label: "Inspeção / QC", customTypeLabel: "Inspeção / QC" },
+    { id: AVIACAO_QUEUE_TAB.TESTE_VOO, preset: "outros", label: "Teste de Voo", customTypeLabel: "Teste de Voo" },
+    { id: AVIACAO_QUEUE_TAB.ESTETICA_LAVAGEM, preset: "outros", label: "Estética / Lavagem", customTypeLabel: "Estética / Lavagem" },
+    { id: AVIACAO_QUEUE_TAB.LIBERADO, preset: "outros", label: "Liberado / Pronto", customTypeLabel: "Liberado / Pronto" },
+  ];
+}
+
+/** Força as 7 colunas canônicas do MRO, preservando a aba virtual "Todos" quando ativa. */
+export function resolveAviacaoQueueTabs(config: ResolvedTenantConfig): QueueTabEntry[] {
+  const canonical = buildAviacaoCanonicalQueueTabs();
+  return config.showTodosTab ? [TODOS_QUEUE_TAB, ...canonical] : canonical;
+}
+
+export function requiresAviacaoPecaJustification(targetTabId: string): boolean {
+  return normalizeAviacaoTabId(targetTabId) === AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS;
+}
+
+export function resolveAviacaoHangarIdFromRow(
+  row: Pick<AtendimentoLite, "observacao" | "cadastro_valores" | "local_id">
+): string | null {
+  const fromCadastro = row.cadastro_valores?.[AVIACAO_HANGAR_CATEGORY_ID]?.trim();
+  if (fromCadastro && looksLikeAviacaoUuid(fromCadastro)) return fromCadastro;
+  const inline = parseAviacaoCadastroFields(row.observacao)[AVIACAO_HANGAR_CATEGORY_ID]?.trim();
+  if (inline && looksLikeAviacaoUuid(inline)) return inline;
+  const legacy = row.local_id?.trim();
+  return legacy || null;
+}
+
+export function isAviacaoPriorityRow(
+  row: Pick<AtendimentoLite, "prioridade" | "classificacao_prioridade">
+): boolean {
+  if (row.prioridade) return true;
+  const c = row.classificacao_prioridade?.trim().toLowerCase();
+  return c === "prioritario" || c === "emergencia";
+}
+
+export function filterAviacaoQueueRows(
+  rows: AtendimentoLite[],
+  options: AviacaoQueueFilterOptions
+): AtendimentoLite[] {
+  let out = rows;
+  if (options.priorityOnly) {
+    out = out.filter(isAviacaoPriorityRow);
+  }
+  if (options.hangarIds && options.hangarIds.length > 0) {
+    const set = new Set(options.hangarIds);
+    out = out.filter((r) => {
+      const hangarId = resolveAviacaoHangarIdFromRow(r);
+      return hangarId ? set.has(hangarId) : false;
+    });
+  }
+  if (options.hideAguardandoPecas) {
+    out = out.filter((r) => {
+      const tabId = parseAviacaoFilaTabId(r.observacao);
+      return normalizeAviacaoTabId(tabId) !== AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS;
+    });
+  }
+  return out;
+}
+
 export function isAviacaoQueueTabId(id: string | null | undefined): id is AviacaoQueueTabId {
   return !!id && (AVIACAO_PIPELINE_ORDER as readonly string[]).includes(id);
 }
@@ -582,12 +798,10 @@ export function getAviacaoStepLabel(
   return tab?.label?.toUpperCase() ?? AVIACAO_STEP_LABELS[step];
 }
 
-/** Rótulo exibido no cabeçalho da coluna Kanban (força "EM MANUTENÇÃO" na 2ª etapa). */
+/** Rótulo exibido no cabeçalho da coluna Kanban (fluxo MRO canônico). */
 export function resolveAviacaoKanbanColumnLabel(tab: Pick<QueueTabEntry, "id" | "label">): string {
-  if (normalizeAviacaoTabId(tab.id) === AVIACAO_QUEUE_TAB.AGUARDANDO_PECA) {
-    return "EM MANUTENÇÃO";
-  }
-  return tab.label;
+  const step = normalizeAviacaoTabId(tab.id);
+  return AVIACAO_STEP_LABELS[step] ?? tab.label;
 }
 
 /** Observação limpa para cards Aviação — sem resíduos de segmentos clínicos. */
@@ -607,8 +821,17 @@ export function formatAviacaoObservacaoForDisplay(
 /** Status de chamada na TV conforme a etapa (quando aplicável). */
 export function aviacaoStepTvStatus(step: AviacaoQueueTabId): string | undefined {
   if (step === AVIACAO_QUEUE_TAB.TRIAGEM) return STATUS_UPDATE.chamar;
-  if (step === AVIACAO_QUEUE_TAB.EM_EXECUCAO) return STATUS_UPDATE.rechamar;
+  if (step === AVIACAO_QUEUE_TAB.EM_MANUTENCAO) return STATUS_UPDATE.rechamar;
   return undefined;
+}
+
+export function resolveAviacaoTabActionLabel(
+  fromTabId: string | null | undefined,
+  toTabId: string
+): string {
+  const to = getAviacaoStepLabel(normalizeAviacaoTabId(toTabId));
+  const from = fromTabId ? getAviacaoStepLabel(normalizeAviacaoTabId(fromTabId)) : null;
+  return from ? `Movido: ${from} → ${to}` : `Entrada: ${to}`;
 }
 
 export type AviacaoCadastroFields = Partial<Record<string, string>>;
@@ -725,6 +948,11 @@ export function buildAviacaoSavePayload(
     } else {
       selectValues[cat.id] = raw;
     }
+  }
+
+  for (const fieldId of AVIACAO_EXTENDED_INLINE_FIELD_IDS) {
+    const raw = formValues[fieldId]?.trim();
+    if (raw) aviacaoFields[fieldId] = raw;
   }
 
   const cadastroPayload = buildCadastroPayload(

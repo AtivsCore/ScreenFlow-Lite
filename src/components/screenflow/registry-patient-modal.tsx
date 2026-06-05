@@ -16,11 +16,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import {
+  appendAviacaoTimelineEntry,
   buildAviacaoRegistryObservacao,
   buildAviacaoSavePayload,
+  AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
+  AVIACAO_COMBUSTIVEL_OPTIONS,
+  AVIACAO_FIELD_COMBUSTIVEL,
+  AVIACAO_FIELD_HOBBS,
+  AVIACAO_FIELD_SERVICOS,
+  AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
   AVIACAO_MODELO_CATEGORY_ID,
   AVIACAO_MODELO_MODAL_DATALIST_ID,
+  AVIACAO_PREFIXO_CATEGORY_ID,
   AVIACAO_PREFIXO_MODAL_DATALIST_ID,
   AVIACAO_QUEUE_TAB,
   AVIACAO_REQUIRED_CATEGORY_IDS,
@@ -30,8 +38,12 @@ import {
   isAviacaoRequiredCategory,
   isAviacaoSegment,
   isAviacaoUrgenciaSelectMode,
+  parseAviacaoServicosSolicitados,
   resolveAviacaoCategoryLabel,
+  resolveAviacaoQueueTabs,
   resolveAviacaoSelectOptions,
+  resolveAviacaoServicosSolicitadosOptions,
+  serializeAviacaoServicosSolicitados,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasRegistryObservacao,
@@ -68,10 +80,15 @@ export function RegistryPatientModal({
 }: RegistryPatientModalProps) {
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
-  const queueTabs = tenantConfig.queueTabs;
+  const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
+  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
   const enabledCategories = useMemo(
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
+  );
+  const queueTabs = useMemo(
+    () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
+    [aviacaoMode, tenantConfig]
   );
 
   const [error, setError] = useState<string | null>(null);
@@ -83,8 +100,14 @@ export function RegistryPatientModal({
     [sessionTenantId, tenantId]
   );
 
-  const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
-  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
+  const aviacaoRegistryCategories = useMemo(() => {
+    if (!aviacaoMode) return enabledCategories;
+    const hidden = new Set<string>([
+      ...AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
+      AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
+    ]);
+    return enabledCategories.filter((c) => !hidden.has(c.id));
+  }, [aviacaoMode, enabledCategories]);
 
   const loadLookupOptions = useCallback(async () => {
     if (!supabase) return;
@@ -265,6 +288,26 @@ export function RegistryPatientModal({
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [locais, setLocais] = useState<OptRow[]>([]);
 
+  const aviacaoServicosOptions = useMemo(
+    () => (aviacaoMode ? resolveAviacaoServicosSolicitadosOptions(servicos) : []),
+    [aviacaoMode, servicos]
+  );
+
+  const aviacaoServicosSelected = useMemo(
+    () => parseAviacaoServicosSolicitados(formValues[AVIACAO_FIELD_SERVICOS]),
+    [formValues]
+  );
+
+  function toggleAviacaoServico(id: string) {
+    const next = aviacaoServicosSelected.includes(id)
+      ? aviacaoServicosSelected.filter((x) => x !== id)
+      : [...aviacaoServicosSelected, id];
+    setFormValues((prev) => ({
+      ...prev,
+      [AVIACAO_FIELD_SERVICOS]: serializeAviacaoServicosSolicitados(next),
+    }));
+  }
+
   const triagemTab = useMemo(
     () => queueTabs.find((t) => t.id === triagemTabId) ?? queueTabs[0],
     [queueTabs, triagemTabId]
@@ -347,9 +390,20 @@ export function RegistryPatientModal({
       }
     }
     if (aviacaoMode) {
-      const missing = AVIACAO_REQUIRED_CATEGORY_IDS.filter((id) => !formValues[id]?.trim());
-      if (missing.length > 0) {
+      if (!formValues[AVIACAO_PREFIXO_CATEGORY_ID]?.trim()) {
         setError("Prefixo da Aeronave é obrigatório.");
+        return;
+      }
+      if (!formValues[AVIACAO_FIELD_HOBBS]?.trim()) {
+        setError("Horas de Voo (Hobbs) é obrigatório.");
+        return;
+      }
+      if (!formValues[AVIACAO_FIELD_COMBUSTIVEL]?.trim()) {
+        setError("Nível de Combustível é obrigatório.");
+        return;
+      }
+      if (!formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()) {
+        setError("Vaga / Hangar / Box é obrigatório.");
         return;
       }
     }
@@ -394,11 +448,15 @@ export function RegistryPatientModal({
               formValues,
               tenantConfig.cadastroCategories
             );
+            const withTimeline = appendAviacaoTimelineEntry(aviacaoFields, {
+              action: "Ficha de entrada — Triagem / Check-in",
+              user: "Sistema",
+            });
             return buildAviacaoRegistryObservacao(
               userObs || null,
               filaPreset,
               triagemTab?.id,
-              aviacaoFields
+              withTimeline
             );
           })()
         : docasMode
@@ -482,17 +540,22 @@ export function RegistryPatientModal({
         {queueTabs.length > 0 ? (
           <>
             <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-              {triagemLabel}
+              {aviacaoMode ? "Estágio" : triagemLabel}
               <select
                 value={triagemTabId}
+                disabled={aviacaoMode || busy}
                 onChange={(e) => handleTriagemChange(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+                className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 disabled:cursor-not-allowed disabled:opacity-70 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
               >
-                {queueTabs.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
-                  </option>
-                ))}
+                {aviacaoMode ? (
+                  <option value={AVIACAO_QUEUE_TAB.TRIAGEM}>Triagem / Check-in</option>
+                ) : (
+                  queueTabs.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))
+                )}
               </select>
             </label>
             {showHoraHoje ? (
@@ -520,7 +583,66 @@ export function RegistryPatientModal({
           </label>
         ) : null}
 
-        {enabledCategories.map((cat) => renderCategoryField(cat))}
+        {(aviacaoMode ? aviacaoRegistryCategories : enabledCategories).map((cat) =>
+          renderCategoryField(cat)
+        )}
+
+        {aviacaoMode ? (
+          <>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              Horas de Voo (Hobbs)
+              <span className="text-red-600 dark:text-red-400"> *</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={formValues[AVIACAO_FIELD_HOBBS] ?? ""}
+                disabled={busy}
+                onChange={(e) =>
+                  setFormValues((prev) => ({ ...prev, [AVIACAO_FIELD_HOBBS]: e.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+              />
+            </label>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              Nível de Combustível
+              <span className="text-red-600 dark:text-red-400"> *</span>
+              <select
+                value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
+                disabled={busy}
+                onChange={(e) =>
+                  setFormValues((prev) => ({ ...prev, [AVIACAO_FIELD_COMBUSTIVEL]: e.target.value }))
+                }
+                className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+              >
+                <option value="">—</option>
+                {AVIACAO_COMBUSTIVEL_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {aviacaoServicosOptions.length > 0 ? (
+              <fieldset className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                <legend className="mb-1">Serviços Solicitados</legend>
+                <div className="flex flex-col gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+                  {aviacaoServicosOptions.map((svc) => (
+                    <label key={svc.id} className="inline-flex cursor-pointer items-center gap-2 font-normal">
+                      <input
+                        type="checkbox"
+                        checked={aviacaoServicosSelected.includes(svc.id)}
+                        disabled={busy}
+                        onChange={() => toggleAviacaoServico(svc.id)}
+                        className="size-3.5 rounded border-zinc-300"
+                      />
+                      {svc.nome ?? svc.id}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
+          </>
+        ) : null}
 
         {showDocasHoraAgendada || showAviacaoHoraAgendada ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">

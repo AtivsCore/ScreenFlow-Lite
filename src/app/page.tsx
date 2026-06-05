@@ -39,14 +39,21 @@ import {
 } from "@/lib/tenant-config";
 import {
   AVIACAO_QUEUE_TAB,
+  appendAviacaoTimelineEntry,
   aviacaoStepTvStatus,
   canShiftAviacaoTab,
+  filterAviacaoQueueRows,
   findAviacaoQueueTabById,
   getAviacaoActiveColumns,
   getAviacaoHangarLabel,
   isAviacaoSegment,
   mergeAviacaoObservacao,
   normalizeAviacaoTabId,
+  parseAviacaoCadastroFields,
+  parseAviacaoFilaTabId,
+  requiresAviacaoPecaJustification,
+  resolveAviacaoQueueTabs,
+  resolveAviacaoTabActionLabel,
   resolveAviacaoTabIdFromObservacao,
   shiftAviacaoTab,
 } from "@/lib/aviacao-logistics";
@@ -160,6 +167,9 @@ export default function Home() {
   const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
   const [aviacaoBaseTenantId, setAviacaoBaseTenantId] = useState<string | null>(null);
   const [aviacaoTenantOptions, setAviacaoTenantOptions] = useState<SessionTenantOption[]>([]);
+  const [aviacaoFilterPriorityOnly, setAviacaoFilterPriorityOnly] = useState(false);
+  const [aviacaoHideAguardandoPecas, setAviacaoHideAguardandoPecas] = useState(false);
+  const [aviacaoSelectedHangarIds, setAviacaoSelectedHangarIds] = useState<string[]>([]);
 
   const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoLogisticsActive = isAviacaoSegment(tenantConfig.segmentoAplicado);
@@ -319,8 +329,11 @@ export default function Home() {
   }, [tenantConfig, queueTabId]);
 
   const visibleQueueTabs = useMemo(
-    () => resolveVisibleQueueTabs(tenantConfig),
-    [tenantConfig]
+    () =>
+      aviacaoLogisticsActive
+        ? resolveAviacaoQueueTabs(tenantConfig)
+        : resolveVisibleQueueTabs(tenantConfig),
+    [aviacaoLogisticsActive, tenantConfig]
   );
 
   const aviacaoActiveColumns = useMemo(
@@ -329,9 +342,25 @@ export default function Home() {
   );
 
   const queueDisplayRows = useMemo(() => {
-    if (!docasLogisticsActive) return rows;
-    return filterDocasQueueRowsForPlan(rows, planTier);
-  }, [rows, docasLogisticsActive, planTier]);
+    let result = rows;
+    if (docasLogisticsActive) result = filterDocasQueueRowsForPlan(result, planTier);
+    if (aviacaoLogisticsActive) {
+      result = filterAviacaoQueueRows(result, {
+        priorityOnly: aviacaoFilterPriorityOnly,
+        hideAguardandoPecas: aviacaoHideAguardandoPecas,
+        hangarIds: aviacaoSelectedHangarIds.length > 0 ? aviacaoSelectedHangarIds : undefined,
+      });
+    }
+    return result;
+  }, [
+    rows,
+    docasLogisticsActive,
+    aviacaoLogisticsActive,
+    planTier,
+    aviacaoFilterPriorityOnly,
+    aviacaoHideAguardandoPecas,
+    aviacaoSelectedHangarIds,
+  ]);
 
   const tabCounts = useMemo(
     () => countActiveByQueueTab(queueDisplayRows, visibleQueueTabs),
@@ -744,13 +773,48 @@ export default function Home() {
   );
 
   const advanceAviacaoLogistics = useCallback(
-    async (targetTabId: string, status?: string) => {
+    async (targetTabId: string, status?: string, opts?: { justification?: string; action?: string }) => {
       if (!selectedId || !selected) return;
-      const tab = findAviacaoQueueTabById(tenantConfig.queueTabs, targetTabId);
+      const tab = findAviacaoQueueTabById(visibleQueueTabs, targetTabId);
       if (!tab) return;
+
+      let justification = opts?.justification?.trim();
+      if (requiresAviacaoPecaJustification(targetTabId) && !justification) {
+        const input = window.prompt(
+          "Justificativa obrigatória para Aguardando Peças:",
+          ""
+        );
+        if (!input?.trim()) return;
+        justification = input.trim();
+      }
+
+      const fromTabId = parseAviacaoFilaTabId(selected.observacao);
+      let aviacaoFields = parseAviacaoCadastroFields(selected.observacao);
+
+      let userLabel = "Operador";
+      if (supabase) {
+        const { data } = await supabase.auth.getUser();
+        const email = data.user?.email?.trim();
+        const metaName =
+          typeof data.user?.user_metadata?.nome === "string"
+            ? data.user.user_metadata.nome.trim()
+            : "";
+        userLabel = metaName || email || userLabel;
+      }
+
+      const action =
+        opts?.action ??
+        resolveAviacaoTabActionLabel(fromTabId, targetTabId);
+      aviacaoFields = appendAviacaoTimelineEntry(aviacaoFields, {
+        action,
+        user: userLabel,
+        detail: justification,
+      });
+
       const observacao = mergeAviacaoObservacao({
         current: selected.observacao,
         tab,
+        aviacaoFields,
       });
       const patch: {
         observacao: string | null;
@@ -759,8 +823,36 @@ export default function Home() {
       if (status) patch.status = status;
       await patchAtendimento(patch);
     },
-    [selectedId, selected, tenantConfig.queueTabs, patchAtendimento]
+    [selectedId, selected, visibleQueueTabs, patchAtendimento, supabase]
   );
+
+  const registerAviacaoAvaria = useCallback(async () => {
+    if (!selectedId || !selected) return;
+    const detail = window.prompt("Descreva a avaria registrada:", "");
+    if (!detail?.trim()) return;
+
+    let userLabel = "Operador";
+    if (supabase) {
+      const { data } = await supabase.auth.getUser();
+      const email = data.user?.email?.trim();
+      const metaName =
+        typeof data.user?.user_metadata?.nome === "string"
+          ? data.user.user_metadata.nome.trim()
+          : "";
+      userLabel = metaName || email || userLabel;
+    }
+
+    const aviacaoFields = appendAviacaoTimelineEntry(
+      parseAviacaoCadastroFields(selected.observacao),
+      { action: "Avaria registrada", user: userLabel, detail: detail.trim() }
+    );
+    const observacao = mergeAviacaoObservacao({
+      current: selected.observacao,
+      aviacaoFields,
+      preserveTabWhenUnset: true,
+    });
+    await patchAtendimento({ observacao });
+  }, [selectedId, selected, supabase, patchAtendimento]);
 
   const shiftSelectedAviacaoStep = useCallback(
     (delta: -1 | 1) => {
@@ -894,7 +986,7 @@ export default function Home() {
         if (docasLogisticsActive) {
           void advanceDocasLogistics(DOCAS_QUEUE_TAB.DESCARREGANDO, STATUS_UPDATE.rechamar);
         } else if (aviacaoLogisticsActive) {
-          void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_EXECUCAO, STATUS_UPDATE.rechamar);
+          void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_MANUTENCAO, STATUS_UPDATE.rechamar);
         } else {
           void updateStatus(STATUS_UPDATE.rechamar);
         }
@@ -1015,7 +1107,7 @@ export default function Home() {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.DESCARREGANDO, STATUS_UPDATE.rechamar);
               } else if (aviacaoLogisticsActive) {
-                void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_EXECUCAO, STATUS_UPDATE.rechamar);
+                void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_MANUTENCAO, STATUS_UPDATE.rechamar);
               } else {
                 void updateStatus(STATUS_UPDATE.rechamar);
               }
@@ -1030,6 +1122,13 @@ export default function Home() {
               }
             }}
             onLimpar={() => setSelectedId(null)}
+            aviacaoFilterPriorityOnly={aviacaoFilterPriorityOnly}
+            onAviacaoFilterPriorityOnlyChange={setAviacaoFilterPriorityOnly}
+            aviacaoHideAguardandoPecas={aviacaoHideAguardandoPecas}
+            onAviacaoHideAguardandoPecasChange={setAviacaoHideAguardandoPecas}
+            aviacaoSelectedHangarIds={aviacaoSelectedHangarIds}
+            onAviacaoSelectedHangarIdsChange={setAviacaoSelectedHangarIds}
+            onRegistrarAvaria={() => void registerAviacaoAvaria()}
             onPatch={async (patch) => {
               await patchAtendimento(patch);
             }}

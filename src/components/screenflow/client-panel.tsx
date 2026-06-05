@@ -77,6 +77,14 @@ type ClientPanelProps = {
   /** Bases/aeroportos do usuário (somente aviação). */
   tenantOptions?: Opt[];
   onTenantChange?: (tenantId: string) => void;
+  /** Filtros rápidos do Kanban MRO (somente aviação). */
+  aviacaoFilterPriorityOnly?: boolean;
+  onAviacaoFilterPriorityOnlyChange?: (v: boolean) => void;
+  aviacaoHideAguardandoPecas?: boolean;
+  onAviacaoHideAguardandoPecasChange?: (v: boolean) => void;
+  aviacaoSelectedHangarIds?: string[];
+  onAviacaoSelectedHangarIdsChange?: (ids: string[]) => void;
+  onRegistrarAvaria?: () => void;
 };
 
 function SelectWithQuickAdd({
@@ -146,6 +154,13 @@ export const ClientPanel = memo(function ClientPanel({
   tenantId,
   tenantOptions = [],
   onTenantChange,
+  aviacaoFilterPriorityOnly = false,
+  onAviacaoFilterPriorityOnlyChange,
+  aviacaoHideAguardandoPecas = false,
+  onAviacaoHideAguardandoPecasChange,
+  aviacaoSelectedHangarIds = [],
+  onAviacaoSelectedHangarIdsChange,
+  onRegistrarAvaria,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
@@ -576,6 +591,62 @@ export const ClientPanel = memo(function ClientPanel({
           ) : null}
         </div>
 
+        {aviacaoMode ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white/60 p-2 dark:border-zinc-700 dark:bg-zinc-900/40">
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-zinc-700 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={aviacaoFilterPriorityOnly}
+                  onChange={(e) => onAviacaoFilterPriorityOnlyChange?.(e.target.checked)}
+                  className="size-3.5 rounded border-zinc-300"
+                />
+                Exibir Apenas Prioritários
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-zinc-700 dark:text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={aviacaoHideAguardandoPecas}
+                  onChange={(e) => onAviacaoHideAguardandoPecasChange?.(e.target.checked)}
+                  className="size-3.5 rounded border-zinc-300"
+                />
+                Esconder &quot;Aguardando Peças&quot;
+              </label>
+            </div>
+            {locais.length > 0 ? (
+              <div>
+                <p className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
+                  Multi-Seleção de Hangares
+                </p>
+                <div className="mt-1 flex max-h-16 flex-wrap gap-x-3 gap-y-1 overflow-y-auto">
+                  {locais.map((h) => {
+                    const checked = aviacaoSelectedHangarIds.includes(h.id);
+                    return (
+                      <label
+                        key={h.id}
+                        className="inline-flex cursor-pointer items-center gap-1 text-[10px] text-zinc-700 dark:text-zinc-300"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...aviacaoSelectedHangarIds, h.id]
+                              : aviacaoSelectedHangarIds.filter((id) => id !== h.id);
+                            onAviacaoSelectedHangarIdsChange?.(next);
+                          }}
+                          className="size-3.5 rounded border-zinc-300"
+                        />
+                        {h.nome ?? h.id}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
@@ -593,21 +664,32 @@ export const ClientPanel = memo(function ClientPanel({
           >
             {docasMode || aviacaoMode ? "Iniciar Operação" : "Rechamar"}
           </button>
-          <button
-            type="button"
-            disabled={!canMutate}
-            onClick={onLimpar}
-            className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
-          >
-            Limpar dados
-          </button>
+          {aviacaoMode ? (
+            <button
+              type="button"
+              disabled={!canMutate || !selected}
+              onClick={onRegistrarAvaria}
+              className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-amber-500 bg-amber-50 px-3 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/60"
+            >
+              Registrar Avaria
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={!canMutate}
+              onClick={onLimpar}
+              className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+            >
+              Limpar dados
+            </button>
+          )}
           <button
             type="button"
             disabled={!canMutate}
             onClick={onFinalizar}
             className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-emerald-600 bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {docasMode || aviacaoMode ? "Liberar" : "Finalizar"}
+            {docasMode ? "Liberar" : aviacaoMode ? "Liberar / Decolar" : "Finalizar"}
           </button>
         </div>
       </section>

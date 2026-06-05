@@ -21,13 +21,15 @@ const DOCAS_KANBAN_TAB_EQUIV: Record<string, string> = {
   "doc-t5": "liberado",
 };
 
-/** Equivalência de ids de coluna Aviação (estável ↔ legado `av-t*`). */
+/** Equivalência de ids de coluna Aviação (estável ↔ legado `av-t*` / fluxo 5 colunas). */
 const AVIACAO_KANBAN_TAB_EQUIV: Record<string, string> = {
   "av-t1": "triagem",
-  "av-t2": "aguardando_peca",
-  "av-t3": "em_execucao",
+  "av-t2": "em_manutencao",
+  "av-t3": "inspecao_qc",
   "av-t4": "teste_voo",
   "av-t5": "liberado",
+  aguardando_peca: "em_manutencao",
+  em_execucao: "inspecao_qc",
 };
 
 function normalizeKanbanTabId(id: string): string {

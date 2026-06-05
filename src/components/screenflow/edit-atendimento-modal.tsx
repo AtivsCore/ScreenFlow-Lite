@@ -8,11 +8,15 @@ import {
 } from "@/lib/classificacao-prioridade";
 import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-valores";
 import {
+  appendAviacaoTimelineEntry,
   buildAviacaoSavePayload,
+  AVIACAO_FIELD_ANEXOS,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
   AVIACAO_MODELO_CATEGORY_ID,
   AVIACAO_MODELO_MODAL_DATALIST_ID,
   AVIACAO_PREFIXO_MODAL_DATALIST_ID,
+  AVIACAO_STORAGE_BUCKET,
+  formatAviacaoTimelineLine,
   hydrateAviacaoFormValue,
   hydrateAviacaoFreeTextValue,
   isAviacaoFreeTextField,
@@ -22,9 +26,16 @@ import {
   isAviacaoSegment,
   isAviacaoUrgenciaSelectMode,
   mergeAviacaoObservacao,
+  parseAviacaoAnexos,
   parseAviacaoCadastroFields,
+  parseAviacaoFilaTabId,
+  parseAviacaoTimeline,
+  requiresAviacaoPecaJustification,
   resolveAviacaoCategoryLabel,
+  resolveAviacaoQueueTabs,
   resolveAviacaoSelectOptions,
+  resolveAviacaoTabActionLabel,
+  type AviacaoAnexo,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasSavePayload,
@@ -85,14 +96,16 @@ function toDatetimeLocal(iso: string | null | undefined): string {
 function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDatetime, onSaved }: FormProps) {
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
-  const queueTabs = tenantConfig.queueTabs;
+  const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
+  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
+  const queueTabs = useMemo(
+    () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
+    [aviacaoMode, tenantConfig]
+  );
   const enabledCategories = useMemo(
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
   );
-  const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
-  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
-
   const initialTriagemTabId = resolveRowQueueTabId(row, queueTabs) || queueTabs[0]?.id || "";
   const initialFormValues = useMemo(() => {
     if (aviacaoMode) {
@@ -174,6 +187,14 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [pendingAnexos, setPendingAnexos] = useState<AviacaoAnexo[]>(() =>
+    aviacaoMode ? parseAviacaoAnexos(row.observacao) : []
+  );
+  const aviacaoTimeline = useMemo(
+    () => (aviacaoMode ? parseAviacaoTimeline(row.observacao) : []),
+    [aviacaoMode, row.observacao]
+  );
   const loadLookupOptions = useCallback(async () => {
     const tid = row.tenant_id?.trim();
     const profQuery = tid
@@ -197,6 +218,56 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   useEffect(() => {
     void loadLookupOptions();
   }, [loadLookupOptions]);
+
+  useEffect(() => {
+    if (!aviacaoMode) return;
+    setPendingAnexos(parseAviacaoAnexos(row.observacao));
+  }, [aviacaoMode, row.id, row.observacao]);
+
+  async function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleAviacaoUpload(files: FileList | null) {
+    if (!files?.length || !aviacaoMode) return;
+    setUploadBusy(true);
+    setError(null);
+    try {
+      const added: AviacaoAnexo[] = [];
+      for (const file of Array.from(files)) {
+        const id = crypto.randomUUID();
+        const uploadedAt = new Date().toISOString();
+        const tid = row.tenant_id?.trim() || "shared";
+        const path = `${tid}/${row.id}/${id}-${file.name.replace(/[^\w.-]+/g, "_")}`;
+
+        let url = "";
+        const { error: upErr } = await supabase.storage
+          .from(AVIACAO_STORAGE_BUCKET)
+          .upload(path, file, { upsert: false });
+        if (!upErr) {
+          const { data } = supabase.storage.from(AVIACAO_STORAGE_BUCKET).getPublicUrl(path);
+          url = data.publicUrl;
+        } else if (file.size < 500_000 && file.type.startsWith("image/")) {
+          url = await readFileAsDataUrl(file);
+        } else {
+          setError(upErr.message || "Falha ao enviar arquivo. Configure o bucket aviacao-anexos.");
+          continue;
+        }
+
+        added.push({ id, name: file.name, mime: file.type, uploadedAt, url });
+      }
+      if (added.length > 0) {
+        setPendingAnexos((prev) => [...prev, ...added]);
+      }
+    } finally {
+      setUploadBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!aviacaoMode) return;
@@ -398,40 +469,67 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       }
     }
 
-    const patch: Record<string, unknown> = docasMode
-      ? (() => {
-          const { cadastroPayload, docasFields } = buildDocasSavePayload(
-            formValues,
-            tenantConfig.cadastroCategories
+    let patch: Record<string, unknown>;
+    if (docasMode) {
+      const { cadastroPayload, docasFields } = buildDocasSavePayload(
+        formValues,
+        tenantConfig.cadastroCategories
+      );
+      const observacao = mergeDocasObservacao({
+        current: row.observacao,
+        tab: triagemTab,
+        docasFields,
+        preserveTabWhenUnset: true,
+        userObservacaoText: observacaoBase.trim() || null,
+      });
+      patch = { ...cadastroPayload, observacao };
+    } else if (aviacaoMode) {
+      const { cadastroPayload, aviacaoFields } = buildAviacaoSavePayload(
+        formValues,
+        tenantConfig.cadastroCategories
+      );
+      if (pendingAnexos.length > 0) {
+        aviacaoFields[AVIACAO_FIELD_ANEXOS] = JSON.stringify(pendingAnexos);
+      }
+
+      const fromTabId = parseAviacaoFilaTabId(row.observacao);
+      const toTabId = triagemTab?.id;
+      let fieldsWithTimeline = aviacaoFields;
+      if (toTabId && fromTabId !== toTabId) {
+        let justification: string | undefined;
+        if (requiresAviacaoPecaJustification(toTabId)) {
+          const input = window.prompt(
+            "Justificativa obrigatória para Aguardando Peças:",
+            ""
           );
-          const observacao = mergeDocasObservacao({
-            current: row.observacao,
-            tab: triagemTab,
-            docasFields,
-            preserveTabWhenUnset: true,
-            userObservacaoText: observacaoBase.trim() || null,
-          });
-          return { ...cadastroPayload, observacao };
-        })()
-      : aviacaoMode
-        ? (() => {
-            const { cadastroPayload, aviacaoFields } = buildAviacaoSavePayload(
-              formValues,
-              tenantConfig.cadastroCategories
-            );
-            const observacao = mergeAviacaoObservacao({
-              current: row.observacao,
-              tab: triagemTab,
-              aviacaoFields,
-              preserveTabWhenUnset: true,
-              userObservacaoText: observacaoBase.trim() || null,
-            });
-            return { ...cadastroPayload, observacao };
-          })()
-        : {
-          ...buildCadastroPayload(formValues, tenantConfig.cadastroCategories),
-          observacao: embedObservacaoForQueueTab(observacaoBase.trim() || null, triagemTab),
-        };
+          if (!input?.trim()) {
+            setError("Justificativa obrigatória para mover para Aguardando Peças.");
+            setBusy(false);
+            return;
+          }
+          justification = input.trim();
+        }
+        fieldsWithTimeline = appendAviacaoTimelineEntry(fieldsWithTimeline, {
+          action: resolveAviacaoTabActionLabel(fromTabId, toTabId),
+          user: "Operador",
+          detail: justification,
+        });
+      }
+
+      const observacao = mergeAviacaoObservacao({
+        current: row.observacao,
+        tab: triagemTab,
+        aviacaoFields: fieldsWithTimeline,
+        preserveTabWhenUnset: true,
+        userObservacaoText: observacaoBase.trim() || null,
+      });
+      patch = { ...cadastroPayload, observacao };
+    } else {
+      patch = {
+        ...buildCadastroPayload(formValues, tenantConfig.cadastroCategories),
+        observacao: embedObservacaoForQueueTab(observacaoBase.trim() || null, triagemTab),
+      };
+    }
 
     if (law) {
       patch.prioridade = prioridadeBooleanFromClassificacao(classificacao);
@@ -490,11 +588,13 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
             onChange={(e) => handleTriagemChange(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
           >
-            {queueTabs.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.label}
-              </option>
-            ))}
+            {queueTabs
+              .filter((t) => t.preset !== "todos")
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
           </select>
         </label>
       ) : null}
@@ -550,6 +650,70 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         </label>
       ) : null}
 
+      {aviacaoMode ? (
+        <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Anexos / Fotos</p>
+          <p className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">
+            Evidências de avarias de entrada/saída (bucket {AVIACAO_STORAGE_BUCKET}).
+          </p>
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            multiple
+            disabled={busy || uploadBusy}
+            onChange={(e) => void handleAviacaoUpload(e.target.files)}
+            className="mt-2 w-full text-[10px] text-zinc-600 file:mr-2 file:rounded file:border-0 file:bg-zinc-200 file:px-2 file:py-1 file:text-[10px] dark:text-zinc-300 dark:file:bg-zinc-700"
+          />
+          {pendingAnexos.length > 0 ? (
+            <ul className="mt-2 space-y-1">
+              {pendingAnexos.map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-2 text-[10px]">
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    {a.name}
+                  </a>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setPendingAnexos((prev) => prev.filter((x) => x.id !== a.id))}
+                    className="shrink-0 text-red-600 hover:underline dark:text-red-400"
+                  >
+                    Remover
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">Nenhum anexo.</p>
+          )}
+        </div>
+      ) : null}
+
+      {aviacaoMode ? (
+        <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
+            Linha do Tempo de Rampa
+          </p>
+          {aviacaoTimeline.length > 0 ? (
+            <ul className="mt-2 max-h-36 space-y-1 overflow-y-auto text-[10px] text-zinc-600 dark:text-zinc-300">
+              {[...aviacaoTimeline].reverse().map((entry, idx) => (
+                <li key={`${entry.ts}-${idx}`} className="border-b border-zinc-100 py-1 last:border-0 dark:border-zinc-800">
+                  {formatAviacaoTimelineLine(entry)}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">
+              Movimentações de coluna aparecerão aqui automaticamente.
+            </p>
+          )}
+        </div>
+      ) : null}
+
       {error && (
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
           {error}
@@ -576,8 +740,14 @@ export function EditAtendimentoModal({
   allowFullDatetime = false,
   onSaved,
 }: EditAtendimentoModalProps) {
+  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
   return (
-    <Modal open={open} title="Editar registro" onClose={onClose} widthClassName="max-w-md">
+    <Modal
+      open={open}
+      title="Editar registro"
+      onClose={onClose}
+      widthClassName={aviacaoMode ? "max-w-lg" : "max-w-md"}
+    >
       {open && row && supabase ? (
         <EditAtendimentoForm
           key={`${row.id}-${allowFullDatetime ? "agenda" : "fila"}`}
