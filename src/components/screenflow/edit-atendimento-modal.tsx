@@ -10,7 +10,12 @@ import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-val
 import {
   buildAviacaoSavePayload,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
+  AVIACAO_MODELO_CATEGORY_ID,
+  AVIACAO_MODELO_MODAL_DATALIST_ID,
+  AVIACAO_PREFIXO_MODAL_DATALIST_ID,
   hydrateAviacaoFormValue,
+  hydrateAviacaoFreeTextValue,
+  isAviacaoFreeTextField,
   isAviacaoObservacaoInlineField,
   isAviacaoRigidSelectField,
   isAviacaoSegment,
@@ -98,7 +103,10 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       });
       const out: Record<string, string> = {};
       for (const cat of enabledCategories) {
-        if (isAviacaoObservacaoInlineField(cat.id)) {
+        if (isAviacaoFreeTextField(cat.id)) {
+          const t = inlineFields[cat.id];
+          if (t) out[cat.id] = t;
+        } else if (isAviacaoObservacaoInlineField(cat.id) && !isAviacaoFreeTextField(cat.id)) {
           const t = inlineFields[cat.id];
           if (t) out[cat.id] = t;
         } else if (isAviacaoRigidSelectField(cat.id)) {
@@ -205,11 +213,15 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
           const opts = resolveAviacaoSelectOptions(cat.id, lookups);
           const v = hydrateAviacaoFormValue(cat.id, hydrated, row.observacao, opts);
           if (v) next[cat.id] = v;
+        } else if (isAviacaoFreeTextField(cat.id)) {
+          const opts = resolveAviacaoSelectOptions(cat.id, lookups);
+          const v = hydrateAviacaoFreeTextValue(cat.id, hydrated, row.observacao, opts);
+          if (v) next[cat.id] = v;
         } else if (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID && isAviacaoUrgenciaSelectMode(servicos)) {
           const opts = resolveAviacaoSelectOptions(cat.id, lookups);
           const v = hydrateAviacaoFormValue(cat.id, hydrated, row.observacao, opts);
           if (v) next[cat.id] = v;
-        } else if (isAviacaoObservacaoInlineField(cat.id, servicos)) {
+        } else if (isAviacaoObservacaoInlineField(cat.id, servicos) && !isAviacaoFreeTextField(cat.id)) {
           const t = inlineFields[cat.id];
           if (t) next[cat.id] = t;
         }
@@ -241,6 +253,33 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const showAviacaoHoraAgendada = aviacaoMode;
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
+    if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
+      const freeTextOpts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
+      const datalistId =
+        cat.id === AVIACAO_MODELO_CATEGORY_ID
+          ? AVIACAO_MODELO_MODAL_DATALIST_ID
+          : AVIACAO_PREFIXO_MODAL_DATALIST_ID;
+      return (
+        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          {resolveAviacaoCategoryLabel(cat)}
+          <input
+            type="text"
+            list={datalistId}
+            value={formValues[cat.id] ?? ""}
+            disabled={busy}
+            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            autoComplete="off"
+          />
+          <datalist id={datalistId}>
+            {freeTextOpts.map((m) => (
+              <option key={m.id} value={m.nome ?? m.id} />
+            ))}
+          </datalist>
+        </label>
+      );
+    }
+
     if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
       const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
       return (

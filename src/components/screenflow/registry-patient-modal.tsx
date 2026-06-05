@@ -19,8 +19,12 @@ import {
   buildAviacaoRegistryObservacao,
   buildAviacaoSavePayload,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
+  AVIACAO_MODELO_CATEGORY_ID,
+  AVIACAO_MODELO_MODAL_DATALIST_ID,
+  AVIACAO_PREFIXO_MODAL_DATALIST_ID,
   AVIACAO_QUEUE_TAB,
   AVIACAO_REQUIRED_CATEGORY_IDS,
+  isAviacaoFreeTextField,
   isAviacaoObservacaoInlineField,
   isAviacaoRigidSelectField,
   isAviacaoRequiredCategory,
@@ -106,6 +110,34 @@ export function RegistryPatientModal({
     const requiredMark = isRequired ? (
       <span className="text-red-600 dark:text-red-400"> *</span>
     ) : null;
+
+    if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
+      const freeTextOpts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
+      const datalistId =
+        cat.id === AVIACAO_MODELO_CATEGORY_ID
+          ? AVIACAO_MODELO_MODAL_DATALIST_ID
+          : AVIACAO_PREFIXO_MODAL_DATALIST_ID;
+      return (
+        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          {resolveAviacaoCategoryLabel(cat)}
+          {requiredMark}
+          <input
+            type="text"
+            list={datalistId}
+            value={formValues[cat.id] ?? ""}
+            disabled={busy}
+            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+            autoComplete="off"
+          />
+          <datalist id={datalistId}>
+            {freeTextOpts.map((m) => (
+              <option key={m.id} value={m.nome ?? m.id} />
+            ))}
+          </datalist>
+        </label>
+      );
+    }
 
     if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
       const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });

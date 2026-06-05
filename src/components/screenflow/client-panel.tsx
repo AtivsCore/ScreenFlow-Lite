@@ -5,9 +5,15 @@ import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
+  AVIACAO_MODELO_CATEGORY_ID,
+  AVIACAO_MODELO_DATALIST_ID,
+  AVIACAO_PREFIXO_CATEGORY_ID,
+  AVIACAO_PREFIXO_DATALIST_ID,
   buildAviacaoCategoryPatch,
   formatAviacaoObservacaoForDisplay,
   hydrateAviacaoFormValue,
+  hydrateAviacaoFreeTextValue,
+  isAviacaoFreeTextField,
   isAviacaoObservacaoInlineField,
   isAviacaoRigidSelectField,
   isAviacaoSegment,
@@ -16,6 +22,7 @@ import {
   resolveAviacaoCategoryLabel,
   resolveAviacaoCrudTable,
   resolveAviacaoSelectOptions,
+  sortAviacaoPanelCategories,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasCategoryPatch,
@@ -141,7 +148,9 @@ export const ClientPanel = memo(function ClientPanel({
   const [tvs, setTvs] = useState<Opt[]>([]);
   const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
   const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
+  const [tenantNome, setTenantNome] = useState<string | null>(null);
   const optionsLoadedRef = useRef<string | null>(null);
+  const aviacaoFreeTextPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const enabledCategories = useMemo(
     () => cadastroCategories.filter((c) => c.enabled),
@@ -162,8 +171,27 @@ export const ClientPanel = memo(function ClientPanel({
   const panelCategories = useMemo(() => {
     if (!aviacaoMode) return enabledCategories;
     const hidden = new Set<string>(AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS);
-    return enabledCategories.filter((c) => !hidden.has(c.id));
+    const visible = enabledCategories.filter((c) => !hidden.has(c.id));
+    return sortAviacaoPanelCategories(visible);
   }, [enabledCategories, aviacaoMode]);
+
+  const prefixoDatalistOptions = useMemo(() => {
+    if (!aviacaoMode) return [];
+    return resolveAviacaoSelectOptions(AVIACAO_PREFIXO_CATEGORY_ID, {
+      profissionais,
+      locais,
+      servicos,
+    });
+  }, [aviacaoMode, profissionais, locais, servicos]);
+
+  const modeloDatalistOptions = useMemo(() => {
+    if (!aviacaoMode) return [];
+    return resolveAviacaoSelectOptions(AVIACAO_MODELO_CATEGORY_ID, {
+      profissionais,
+      locais,
+      servicos,
+    });
+  }, [aviacaoMode, profissionais, locais, servicos]);
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
     const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
@@ -208,6 +236,25 @@ export const ClientPanel = memo(function ClientPanel({
     void onPatch(payload);
   }
 
+  const flushAviacaoCategoryPatch = useCallback(
+    (next: Record<string, string>) => {
+      if (!selected) return;
+      const payload = buildAviacaoCategoryPatch(next, cadastroCategories, selected.observacao);
+      void onPatch(payload);
+    },
+    [selected, cadastroCategories, onPatch]
+  );
+
+  function patchAviacaoFreeTextField(categoryId: string, value: string) {
+    if (!selected) return;
+    const next = { ...categoryValues, [categoryId]: value };
+    setCategoryValues(next);
+    if (aviacaoFreeTextPatchTimerRef.current) clearTimeout(aviacaoFreeTextPatchTimerRef.current);
+    aviacaoFreeTextPatchTimerRef.current = setTimeout(() => {
+      flushAviacaoCategoryPatch(next);
+    }, 400);
+  }
+
   function patchDocasTextField(categoryId: string, value: string) {
     if (!selected) return;
     const next = { ...categoryValues, [categoryId]: value };
@@ -234,6 +281,27 @@ export const ClientPanel = memo(function ClientPanel({
             disabled={selectDisabled}
             onChange={(e) => patchDocasTextField(cat.id, e.target.value)}
             className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+        </label>
+      );
+    }
+
+    if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
+      const datalistId =
+        cat.id === AVIACAO_MODELO_CATEGORY_ID
+          ? AVIACAO_MODELO_DATALIST_ID
+          : AVIACAO_PREFIXO_DATALIST_ID;
+      return (
+        <label key={cat.id} className={AVIACAO_PANEL_FIELD_CLASS}>
+          <span className="block h-4 truncate leading-4">{label}</span>
+          <input
+            type="text"
+            list={datalistId}
+            value={categoryValues[cat.id] ?? ""}
+            disabled={fieldDisabled}
+            onChange={(e) => patchAviacaoFreeTextField(cat.id, e.target.value)}
+            className={AVIACAO_PANEL_CONTROL_CLASS}
+            autoComplete="off"
           />
         </label>
       );
@@ -324,6 +392,32 @@ export const ClientPanel = memo(function ClientPanel({
   }, [loadOptions]);
 
   useEffect(() => {
+    if (!aviacaoMode || !supabase || !tenantId?.trim()) {
+      setTenantNome(null);
+      return;
+    }
+    let cancelled = false;
+    void supabase
+      .from("tenants")
+      .select("nome")
+      .eq("id", tenantId.trim())
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setTenantNome((data as { nome: string | null } | null)?.nome?.trim() ?? null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [aviacaoMode, supabase, tenantId]);
+
+  useEffect(() => {
+    return () => {
+      if (aviacaoFreeTextPatchTimerRef.current) clearTimeout(aviacaoFreeTextPatchTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!selected) {
       setCategoryValues({});
       return;
@@ -339,7 +433,16 @@ export const ClientPanel = memo(function ClientPanel({
       if (docasMode && isDocasTextField(cat.id)) {
         const t = inlineFields[cat.id];
         if (t) next[cat.id] = t;
-      } else if (aviacaoMode && isAviacaoObservacaoInlineField(cat.id, servicos)) {
+      } else if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
+        const opts =
+          cat.id === AVIACAO_MODELO_CATEGORY_ID ? modeloDatalistOptions : prefixoDatalistOptions;
+        const v = hydrateAviacaoFreeTextValue(cat.id, vals, selected.observacao, opts);
+        if (v) next[cat.id] = v;
+      } else if (
+        aviacaoMode &&
+        isAviacaoObservacaoInlineField(cat.id, servicos) &&
+        !isAviacaoFreeTextField(cat.id)
+      ) {
         const t = inlineFields[cat.id];
         if (t) next[cat.id] = t;
       } else if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
@@ -362,6 +465,8 @@ export const ClientPanel = memo(function ClientPanel({
     profissionais,
     locais,
     servicos,
+    prefixoDatalistOptions,
+    modeloDatalistOptions,
   ]);
 
   const tvValue = selected?.tv_id ?? "";
@@ -391,17 +496,19 @@ export const ClientPanel = memo(function ClientPanel({
           { local_id: selected.local_id, localNome: selected.localNome }
         )?.trim() ?? null
       : null;
-  const selectedDisplayName = docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
+  const selectedDisplayName = aviacaoMode
+    ? tenantNome
+    : docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
 
   return (
     <>
       <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/50">
         <div className="min-h-[3.5rem]">
           <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            Cliente selecionado
+            {aviacaoMode ? "Base / Aeroporto" : "Cliente selecionado"}
           </p>
           <div className="mt-1 flex min-h-[1.75rem] min-w-0 items-center gap-2">
-            {selected ? (
+            {selected || aviacaoMode ? (
               <>
                 <p className="shrink-0 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
                   {selectedDisplayName ?? "—"}
@@ -414,7 +521,7 @@ export const ClientPanel = memo(function ClientPanel({
                     {observacaoText}
                   </span>
                 ) : null}
-                {!observacoesAlwaysVisible && hasObs ? (
+                {!observacoesAlwaysVisible && selected && hasObs ? (
                   <ObservacaoPopover observacao={selected.observacao} className="shrink-0" />
                 ) : null}
                 {priorityLawEnabled && prioStyle ? (
@@ -434,37 +541,33 @@ export const ClientPanel = memo(function ClientPanel({
         <div
           className={
             aviacaoMode
-              ? "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3"
+              ? "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 lg:gap-3"
               : "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]"
           }
         >
           {panelCategories.map((cat) => renderCategoryField(cat))}
 
-          <label
-            className={
-              aviacaoMode
-                ? AVIACAO_PANEL_FIELD_CLASS
-                : "block text-[10px] font-medium text-zinc-600 dark:text-zinc-400"
-            }
-          >
-            <span className={aviacaoMode ? "block h-4 truncate leading-4" : undefined}>TV</span>
-            <select
-              value={tvValue}
-              disabled={selectDisabled}
-              onChange={(e) => {
-                const v = e.target.value;
-                void onPatch({ tv_id: v || null });
-              }}
-              className={aviacaoMode ? AVIACAO_PANEL_CONTROL_CLASS : "mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"}
-            >
-              <option value="">—</option>
-              {tvs.map((x) => (
-                <option key={x.id} value={x.id}>
-                  {x.nome ?? x.id}
-                </option>
-              ))}
-            </select>
-          </label>
+          {!aviacaoMode ? (
+            <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
+              <span>TV</span>
+              <select
+                value={tvValue}
+                disabled={selectDisabled}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  void onPatch({ tv_id: v || null });
+                }}
+                className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+              >
+                <option value="">—</option>
+                {tvs.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.nome ?? x.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-1.5">
@@ -502,6 +605,21 @@ export const ClientPanel = memo(function ClientPanel({
           </button>
         </div>
       </section>
+
+      {aviacaoMode ? (
+        <>
+          <datalist id={AVIACAO_PREFIXO_DATALIST_ID}>
+            {prefixoDatalistOptions.map((opt) => (
+              <option key={opt.id} value={opt.nome ?? opt.id} />
+            ))}
+          </datalist>
+          <datalist id={AVIACAO_MODELO_DATALIST_ID}>
+            {modeloDatalistOptions.map((opt) => (
+              <option key={opt.id} value={opt.nome ?? opt.id} />
+            ))}
+          </datalist>
+        </>
+      ) : null}
 
       {quickCrud && (
         <CrudEntityModal

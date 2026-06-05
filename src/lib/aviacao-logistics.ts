@@ -51,10 +51,30 @@ export const AVIACAO_STEP_LABELS: Record<AviacaoQueueTabId, string> = {
 export const AVIACAO_HANGAR_TAG_WIDTH_CLASS = "w-[10.5rem]";
 
 /** Campos com `<select>` fixo (UUID em `cadastro_valores`). */
-export const AVIACAO_RIGID_SELECT_FIELD_IDS = ["av-c1", "av-c2", "av-c3", "av-c4"] as const;
+export const AVIACAO_RIGID_SELECT_FIELD_IDS = ["av-c1", "av-c2"] as const;
+
+/** Prefixo da aeronave — texto livre com datalist opcional (bucket 100k). */
+export const AVIACAO_PREFIXO_CATEGORY_ID = "av-c3" as const;
+
+/** Modelo da aeronave — texto livre com datalist opcional (bucket 200k). */
+export const AVIACAO_MODELO_CATEGORY_ID = "av-c4" as const;
+
+/** Campos de texto livre com sugestões opcionais por bucket. */
+export const AVIACAO_FREE_TEXT_FIELD_IDS = [
+  AVIACAO_PREFIXO_CATEGORY_ID,
+  AVIACAO_MODELO_CATEGORY_ID,
+] as const;
 
 /** Campo opcional de texto inline na tag `__sf_aviacao:` (somente `av-c5` sem bucket). */
 export const AVIACAO_INLINE_OBSERVACAO_FIELD_ID = "av-c5" as const;
+
+/** Ordem no painel superior (Prefixo → Modelo → Hangar). */
+export const AVIACAO_PANEL_FIELD_ORDER = ["av-c3", "av-c4", "av-c2"] as const;
+
+export const AVIACAO_PREFIXO_DATALIST_ID = "sf-aviacao-prefixo-suggestions" as const;
+export const AVIACAO_MODELO_DATALIST_ID = "sf-aviacao-modelo-suggestions" as const;
+export const AVIACAO_PREFIXO_MODAL_DATALIST_ID = "sf-aviacao-prefixo-suggestions-modal" as const;
+export const AVIACAO_MODELO_MODAL_DATALIST_ID = "sf-aviacao-modelo-suggestions-modal" as const;
 
 const AVIACAO_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -90,7 +110,7 @@ export const AVIACAO_DRAWER_SERVICOS_BUCKET: Partial<
 export const AVIACAO_HANGAR_CATEGORY_ID = "av-c2";
 
 /** Categorias ocultas no painel superior do cliente (aviacao_mro). */
-export const AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS = ["av-c5"] as const;
+export const AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS = ["av-c1", "av-c5"] as const;
 
 /** Rótulos fixos no painel superior (independente de customização salva no tenant). */
 export const AVIACAO_CATEGORY_DISPLAY_LABELS: Partial<Record<string, string>> = {
@@ -131,6 +151,29 @@ export function isAviacaoRigidSelectField(categoryId: string): boolean {
   return (AVIACAO_RIGID_SELECT_FIELD_IDS as readonly string[]).includes(categoryId);
 }
 
+/** Texto livre com datalist opcional (buckets 100k / 200k). */
+export function isAviacaoFreeTextField(categoryId: string): boolean {
+  return (AVIACAO_FREE_TEXT_FIELD_IDS as readonly string[]).includes(categoryId);
+}
+
+/** @deprecated Use `isAviacaoFreeTextField`. */
+export function isAviacaoPrefixoFreeTextField(categoryId: string): boolean {
+  return isAviacaoFreeTextField(categoryId);
+}
+
+export function sortAviacaoPanelCategories(
+  categories: CadastroCategoryEntry[]
+): CadastroCategoryEntry[] {
+  return [...categories].sort((a, b) => {
+    const ia = (AVIACAO_PANEL_FIELD_ORDER as readonly string[]).indexOf(a.id);
+    const ib = (AVIACAO_PANEL_FIELD_ORDER as readonly string[]).indexOf(b.id);
+    const ra = ia >= 0 ? ia : AVIACAO_PANEL_FIELD_ORDER.length;
+    const rb = ib >= 0 ? ib : AVIACAO_PANEL_FIELD_ORDER.length;
+    if (ra !== rb) return ra - rb;
+    return 0;
+  });
+}
+
 /** Hangar / box: alias de select rígido. */
 export function isAviacaoHangarSelectField(categoryId: string): boolean {
   return categoryId === AVIACAO_HANGAR_CATEGORY_ID;
@@ -145,6 +188,7 @@ export function isAviacaoObservacaoInlineField(
   categoryId: string,
   servicos?: AviacaoLookupRow[]
 ): boolean {
+  if (isAviacaoFreeTextField(categoryId)) return true;
   if (categoryId !== AVIACAO_INLINE_OBSERVACAO_FIELD_ID) return false;
   if (!servicos) return true;
   return !isAviacaoUrgenciaSelectMode(servicos);
@@ -337,6 +381,37 @@ export function resolveAviacaoComboboxOptions(
     id: o.id,
     label: o.nome ?? o.id,
   }));
+}
+
+export function hydrateAviacaoFreeTextValue(
+  categoryId: string,
+  cadastroValores: CadastroValores,
+  observacao: string | null | undefined,
+  options: Array<{ id: string; nome: string | null }>
+): string {
+  const inline = parseAviacaoCadastroFields(observacao)[categoryId]?.trim();
+  if (inline) return inline;
+
+  const stored = cadastroValores[categoryId]?.trim();
+  if (!stored) return "";
+  if (!looksLikeAviacaoUuid(stored)) return stored;
+
+  const match = options.find((o) => o.id === stored);
+  return match?.nome?.trim() ?? stored;
+}
+
+/** @deprecated Use `hydrateAviacaoFreeTextValue`. */
+export function hydrateAviacaoPrefixoValue(
+  cadastroValores: CadastroValores,
+  observacao: string | null | undefined,
+  options: Array<{ id: string; nome: string | null }>
+): string {
+  return hydrateAviacaoFreeTextValue(
+    AVIACAO_PREFIXO_CATEGORY_ID,
+    cadastroValores,
+    observacao,
+    options
+  );
 }
 
 export function hydrateAviacaoFormValue(
@@ -639,15 +714,27 @@ export function buildAviacaoSavePayload(
       (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID && looksLikeAviacaoUuid(raw))
     ) {
       selectValues[cat.id] = raw;
-    } else if (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
+    } else if (
+      isAviacaoFreeTextField(cat.id) ||
+      (cat.id === AVIACAO_INLINE_OBSERVACAO_FIELD_ID && !looksLikeAviacaoUuid(raw))
+    ) {
       aviacaoFields[cat.id] = raw;
     } else {
       selectValues[cat.id] = raw;
     }
   }
 
+  const cadastroPayload = buildCadastroPayload(
+    {
+      ...selectValues,
+      [AVIACAO_PREFIXO_CATEGORY_ID]: "",
+      [AVIACAO_MODELO_CATEGORY_ID]: "",
+    },
+    categories
+  );
+
   return {
-    cadastroPayload: buildCadastroPayload(selectValues, categories),
+    cadastroPayload,
     aviacaoFields,
   };
 }
@@ -668,10 +755,22 @@ export function buildAviacaoCategoryPatch(
       selectOnly[cat.id] = v;
     }
   }
-  const cadastroPayload = buildCadastroPayload(selectOnly, categories);
+  const cadastroPayload = buildCadastroPayload(
+    {
+      ...selectOnly,
+      [AVIACAO_PREFIXO_CATEGORY_ID]: "",
+      [AVIACAO_MODELO_CATEGORY_ID]: "",
+    },
+    categories
+  );
   const aviacaoFields = parseAviacaoCadastroFields(currentObservacao);
   for (const id of AVIACAO_RIGID_SELECT_FIELD_IDS) {
     delete aviacaoFields[id];
+  }
+  for (const id of AVIACAO_FREE_TEXT_FIELD_IDS) {
+    const value = categoryValues[id]?.trim();
+    if (value) aviacaoFields[id] = value;
+    else delete aviacaoFields[id];
   }
   const urgencia = categoryValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID]?.trim();
   if (urgencia && !looksLikeAviacaoUuid(urgencia)) {
@@ -695,7 +794,7 @@ export function resolveAviacaoCategoryDisplay(
   categories: CadastroCategoryEntry[],
   legacy?: CadastroLegacyContext
 ): string | null {
-  if (categoryId === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
+  if (isAviacaoFreeTextField(categoryId) || categoryId === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
     const inline = parseAviacaoCadastroFields(observacao)[categoryId];
     if (inline) return inline;
   }
@@ -708,7 +807,11 @@ export function resolveAviacaoCategoryDisplay(
     legacy
   );
   if (fromCadastro) return fromCadastro;
-  if (isAviacaoRigidSelectField(categoryId) || categoryId === AVIACAO_INLINE_OBSERVACAO_FIELD_ID) {
+  if (
+    isAviacaoRigidSelectField(categoryId) ||
+    isAviacaoFreeTextField(categoryId) ||
+    categoryId === AVIACAO_INLINE_OBSERVACAO_FIELD_ID
+  ) {
     return parseAviacaoCadastroFields(observacao)[categoryId] ?? null;
   }
   return null;
