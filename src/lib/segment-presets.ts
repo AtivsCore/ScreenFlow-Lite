@@ -184,10 +184,10 @@ const AVIACAO = makePreset(
   "aviacao_mro",
   "✈️",
   "Aviação e Logística de Manutenção (MRO)",
-  "Piloto / Responsável, Vaga / Hangar, Prefixo da Aeronave, Modelo, Urgência da Peça",
+  "Responsável / Mecânico, Vaga / Hangar, Prefixo da Aeronave, Modelo, Urgência da Peça",
   "Triagem → Em Manutenção → Em Execução → Teste de Voo → Liberado",
   [
-    cat("av-c1", "Piloto / Responsável", "profissionais"),
+    cat("av-c1", "Responsável / Mecânico", "profissionais"),
     cat("av-c2", "Vaga / Hangar / Box Alocado", "locais"),
     cat("av-c3", "Prefixo da Aeronave", "profissionais"),
     cat("av-c4", "Modelo da Aeronave", "servicos"),

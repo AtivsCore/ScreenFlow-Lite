@@ -6,7 +6,9 @@ import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
 import {
+  formatAviacaoObservacaoForDisplay,
   resolveAviacaoCategoryDisplay,
+  resolveAviacaoKanbanColumnLabel,
   resolveAviacaoKanbanMeta,
 } from "@/lib/aviacao-logistics";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
@@ -101,6 +103,7 @@ type KanbanCardProps = {
   isSel: boolean;
   priorityLawEnabled: boolean;
   notesInline: boolean;
+  aviacaoLogisticsActive: boolean;
   meta: ReturnType<typeof resolveKanbanMeta>;
   deleting: string | null;
   onSelectId: (id: string) => void;
@@ -113,6 +116,7 @@ const KanbanCard = memo(function KanbanCard({
   isSel,
   priorityLawEnabled,
   notesInline,
+  aviacaoLogisticsActive,
   meta,
   deleting,
   onSelectId,
@@ -126,7 +130,9 @@ const KanbanCard = memo(function KanbanCard({
   const clientName = meta.title;
   const contextLine = formatKanbanContextLine(meta);
   const horaMarcadaLabel = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : null;
-  const observacaoText = formatObservacaoForDisplay(row.observacao);
+  const observacaoText = aviacaoLogisticsActive
+    ? formatAviacaoObservacaoForDisplay(row.observacao)
+    : formatObservacaoForDisplay(row.observacao);
 
   return (
     <article
@@ -284,7 +290,9 @@ const QueueRow = memo(function QueueRow({
   const prioStyle = priorityLawEnabled
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
     : null;
-  const observacaoText = formatObservacaoForDisplay(row.observacao);
+  const observacaoText = aviacaoLogisticsActive
+    ? formatAviacaoObservacaoForDisplay(row.observacao)
+    : formatObservacaoForDisplay(row.observacao);
   const clientLabel = aviacaoLogisticsActive
     ? resolveAviacaoKanbanMeta(row, cadastroCategories, cadastroLookups).title
     : row.nome?.trim() || "—";
@@ -644,7 +652,8 @@ export function QueueSection({
           >
             {queueTabs.map((t) => {
               const count = tabCounts[t.id];
-              const label = typeof count === "number" ? `${t.label} (${count})` : t.label;
+              const tabLabel = aviacaoLogisticsActive ? resolveAviacaoKanbanColumnLabel(t) : t.label;
+              const label = typeof count === "number" ? `${tabLabel} (${count})` : tabLabel;
               return (
                 <button
                   key={t.id}
@@ -727,6 +736,9 @@ export function QueueSection({
             {kanbanColumns.map((tab) => {
               const cards = columnRows[tab.id] ?? [];
               const count = tabCounts[tab.id] ?? cards.length;
+              const columnLabel = aviacaoLogisticsActive
+                ? resolveAviacaoKanbanColumnLabel(tab)
+                : tab.label;
               return (
                 <section
                   key={tab.id}
@@ -736,9 +748,9 @@ export function QueueSection({
                     <div className="flex items-center justify-between gap-1">
                       <h3
                         className="truncate text-[8px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
-                        title={tab.label}
+                        title={columnLabel}
                       >
-                        {tab.label}
+                        {columnLabel}
                       </h3>
                       <span className="shrink-0 font-mono text-[8px] font-medium leading-none text-zinc-500 dark:text-zinc-400">
                         {count}
@@ -758,6 +770,7 @@ export function QueueSection({
                             isSel={row.id === selectedId}
                             priorityLawEnabled={priorityLawEnabled}
                             notesInline={notesInline}
+                            aviacaoLogisticsActive={aviacaoLogisticsActive}
                             meta={resolveKanbanMeta(
                               row,
                               enabledCategories,

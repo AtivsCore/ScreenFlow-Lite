@@ -4,8 +4,10 @@ import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valor
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
+  AVIACAO_CATEGORY_DISPLAY_LABELS,
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
   buildAviacaoCategoryPatch,
+  formatAviacaoObservacaoForDisplay,
   isAviacaoSegment,
   isAviacaoTextField,
   mergeAviacaoObservacao,
@@ -205,11 +207,20 @@ export const ClientPanel = memo(function ClientPanel({
     void onPatch({ observacao });
   }
 
+  function categoryLabel(cat: CadastroCategoryEntry): string {
+    if (aviacaoMode) {
+      return AVIACAO_CATEGORY_DISPLAY_LABELS[cat.id] ?? cat.label;
+    }
+    return cat.label;
+  }
+
   function renderCategoryField(cat: CadastroCategoryEntry) {
+    const label = categoryLabel(cat);
+
     if (docasMode && isDocasTextField(cat.id)) {
       return (
         <label key={cat.id} className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
-          {cat.label}
+          {label}
           <input
             type="text"
             value={categoryValues[cat.id] ?? ""}
@@ -224,7 +235,7 @@ export const ClientPanel = memo(function ClientPanel({
     if (aviacaoMode && isAviacaoTextField(cat.id)) {
       return (
         <label key={cat.id} className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
-          {cat.label}
+          {label}
           <input
             type="text"
             value={categoryValues[cat.id] ?? ""}
@@ -239,7 +250,7 @@ export const ClientPanel = memo(function ClientPanel({
     return (
       <SelectWithQuickAdd
         key={cat.id}
-        label={cat.label}
+        label={label}
         value={categoryValues[cat.id] ?? ""}
         options={optionsFor(cat)}
         disabled={selectDisabled}
@@ -311,7 +322,11 @@ export const ClientPanel = memo(function ClientPanel({
   const prioStyle = selected
     ? classificacaoBadgeStyle(selected.classificacao_prioridade, selected.prioridade)
     : null;
-  const observacaoText = selected ? formatObservacaoForDisplay(selected.observacao) : "";
+  const observacaoText = selected
+    ? aviacaoMode
+      ? formatAviacaoObservacaoForDisplay(selected.observacao)
+      : formatObservacaoForDisplay(selected.observacao)
+    : "";
   const observacoesAlwaysVisible = observacoesVisibility === "always";
   const hasObs = !!observacaoText;
   const docasPlaca =
@@ -361,7 +376,7 @@ export const ClientPanel = memo(function ClientPanel({
         <div
           className={
             aviacaoMode
-              ? "grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+              ? "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3"
               : "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]"
           }
         >

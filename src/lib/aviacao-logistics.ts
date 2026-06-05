@@ -57,6 +57,14 @@ export const AVIACAO_HANGAR_CATEGORY_ID = "av-c2";
 /** Categorias ocultas no painel superior do cliente (aviacao_mro). */
 export const AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS = ["av-c5"] as const;
 
+/** Rótulos fixos no painel superior (independente de customização salva no tenant). */
+export const AVIACAO_CATEGORY_DISPLAY_LABELS: Partial<Record<string, string>> = {
+  "av-c1": "Responsável / Mecânico",
+};
+
+const AVIACAO_OBSERVACAO_CLINIC_RESIDUAL_RE =
+  /\b(?:Medical\s+Dark\s+Mode|Acessibilidade(?:\s+Visual)?|Modo\s+Escuro\s+Médico)\b/gi;
+
 export const AVIACAO_REQUIRED_CATEGORY_IDS = ["av-c3"] as const;
 
 export const AVIACAO_DATA_TAG_RE = /__sf_aviacao:[\s\S]*?__/gi;
@@ -112,6 +120,65 @@ export function getAviacaoStepIndex(step: AviacaoQueueTabId): number {
   return AVIACAO_PIPELINE_ORDER.indexOf(step);
 }
 
+/** Colunas ativas do fluxo Kanban/lista (exclui aba virtual "Todos"). */
+export function getAviacaoActiveColumns(
+  queueTabs: Pick<QueueTabEntry, "id" | "preset">[]
+): Pick<QueueTabEntry, "id" | "preset">[] {
+  return queueTabs.filter((t) => t.preset !== "todos");
+}
+
+function findAviacaoActiveColumnIndex(
+  tabId: string,
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): number {
+  const direct = activeColumns.findIndex((t) => t.id === tabId);
+  if (direct >= 0) return direct;
+  const normalized = normalizeAviacaoTabId(tabId);
+  return activeColumns.findIndex((t) => normalizeAviacaoTabId(t.id) === normalized);
+}
+
+/** Índice dinâmico da coluna atual nas abas configuradas (0 … length-1). */
+export function getAviacaoTabIndex(
+  tabId: string,
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): number {
+  return findAviacaoActiveColumnIndex(tabId, activeColumns);
+}
+
+/** Resolve o id da coluna gravada na observação (ou a primeira coluna ativa). */
+export function resolveAviacaoTabIdFromObservacao(
+  observacao: string | null | undefined,
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): string | null {
+  if (activeColumns.length === 0) return null;
+  const raw = parseFilaTabId(observacao);
+  if (raw && findAviacaoActiveColumnIndex(raw, activeColumns) >= 0) return raw;
+  return activeColumns[0]?.id ?? null;
+}
+
+/** Avança/retrocede entre colunas reais configuradas (suporta colunas extras além do preset). */
+export function shiftAviacaoTab(
+  tabId: string,
+  delta: -1 | 1,
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): string | null {
+  const idx = getAviacaoTabIndex(tabId, activeColumns);
+  if (idx < 0) return null;
+  const next = idx + delta;
+  if (next < 0 || next >= activeColumns.length) return null;
+  return activeColumns[next]?.id ?? null;
+}
+
+export function canShiftAviacaoTab(
+  tabId: string | null | undefined,
+  delta: -1 | 1,
+  activeColumns: Pick<QueueTabEntry, "id">[]
+): boolean {
+  if (!tabId || activeColumns.length === 0) return false;
+  return shiftAviacaoTab(tabId, delta, activeColumns) !== null;
+}
+
+/** @deprecated Prefer `shiftAviacaoTab` com `getAviacaoActiveColumns` para colunas dinâmicas. */
 export function shiftAviacaoStep(step: AviacaoQueueTabId, delta: -1 | 1): AviacaoQueueTabId | null {
   const idx = getAviacaoStepIndex(step);
   if (idx < 0) return null;
@@ -120,12 +187,44 @@ export function shiftAviacaoStep(step: AviacaoQueueTabId, delta: -1 | 1): Aviaca
   return AVIACAO_PIPELINE_ORDER[next] ?? null;
 }
 
+/** Localiza aba configurada pelo id bruto (preset estável, legado ou coluna customizada). */
+export function findAviacaoQueueTabById(
+  queueTabs: Pick<QueueTabEntry, "id" | "label" | "preset">[],
+  tabId: string
+): Pick<QueueTabEntry, "id" | "label" | "preset"> | undefined {
+  const direct = queueTabs.find((t) => t.id === tabId);
+  if (direct) return direct;
+  const fallback = findAviacaoQueueTabByStep(queueTabs, normalizeAviacaoTabId(tabId));
+  if (!fallback) return undefined;
+  return queueTabs.find((t) => t.id === fallback.id) ?? { ...fallback, preset: "outros" as const };
+}
+
 export function getAviacaoStepLabel(
   step: AviacaoQueueTabId,
   queueTabs?: Pick<QueueTabEntry, "id" | "label">[]
 ): string {
   const tab = queueTabs ? findAviacaoQueueTabByStep(queueTabs, step) : undefined;
   return tab?.label?.toUpperCase() ?? AVIACAO_STEP_LABELS[step];
+}
+
+/** Rótulo exibido no cabeçalho da coluna Kanban (força "EM MANUTENÇÃO" na 2ª etapa). */
+export function resolveAviacaoKanbanColumnLabel(tab: Pick<QueueTabEntry, "id" | "label">): string {
+  if (normalizeAviacaoTabId(tab.id) === AVIACAO_QUEUE_TAB.AGUARDANDO_PECA) {
+    return "EM MANUTENÇÃO";
+  }
+  return tab.label;
+}
+
+/** Observação limpa para cards Aviação — sem resíduos de segmentos clínicos. */
+export function formatAviacaoObservacaoForDisplay(
+  observacao: string | null | undefined
+): string {
+  const clean = formatObservacaoForDisplay(observacao);
+  if (!clean) return "";
+  return clean
+    .replace(AVIACAO_OBSERVACAO_CLINIC_RESIDUAL_RE, "")
+    .replace(/[ \t]*\r?\n+/gm, "\n")
+    .trim();
 }
 
 /** Status de chamada na TV conforme a etapa (quando aplicável). */
