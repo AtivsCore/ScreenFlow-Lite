@@ -132,9 +132,13 @@ const AVIACAO_UUID_RE =
 export type AviacaoDrawerKey =
   | "profissionais"
   | "locais"
+  | "servicos_operacionais"
   | "servicos_prefixo"
   | "categoria_custom_4"
   | "categoria_custom_5";
+
+/** Slot virtual para CRUD de serviços operacionais (Manutenção, Estética, CVA…). */
+export const AVIACAO_SERVICOS_SOLICITADOS_CRUD_FIELD_ID = "av-svc-op" as const;
 
 export const AVIACAO_FIELD_DRAWER_KEY: Record<string, AviacaoDrawerKey> = {
   "av-c1": "profissionais",
@@ -142,11 +146,13 @@ export const AVIACAO_FIELD_DRAWER_KEY: Record<string, AviacaoDrawerKey> = {
   "av-c3": "servicos_prefixo",
   "av-c4": "categoria_custom_4",
   "av-c5": "categoria_custom_5",
+  [AVIACAO_SERVICOS_SOLICITADOS_CRUD_FIELD_ID]: "servicos_operacionais",
 };
 
 export const AVIACAO_DRAWER_SERVICOS_BUCKET: Partial<
   Record<AviacaoDrawerKey, { min: number; max: number }>
 > = {
+  servicos_operacionais: { min: 0, max: 99_999 },
   servicos_prefixo: { min: 100_000, max: 199_999 },
   categoria_custom_4: { min: 200_000, max: 299_999 },
   categoria_custom_5: { min: 300_000, max: 399_999 },
@@ -161,7 +167,38 @@ export const AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS = ["av-c1", "av-c5"] as co
 /** Rótulos fixos no painel superior (independente de customização salva no tenant). */
 export const AVIACAO_CATEGORY_DISPLAY_LABELS: Partial<Record<string, string>> = {
   "av-c1": "Responsável / Mecânico",
+  "av-c2": "Vaga / Hangar / Box Alocado",
+  "av-c3": "Prefixo da Aeronave",
+  "av-c4": "Modelo da Aeronave",
 };
+
+export type AviacaoQuickCrudKind = "hangar" | "servicos" | "base";
+
+export type AviacaoQuickCrudConfig = {
+  title: string;
+  table: string;
+  categoryId?: string;
+};
+
+/** Configuração canônica dos atalhos de cadastro rápido ao lado da fila (MRO). */
+export function resolveAviacaoQuickCrudConfig(kind: AviacaoQuickCrudKind): AviacaoQuickCrudConfig {
+  switch (kind) {
+    case "hangar":
+      return {
+        title: "Vaga / Hangar / Box",
+        table: "locais",
+        categoryId: AVIACAO_HANGAR_CATEGORY_ID,
+      };
+    case "servicos":
+      return {
+        title: "Serviços",
+        table: SERVICES_CRUD_TABLE,
+        categoryId: AVIACAO_SERVICOS_SOLICITADOS_CRUD_FIELD_ID,
+      };
+    case "base":
+      return { title: "Nova base / aeroporto", table: "tenants" };
+  }
+}
 
 const AVIACAO_OBSERVACAO_CLINIC_RESIDUAL_RE =
   /\b(?:Medical\s+Dark\s+Mode|Acessibilidade(?:\s+Visual)?|Modo\s+Escuro\s+Médico)\b/gi;
@@ -518,13 +555,14 @@ export function isAviacaoExtendedInlineField(fieldId: string): boolean {
   return (AVIACAO_EXTENDED_INLINE_FIELD_IDS as readonly string[]).includes(fieldId);
 }
 
-/** Serviços operacionais (Manutenção, Estética, CVA…) — bucket geral, ordem < 100k. */
+/** Serviços operacionais (Manutenção, Estética, CVA…) — gaveta `servicos_operacionais` (ordem 0–99.999). */
 export function resolveAviacaoServicosSolicitadosOptions(
   servicos: AviacaoLookupRow[]
 ): Array<{ id: string; nome: string | null }> {
-  return servicos
-    .filter((s) => (s.ordem ?? 0) < 100_000)
-    .map((s) => ({ id: s.id, nome: s.nome }));
+  return filterServicosForAviacaoDrawer("servicos_operacionais", servicos).map((s) => ({
+    id: s.id,
+    nome: s.nome,
+  }));
 }
 
 export function parseAviacaoServicosSolicitados(raw: string | undefined): string[] {

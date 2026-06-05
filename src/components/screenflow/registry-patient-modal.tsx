@@ -94,10 +94,11 @@ export function RegistryPatientModal({
   const [busy, setBusy] = useState(false);
   const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
 
-  const effectiveTenantId = useMemo(
-    () => sessionTenantId ?? (tenantId?.trim() || resolveDefaultTenantId()),
-    [sessionTenantId, tenantId]
-  );
+  const effectiveTenantId = useMemo(() => {
+    const fromProp = tenantId?.trim();
+    if (fromProp) return fromProp;
+    return sessionTenantId ?? resolveDefaultTenantId();
+  }, [tenantId, sessionTenantId]);
 
   const loadLookupOptions = useCallback(async () => {
     if (!supabase) return;

@@ -47,10 +47,11 @@ export function CrudEntityModal({
 }: CrudEntityModalProps) {
   const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
 
-  const effectiveTenantId = useMemo(
-    () => sessionTenantId ?? (tenantId?.trim() || resolveDefaultTenantId()),
-    [sessionTenantId, tenantId]
-  );
+  const effectiveTenantId = useMemo(() => {
+    const fromProp = tenantId?.trim();
+    if (fromProp) return fromProp;
+    return sessionTenantId ?? resolveDefaultTenantId();
+  }, [tenantId, sessionTenantId]);
 
   const isProfissionais = table === "profissionais";
   const isLocais = table === "locais";

@@ -7,6 +7,7 @@ import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import { KeyboardShortcutsModal } from "@/components/screenflow/keyboard-shortcuts-modal";
 import { FinalizeConfirmModal } from "@/components/screenflow/finalize-confirm-modal";
 import { ProUpgradeModal } from "@/components/screenflow/pro-upgrade-modal";
+import { Modal } from "@/components/ui/modal";
 import { ReportsModal } from "@/components/screenflow/reports-modal";
 import { QueueSection, type QueueViewMode } from "@/components/screenflow/queue-section";
 import { RegistryPatientModal } from "@/components/screenflow/registry-patient-modal";
@@ -38,9 +39,12 @@ import {
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
 import {
+  AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION,
+  AVIACAO_BASE_LIMIT_UPSELL_TITLE,
   AVIACAO_QUEUE_TAB,
   appendAviacaoTimelineEntry,
   aviacaoStepTvStatus,
+  canCreateAviacaoBase,
   canShiftAviacaoTabQuick,
   filterAviacaoQueueRows,
   findAviacaoQueueTabById,
@@ -52,6 +56,7 @@ import {
   parseAviacaoCadastroFields,
   parseAviacaoFilaTabId,
   requiresAviacaoPecaJustification,
+  resolveAviacaoQuickCrudConfig,
   resolveAviacaoQueueTabs,
   resolveAviacaoTabActionLabel,
   resolveAviacaoTabIdFromObservacao,
@@ -110,7 +115,16 @@ export default function Home() {
   const [proUpgradeTitle, setProUpgradeTitle] = useState<string | undefined>();
   const [proUpgradeDescription, setProUpgradeDescription] = useState<string | undefined>();
   const [appView, setAppView] = useState<AppView>("fila");
-  const [quickCrud, setQuickCrud] = useState<{ title: string; table: string } | null>(null);
+  const [quickCrud, setQuickCrud] = useState<{
+    title: string;
+    table: string;
+    categoryId?: string;
+  } | null>(null);
+  const [aviacaoBaseQuickOpen, setAviacaoBaseQuickOpen] = useState(false);
+  const [aviacaoBaseUpsellOpen, setAviacaoBaseUpsellOpen] = useState(false);
+  const [aviacaoBaseNome, setAviacaoBaseNome] = useState("");
+  const [aviacaoBaseBusy, setAviacaoBaseBusy] = useState(false);
+  const [aviacaoBaseError, setAviacaoBaseError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const [tenantConfig, setTenantConfig] = useState<ResolvedTenantConfig>(() => mergeTenantConfig({}));
@@ -224,6 +238,62 @@ export default function Home() {
     const opts = await fetchSessionTenants(supabase);
     setAviacaoTenantOptions(opts);
   }, [supabase, aviacaoLogisticsActive]);
+
+  const openAviacaoQuickCrud = useCallback((kind: "hangar" | "servicos") => {
+    const cfg = resolveAviacaoQuickCrudConfig(kind);
+    setQuickCrud({
+      title: cfg.title,
+      table: cfg.table,
+      categoryId: cfg.categoryId,
+    });
+  }, []);
+
+  const handleAviacaoBaseQuickAdd = useCallback(() => {
+    if (!canCreateAviacaoBase(aviacaoTenantOptions.length, proActive)) {
+      setAviacaoBaseUpsellOpen(true);
+      return;
+    }
+    setAviacaoBaseNome("");
+    setAviacaoBaseError(null);
+    setAviacaoBaseQuickOpen(true);
+  }, [aviacaoTenantOptions.length, proActive]);
+
+  async function submitAviacaoBaseQuick(e: React.FormEvent) {
+    e.preventDefault();
+    if (!supabase) return;
+    const trimmed = aviacaoBaseNome.trim();
+    if (!trimmed) {
+      setAviacaoBaseError("Informe o nome da base / aeroporto.");
+      return;
+    }
+    setAviacaoBaseBusy(true);
+    setAviacaoBaseError(null);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setAviacaoBaseError("Sessão ausente.");
+      setAviacaoBaseBusy(false);
+      return;
+    }
+    const res = await fetch("/api/aviacao-base", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ nome: trimmed, sourceTenantId: effectiveTenantId ?? null }),
+    });
+    const json = (await res.json()) as { ok?: boolean; message?: string; id?: string; nome?: string };
+    if (!res.ok || !json.ok || !json.id) {
+      setAviacaoBaseError(json.message ?? "Falha ao cadastrar base.");
+      setAviacaoBaseBusy(false);
+      return;
+    }
+    await refreshAviacaoTenantOptions();
+    handleAviacaoBaseChange(json.id);
+    setAviacaoBaseQuickOpen(false);
+    setAviacaoBaseBusy(false);
+  }
 
   useEffect(() => {
     if (!supabase || !sessionReady) return;
@@ -1011,9 +1081,15 @@ export default function Home() {
       onNovoRegistro: () => setRegistryOpen(true),
       onToggleView: () => setQueueViewMode((m) => (m === "list" ? "kanban" : "list")),
       onOpenSettings: () => openGeneralSettings(),
-      onCrudProfissionais: () => setQuickCrud({ title: "Equipe (profissionais)", table: "profissionais" }),
-      onCrudLocais: () => setQuickCrud({ title: "Locais", table: "locais" }),
-      onCrudServicos: () => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE }),
+      onCrudProfissionais: aviacaoLogisticsActive
+        ? undefined
+        : () => setQuickCrud({ title: "Equipe (profissionais)", table: "profissionais" }),
+      onCrudLocais: aviacaoLogisticsActive
+        ? () => openAviacaoQuickCrud("hangar")
+        : () => setQuickCrud({ title: "Locais", table: "locais" }),
+      onCrudServicos: aviacaoLogisticsActive
+        ? () => openAviacaoQuickCrud("servicos")
+        : () => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE }),
     }),
     [
       canMutate,
@@ -1025,6 +1101,8 @@ export default function Home() {
       updateStatus,
       openGeneralSettings,
       shiftSelectedDocasStep,
+      aviacaoLogisticsActive,
+      openAviacaoQuickCrud,
     ]
   );
 
@@ -1100,10 +1178,6 @@ export default function Home() {
             tenantId={effectiveTenantId}
             tenantOptions={aviacaoLogisticsActive ? aviacaoTenantOptions : undefined}
             onTenantChange={aviacaoLogisticsActive ? handleAviacaoBaseChange : undefined}
-            onTenantOptionsRefresh={
-              aviacaoLogisticsActive ? () => void refreshAviacaoTenantOptions() : undefined
-            }
-            proActive={aviacaoLogisticsActive ? proActive : undefined}
             onChamar={() => {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
@@ -1214,6 +1288,15 @@ export default function Home() {
               aviacaoStepperDisabled={pending}
               onAviacaoStepPrev={() => shiftSelectedAviacaoStep(-1)}
               onAviacaoStepNext={() => shiftSelectedAviacaoStep(1)}
+              onAviacaoQuickAddHangar={
+                aviacaoLogisticsActive ? () => openAviacaoQuickCrud("hangar") : undefined
+              }
+              onAviacaoQuickAddServicos={
+                aviacaoLogisticsActive ? () => openAviacaoQuickCrud("servicos") : undefined
+              }
+              onAviacaoQuickAddBase={
+                aviacaoLogisticsActive ? handleAviacaoBaseQuickAdd : undefined
+              }
             />
           )}
         </main>
@@ -1256,10 +1339,55 @@ export default function Home() {
           title={quickCrud.title}
           table={quickCrud.table}
           tenantId={effectiveTenantId}
+          cadastroCategoryId={quickCrud.categoryId}
           onClose={() => setQuickCrud(null)}
           onSaved={() => void refreshRows()}
         />
       )}
+
+      {aviacaoLogisticsActive ? (
+        <>
+          <Modal
+            open={aviacaoBaseQuickOpen}
+            title="Nova base / aeroporto"
+            onClose={() => setAviacaoBaseQuickOpen(false)}
+            widthClassName="max-w-sm"
+          >
+            <form onSubmit={submitAviacaoBaseQuick} className="flex flex-col gap-3">
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                Nome da base
+                <input
+                  type="text"
+                  value={aviacaoBaseNome}
+                  disabled={aviacaoBaseBusy}
+                  onChange={(e) => setAviacaoBaseNome(e.target.value)}
+                  placeholder="Ex.: Curitiba, Salvador…"
+                  className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+                  autoFocus
+                />
+              </label>
+              {aviacaoBaseError ? (
+                <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
+                  {aviacaoBaseError}
+                </p>
+              ) : null}
+              <button
+                type="submit"
+                disabled={aviacaoBaseBusy || !supabase}
+                className="rounded-lg bg-zinc-900 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+              >
+                {aviacaoBaseBusy ? "Salvando…" : "Cadastrar base"}
+              </button>
+            </form>
+          </Modal>
+          <ProUpgradeModal
+            open={aviacaoBaseUpsellOpen}
+            onClose={() => setAviacaoBaseUpsellOpen(false)}
+            title={AVIACAO_BASE_LIMIT_UPSELL_TITLE}
+            description={AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION}
+          />
+        </>
+      ) : null}
 
       <SegmentConfigModal
         open={segmentOpen}

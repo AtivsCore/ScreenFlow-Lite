@@ -20,12 +20,8 @@ import {
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryDisplay,
   resolveAviacaoCategoryLabel,
-  resolveAviacaoCrudTable,
   resolveAviacaoSelectOptions,
   sortAviacaoPanelCategories,
-  AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION,
-  AVIACAO_BASE_LIMIT_UPSELL_TITLE,
-  canCreateAviacaoBase,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasCategoryPatch,
@@ -36,20 +32,14 @@ import {
 } from "@/lib/docas-logistics";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import type { CadastroCategoryEntry, ObservacoesVisibility } from "@/lib/tenant-config";
-import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Plus } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
-import { ProUpgradeModal } from "@/components/screenflow/pro-upgrade-modal";
-import { Modal } from "@/components/ui/modal";
 import { ObservacaoPopover } from "@/components/screenflow/observacao-popover";
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
 
 type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
-type QuickCrud = { title: string; table: string; categoryId?: string };
 
 const AVIACAO_PANEL_FIELD_CLASS =
   "col-span-1 min-w-0 block text-[10px] font-medium text-zinc-600 dark:text-zinc-400";
@@ -82,140 +72,30 @@ type ClientPanelProps = {
   /** Bases/aeroportos do usuário (somente aviação). */
   tenantOptions?: Opt[];
   onTenantChange?: (tenantId: string) => void;
-  onTenantOptionsRefresh?: () => void | Promise<void>;
   onRegistrarAvaria?: () => void;
-  /** Plano PRO desbloqueia múltiplas bases (somente aviação). */
-  proActive?: boolean;
 };
 
-function AviacaoBaseQuickModal({
-  open,
-  onClose,
-  supabase,
-  sourceTenantId,
-  onCreated,
-}: {
-  open: boolean;
-  onClose: () => void;
-  supabase: SupabaseClient | null;
-  sourceTenantId?: string | null;
-  onCreated: (tenant: { id: string; nome: string }) => void;
-}) {
-  const [nome, setNome] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setNome("");
-    setError(null);
-  }, [open]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!supabase) return;
-    const trimmed = nome.trim();
-    if (!trimmed) {
-      setError("Informe o nome da base / aeroporto.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) {
-      setError("Sessão ausente.");
-      setBusy(false);
-      return;
-    }
-    const res = await fetch("/api/aviacao-base", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ nome: trimmed, sourceTenantId: sourceTenantId ?? null }),
-    });
-    const json = (await res.json()) as { ok?: boolean; message?: string; id?: string; nome?: string };
-    if (!res.ok || !json.ok || !json.id) {
-      setError(json.message ?? "Falha ao cadastrar base.");
-      setBusy(false);
-      return;
-    }
-    onCreated({ id: json.id, nome: json.nome ?? trimmed });
-    onClose();
-    setBusy(false);
-  }
-
-  return (
-    <Modal open={open} title="Nova base / aeroporto" onClose={onClose} widthClassName="max-w-sm">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          Nome da base
-          <input
-            type="text"
-            value={nome}
-            disabled={busy}
-            onChange={(e) => setNome(e.target.value)}
-            placeholder="Ex.: Curitiba, Salvador…"
-            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
-            autoFocus
-          />
-        </label>
-        {error ? (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
-            {error}
-          </p>
-        ) : null}
-        <button
-          type="submit"
-          disabled={busy || !supabase}
-          className="rounded-lg bg-zinc-900 py-2.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          {busy ? "Salvando…" : "Cadastrar base"}
-        </button>
-      </form>
-    </Modal>
-  );
-}
-
-function SelectWithQuickAdd({
+function SelectField({
   label,
   value,
   options,
   disabled,
-  quickAddDisabled,
   onChange,
-  onQuickAdd,
 }: {
   label: string;
   value: string;
   options: Opt[];
   disabled: boolean;
-  quickAddDisabled?: boolean;
   onChange: (v: string) => void;
-  onQuickAdd: () => void;
 }) {
   return (
-    <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
-      <span className="flex items-center justify-between gap-1">
-        {label}
-        <button
-          type="button"
-          title={`Cadastrar ${label.toLowerCase()}`}
-          disabled={quickAddDisabled}
-          onClick={onQuickAdd}
-          className="inline-flex size-5 shrink-0 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-        >
-          <Plus className="size-3" strokeWidth={2} aria-hidden />
-          <span className="sr-only">Cadastrar {label}</span>
-        </button>
-      </span>
+    <label className={AVIACAO_PANEL_FIELD_CLASS}>
+      <span className="block h-4 truncate leading-4">{label}</span>
       <select
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+        className={AVIACAO_PANEL_CONTROL_CLASS}
       >
         <option value="">—</option>
         {options.map((x) => (
@@ -246,26 +126,13 @@ export const ClientPanel = memo(function ClientPanel({
   tenantId,
   tenantOptions = [],
   onTenantChange,
-  onTenantOptionsRefresh,
   onRegistrarAvaria,
-  proActive = false,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
   const [servicos, setServicos] = useState<Opt[]>([]);
   const [tvs, setTvs] = useState<Opt[]>([]);
   const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
-  const [quickCrud, setQuickCrud] = useState<QuickCrud | null>(null);
-  const [baseQuickOpen, setBaseQuickOpen] = useState(false);
-  const [baseUpsellOpen, setBaseUpsellOpen] = useState(false);
-
-  function handleAviacaoBaseQuickAdd() {
-    if (!canCreateAviacaoBase(tenantOptions.length, proActive)) {
-      setBaseUpsellOpen(true);
-      return;
-    }
-    setBaseQuickOpen(true);
-  }
   const optionsLoadedRef = useRef<string | null>(null);
   const aviacaoFreeTextPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -309,15 +176,6 @@ export const ClientPanel = memo(function ClientPanel({
       servicos,
     });
   }, [aviacaoMode, profissionais, locais, servicos]);
-
-  function openCrudForCategory(cat: CadastroCategoryEntry) {
-    const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
-    setQuickCrud({
-      title,
-      table: aviacaoMode ? resolveAviacaoCrudTable(cat.id) : cadastroCategoryCrudTable(cat),
-      categoryId: aviacaoMode ? cat.id : undefined,
-    });
-  }
 
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
     if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
@@ -425,49 +283,26 @@ export const ClientPanel = memo(function ClientPanel({
     }
 
     if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
-      const opts = optionsFor(cat);
       return (
-        <label key={cat.id} className={AVIACAO_PANEL_FIELD_CLASS}>
-          <span className="flex h-4 items-center justify-between gap-1">
-            <span className="min-w-0 truncate leading-4">{label}</span>
-            <button
-              type="button"
-              title={`Cadastrar ${label.toLowerCase()}`}
-              disabled={quickAddDisabled}
-              onClick={() => openCrudForCategory(cat)}
-              className="inline-flex size-5 shrink-0 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              <Plus className="size-3" strokeWidth={2} aria-hidden />
-              <span className="sr-only">Cadastrar {label}</span>
-            </button>
-          </span>
-          <select
-            value={categoryValues[cat.id] ?? ""}
-            disabled={fieldDisabled}
-            onChange={(e) => patchCategoryValue(cat.id, e.target.value)}
-            className={AVIACAO_PANEL_CONTROL_CLASS}
-          >
-            <option value="">—</option>
-            {opts.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.nome ?? x.id}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SelectField
+          key={cat.id}
+          label={label}
+          value={categoryValues[cat.id] ?? ""}
+          options={optionsFor(cat)}
+          disabled={fieldDisabled}
+          onChange={(v) => patchCategoryValue(cat.id, v)}
+        />
       );
     }
 
     return (
-      <SelectWithQuickAdd
+      <SelectField
         key={cat.id}
         label={label}
         value={categoryValues[cat.id] ?? ""}
         options={optionsFor(cat)}
         disabled={selectDisabled}
-        quickAddDisabled={quickAddDisabled}
         onChange={(v) => patchCategoryValue(cat.id, v)}
-        onQuickAdd={() => openCrudForCategory(cat)}
       />
     );
   }
@@ -498,10 +333,6 @@ export const ClientPanel = memo(function ClientPanel({
     await fetchLookupData();
     optionsLoadedRef.current = cacheKey;
   }, [fetchLookupData, tenantId]);
-
-  const refreshOptions = useCallback(async () => {
-    await fetchLookupData();
-  }, [fetchLookupData]);
 
   useEffect(() => {
     optionsLoadedRef.current = null;
@@ -569,7 +400,6 @@ export const ClientPanel = memo(function ClientPanel({
   const tvValue = selected?.tv_id ?? "";
   const fieldDisabled = !selected || !canMutate;
   const selectDisabled = fieldDisabled || pending;
-  const quickAddDisabled = !supabase;
   const prioStyle = selected
     ? classificacaoBadgeStyle(selected.classificacao_prioridade, selected.prioridade)
     : null;
@@ -642,22 +472,11 @@ export const ClientPanel = memo(function ClientPanel({
         >
           {aviacaoMode ? (
             <label className={AVIACAO_PANEL_FIELD_CLASS}>
-              <span className="flex h-4 items-center justify-between gap-1">
-                <span className="min-w-0 truncate leading-4">Base / Aeroporto</span>
-                <button
-                  type="button"
-                  title="Cadastrar nova base / aeroporto"
-                  disabled={!supabase}
-                  onClick={handleAviacaoBaseQuickAdd}
-                  className="inline-flex size-5 shrink-0 items-center justify-center rounded border border-zinc-300 bg-white text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                >
-                  <Plus className="size-3" strokeWidth={2} aria-hidden />
-                  <span className="sr-only">Cadastrar base</span>
-                </button>
-              </span>
+              <span className="block h-4 truncate leading-4">Base / Aeroporto</span>
               <select
                 value={tenantId ?? ""}
                 disabled={!canMutate || tenantOptions.length === 0}
+                required
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v) onTenantChange?.(v);
@@ -763,41 +582,6 @@ export const ClientPanel = memo(function ClientPanel({
         </>
       ) : null}
 
-      {aviacaoMode ? (
-        <>
-          <AviacaoBaseQuickModal
-            open={baseQuickOpen}
-            onClose={() => setBaseQuickOpen(false)}
-            supabase={supabase}
-            sourceTenantId={tenantId}
-            onCreated={(tenant) => {
-              void onTenantOptionsRefresh?.();
-              onTenantChange?.(tenant.id);
-            }}
-          />
-          <ProUpgradeModal
-            open={baseUpsellOpen}
-            onClose={() => setBaseUpsellOpen(false)}
-            title={AVIACAO_BASE_LIMIT_UPSELL_TITLE}
-            description={AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION}
-          />
-        </>
-      ) : null}
-
-      {quickCrud && (
-        <CrudEntityModal
-          open
-          supabase={supabase}
-          title={quickCrud.title}
-          table={quickCrud.table}
-          tenantId={tenantId}
-          cadastroCategoryId={quickCrud.categoryId}
-          onClose={() => setQuickCrud(null)}
-          onSaved={() => {
-            void refreshOptions();
-          }}
-        />
-      )}
     </>
   );
 });

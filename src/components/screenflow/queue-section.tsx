@@ -467,6 +467,9 @@ type QueueSectionProps = {
   aviacaoSelectedHangarIds?: string[];
   onAviacaoSelectedHangarIdsChange?: (ids: string[]) => void;
   aviacaoHangarFilterOptions?: Array<{ id: string; nome: string | null }>;
+  onAviacaoQuickAddHangar?: () => void;
+  onAviacaoQuickAddServicos?: () => void;
+  onAviacaoQuickAddBase?: () => void;
 };
 
 export function QueueSection({
@@ -514,6 +517,9 @@ export function QueueSection({
   aviacaoSelectedHangarIds = [],
   onAviacaoSelectedHangarIdsChange,
   aviacaoHangarFilterOptions = [],
+  onAviacaoQuickAddHangar,
+  onAviacaoQuickAddServicos,
+  onAviacaoQuickAddBase,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
@@ -584,6 +590,37 @@ export function QueueSection({
                 onSelectedHangarIdsChange={onAviacaoSelectedHangarIdsChange}
                 hangarOptions={aviacaoHangarFilterOptions}
               />
+            ) : null}
+            {aviacaoLogisticsActive &&
+            onAviacaoQuickAddHangar &&
+            onAviacaoQuickAddServicos &&
+            onAviacaoQuickAddBase ? (
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  title="Cadastrar vaga / hangar / box"
+                  onClick={onAviacaoQuickAddHangar}
+                  className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  + Hangar
+                </button>
+                <button
+                  type="button"
+                  title="Cadastrar serviços operacionais"
+                  onClick={onAviacaoQuickAddServicos}
+                  className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  + Serviços
+                </button>
+                <button
+                  type="button"
+                  title="Cadastrar nova base / aeroporto"
+                  onClick={onAviacaoQuickAddBase}
+                  className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  + Base
+                </button>
+              </div>
             ) : null}
           </div>
 
