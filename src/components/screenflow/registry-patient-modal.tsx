@@ -126,6 +126,18 @@ export function RegistryPatientModal({
     setLocais((l.data as OptRow[] | null) ?? []);
   }, [supabase, effectiveTenantId]);
 
+  function resolveAviacaoRegistryCategoryLabel(cat: CadastroCategoryEntry): string {
+    const stored = resolveAviacaoCategoryLabel(cat);
+    if (
+      cat.id === AVIACAO_PREFIXO_CATEGORY_ID ||
+      cat.id === AVIACAO_MODELO_CATEGORY_ID ||
+      /lista de prefixos/i.test(stored)
+    ) {
+      return "Modelo da Aeronave";
+    }
+    return stored;
+  }
+
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
     const isRequired =
       (docasMode && isDocasRequiredCategory(cat.id)) ||
@@ -133,6 +145,9 @@ export function RegistryPatientModal({
     const requiredMark = isRequired ? (
       <span className="text-red-600 dark:text-red-400"> *</span>
     ) : null;
+    const categoryLabel = aviacaoMode
+      ? resolveAviacaoRegistryCategoryLabel(cat)
+      : cat.label;
 
     if (aviacaoMode && isAviacaoFreeTextField(cat.id)) {
       const freeTextOpts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
@@ -142,7 +157,7 @@ export function RegistryPatientModal({
           : AVIACAO_PREFIXO_MODAL_DATALIST_ID;
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {resolveAviacaoCategoryLabel(cat)}
+          {categoryLabel}
           {requiredMark}
           <input
             type="text"
@@ -166,7 +181,7 @@ export function RegistryPatientModal({
       const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-          {resolveAviacaoCategoryLabel(cat)}
+          {categoryLabel}
           {requiredMark}
           <select
             value={formValues[cat.id] ?? ""}
@@ -190,7 +205,7 @@ export function RegistryPatientModal({
         const opts = resolveAviacaoSelectOptions(cat.id, { profissionais, locais, servicos });
         return (
           <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {resolveAviacaoCategoryLabel(cat)}
+            {categoryLabel}
             {requiredMark}
             <select
               value={formValues[cat.id] ?? ""}
@@ -211,7 +226,7 @@ export function RegistryPatientModal({
       if (isAviacaoObservacaoInlineField(cat.id, servicos)) {
         return (
           <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            {resolveAviacaoCategoryLabel(cat)}
+            {categoryLabel}
             {requiredMark}
             <input
               type="text"
@@ -574,7 +589,14 @@ export function RegistryPatientModal({
 
         {rf.showClienteNome ? (
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-            Nome do cliente
+            {aviacaoMode ? (
+              <>
+                Prefixo da Aeronave
+                <span className="text-red-600 dark:text-red-400"> *</span>
+              </>
+            ) : (
+              "Nome do cliente"
+            )}
             <input
               value={nomeCliente}
               onChange={(e) => setNomeCliente(e.target.value)}
