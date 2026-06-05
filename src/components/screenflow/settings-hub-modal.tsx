@@ -15,7 +15,11 @@ import {
   type QueueTabPreset,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
-import { isAviacaoSegment, resolveAviacaoCrudTable } from "@/lib/aviacao-logistics";
+import {
+  AVIACAO_REGISTER_FORM_LABELS,
+  isAviacaoSegment,
+  resolveAviacaoCrudTable,
+} from "@/lib/aviacao-logistics";
 import { isProPlan } from "@/lib/plan-tier";
 import { GoogleSheetsProSection } from "@/components/screenflow/google-sheets-pro-section";
 import { Briefcase, ChevronDown, ChevronUp, ClipboardList, Layers, MapPin, Palette, Settings2, UserCheck } from "lucide-react";
@@ -471,12 +475,12 @@ export function SettingsHubModal({
               <div className="grid gap-1.5 text-[10px] text-zinc-700 dark:text-zinc-300">
                 {(
                   [
-                    ["showClienteNome", "Nome do cliente"],
-                    ["showProfissional", "Profissional (lista)"],
-                    ["showServico", "Serviço (lista)"],
-                    ["showLocal", "Local (lista)"],
-                    ["showHoraMarcada", "Horário marcado"],
-                    ["showObservacao", "Observações"],
+                    ["showClienteNome", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showClienteNome : "Nome do cliente"],
+                    ["showProfissional", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showProfissional : "Profissional (lista)"],
+                    ["showServico", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showServico : "Serviço (lista)"],
+                    ["showLocal", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showLocal : "Local (lista)"],
+                    ["showHoraMarcada", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showHoraMarcada : "Horário marcado"],
+                    ["showObservacao", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showObservacao : "Observações"],
                   ] as const
                 ).map(([key, label]) => (
                   <label key={key} className="flex cursor-pointer items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
@@ -496,7 +500,9 @@ export function SettingsHubModal({
                 ))}
               </div>
               <p className="mt-2 text-[9px] text-zinc-500 dark:text-zinc-500">
-                Profissional, serviço e local usam apenas listas do cadastro base (sem texto livre).
+                {aviacaoMode
+                  ? "No modo aviação MRO, responsável, serviços e hangar seguem os campos do registro de rampa."
+                  : "Profissional, serviço e local usam apenas listas do cadastro base (sem texto livre)."}
               </p>
             </div>
 

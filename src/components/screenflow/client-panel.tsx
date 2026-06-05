@@ -19,6 +19,7 @@ import {
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryDisplay,
   resolveAviacaoCategoryLabel,
+  resolveAviacaoHeaderActionState,
   resolveAviacaoSelectOptions,
   sortAviacaoPanelCategories,
 } from "@/lib/aviacao-logistics";
@@ -72,6 +73,8 @@ type ClientPanelProps = {
   tenantOptions?: Opt[];
   onTenantChange?: (tenantId: string) => void;
   onRegistrarAvaria?: () => void;
+  /** Estágio atual da aeronave selecionada (coluna Kanban/lista). */
+  aviacaoCurrentTabId?: string | null;
 };
 
 function SelectField({
@@ -126,6 +129,7 @@ export const ClientPanel = memo(function ClientPanel({
   tenantOptions = [],
   onTenantChange,
   onRegistrarAvaria,
+  aviacaoCurrentTabId,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
@@ -401,6 +405,18 @@ export const ClientPanel = memo(function ClientPanel({
       : null;
   const selectedDisplayName = docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
 
+  const aviacaoHeaderActions = useMemo(
+    () => (aviacaoMode && selected ? resolveAviacaoHeaderActionState(aviacaoCurrentTabId) : null),
+    [aviacaoMode, selected, aviacaoCurrentTabId]
+  );
+
+  const primaryBtnClass =
+    "min-h-9 min-w-[6.5rem] flex-1 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
+  const secondaryBtnClass =
+    "min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700";
+  const finalizarBtnClass =
+    "min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-emerald-600 bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50";
+
   return (
     <>
       <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3 shadow-sm dark:border-zinc-700 dark:bg-zinc-900/50">
@@ -501,17 +517,25 @@ export const ClientPanel = memo(function ClientPanel({
             type="button"
             disabled={!canMutate}
             onClick={onChamar}
-            className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className={
+              aviacaoHeaderActions?.primaryAction === "chamar" ? primaryBtnClass : secondaryBtnClass
+            }
           >
-            {docasMode ? "Chamar p/ Doca" : aviacaoMode ? "Chamar p/ Hangar" : "Chamar"}
+            {docasMode
+              ? "Chamar p/ Doca"
+              : aviacaoHeaderActions?.chamarLabel ?? (aviacaoMode ? "Chamar p/ Hangar" : "Chamar")}
           </button>
           <button
             type="button"
             disabled={!canMutate}
             onClick={onRechamar}
-            className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
+            className={
+              aviacaoHeaderActions?.primaryAction === "iniciar" ? primaryBtnClass : secondaryBtnClass
+            }
           >
-            {docasMode || aviacaoMode ? "Iniciar Operação" : "Rechamar"}
+            {docasMode || aviacaoMode
+              ? (aviacaoHeaderActions?.iniciarLabel ?? "Iniciar Operação")
+              : "Rechamar"}
           </button>
           {aviacaoMode ? (
             <button
@@ -527,7 +551,7 @@ export const ClientPanel = memo(function ClientPanel({
               type="button"
               disabled={!canMutate}
               onClick={onLimpar}
-              className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-zinc-300 bg-white px-3 text-xs font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+              className={secondaryBtnClass}
             >
               Limpar dados
             </button>
@@ -536,9 +560,18 @@ export const ClientPanel = memo(function ClientPanel({
             type="button"
             disabled={!canMutate}
             onClick={onFinalizar}
-            className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-emerald-600 bg-emerald-600 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className={
+              aviacaoHeaderActions?.primaryAction === "finalizar"
+                ? primaryBtnClass
+                : docasMode || aviacaoMode
+                  ? finalizarBtnClass
+                  : primaryBtnClass
+            }
           >
-            {docasMode ? "Liberar" : aviacaoMode ? "Liberar / Decolar" : "Finalizar"}
+            {docasMode
+              ? "Liberar"
+              : aviacaoHeaderActions?.finalizarLabel ??
+                (aviacaoMode ? "Liberar / Decolar" : "Finalizar")}
           </button>
         </div>
       </section>

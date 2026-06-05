@@ -12,17 +12,19 @@ import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Clock, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import {
   appendAviacaoTimelineEntry,
   buildAviacaoRegistryObservacao,
   buildAviacaoSavePayload,
   AVIACAO_COMBUSTIVEL_OPTIONS,
+  AVIACAO_FIELD_ANEXOS,
   AVIACAO_FIELD_COMBUSTIVEL,
   AVIACAO_FIELD_HOBBS,
   AVIACAO_FIELD_SERVICOS,
+  AVIACAO_STORAGE_BUCKET,
   AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
   AVIACAO_MODELO_CATEGORY_ID,
@@ -36,6 +38,7 @@ import {
   resolveAviacaoServicosSolicitadosOptions,
   serializeAviacaoServicosSolicitados,
   validateAviacaoRequiredFormValues,
+  type AviacaoAnexo,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasRegistryObservacao,
@@ -183,6 +186,11 @@ export function RegistryPatientModal({
   const [profissionais, setProfissionais] = useState<ProfissionalRow[]>([]);
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [locais, setLocais] = useState<OptRow[]>([]);
+  const [pendingAnexos, setPendingAnexos] = useState<AviacaoAnexo[]>([]);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadSessionId] = useState(() => crypto.randomUUID());
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const aviacaoLookups = useMemo(
     () => ({ profissionais, locais, servicos }),
@@ -252,8 +260,55 @@ export function RegistryPatientModal({
     setHoraMarcada("");
     setClassificacao("normal");
     setObservacaoBase("");
+    setPendingAnexos([]);
+    setDragOver(false);
     setError(null);
   }, [open, tenantConfig.priorityLawEnabled, queueTabs, initialTriagemTabId]);
+
+  async function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleAviacaoUpload(files: FileList | null) {
+    if (!files?.length || !aviacaoMode || !supabase) return;
+    setUploadBusy(true);
+    setError(null);
+    try {
+      const added: AviacaoAnexo[] = [];
+      for (const file of Array.from(files)) {
+        const id = crypto.randomUUID();
+        const uploadedAt = new Date().toISOString();
+        const tid = effectiveTenantId?.trim() || "shared";
+        const path = `${tid}/registry/${uploadSessionId}/${id}-${file.name.replace(/[^\w.-]+/g, "_")}`;
+
+        let url = "";
+        const { error: upErr } = await supabase.storage
+          .from(AVIACAO_STORAGE_BUCKET)
+          .upload(path, file, { upsert: false });
+        if (!upErr) {
+          const { data } = supabase.storage.from(AVIACAO_STORAGE_BUCKET).getPublicUrl(path);
+          url = data.publicUrl;
+        } else if (file.size < 500_000 && file.type.startsWith("image/")) {
+          url = await readFileAsDataUrl(file);
+        } else {
+          setError(upErr.message || "Falha ao enviar arquivo. Configure o bucket aviacao-anexos.");
+          continue;
+        }
+
+        added.push({ id, name: file.name, mime: file.type, uploadedAt, url });
+      }
+      if (added.length > 0) {
+        setPendingAnexos((prev) => [...prev, ...added]);
+      }
+    } finally {
+      setUploadBusy(false);
+    }
+  }
 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
@@ -349,6 +404,9 @@ export function RegistryPatientModal({
               formValues,
               tenantConfig.cadastroCategories
             );
+            if (pendingAnexos.length > 0) {
+              aviacaoFields[AVIACAO_FIELD_ANEXOS] = JSON.stringify(pendingAnexos);
+            }
             const withTimeline = appendAviacaoTimelineEntry(aviacaoFields, {
               action: "Ficha de entrada — Triagem / Check-in",
               user: "Sistema",
@@ -586,6 +644,84 @@ export function RegistryPatientModal({
           />
         </label>
 
+        <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
+          <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Anexos / Arquivos</p>
+          <p className="mt-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">
+            Ordens de serviço, imagens de inspeção de recebimento ou laudos técnicos.
+          </p>
+          <div
+            role="button"
+            tabIndex={0}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!busy && !uploadBusy) setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (!busy && !uploadBusy) void handleAviacaoUpload(e.dataTransfer.files);
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+            }}
+            className={`mt-2 flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-4 text-center transition ${
+              dragOver
+                ? "border-sky-400 bg-sky-50 dark:border-sky-600 dark:bg-sky-950/30"
+                : "border-zinc-300 bg-zinc-50/80 hover:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/40 dark:hover:border-zinc-500"
+            } ${busy || uploadBusy ? "pointer-events-none opacity-50" : ""}`}
+          >
+            <Upload className="size-5 text-zinc-500 dark:text-zinc-400" strokeWidth={1.75} aria-hidden />
+            <span className="text-[11px] font-medium text-zinc-700 dark:text-zinc-200">
+              {uploadBusy ? "Enviando…" : "Arraste arquivos ou clique para selecionar"}
+            </span>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">Imagens e PDF — múltiplos arquivos</span>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf,application/pdf"
+            multiple
+            disabled={busy || uploadBusy}
+            onChange={(e) => {
+              void handleAviacaoUpload(e.target.files);
+              e.target.value = "";
+            }}
+            className="sr-only"
+          />
+          {pendingAnexos.length > 0 ? (
+            <ul className="mt-3 space-y-1.5">
+              {pendingAnexos.map((a) => (
+                <li
+                  key={a.id}
+                  className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-[11px] dark:border-zinc-700 dark:bg-zinc-900/60"
+                >
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={a.name}
+                    className="min-w-0 truncate text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    {a.name}
+                  </a>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setPendingAnexos((prev) => prev.filter((x) => x.id !== a.id))}
+                    className="shrink-0 text-red-600 hover:underline dark:text-red-400"
+                  >
+                    Remover
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">Nenhum anexo.</p>
+          )}
+        </div>
+
         <label className={REGISTRY_LABEL_CLASS}>
           Observações
           <textarea
@@ -601,7 +737,12 @@ export function RegistryPatientModal({
   }
 
   return (
-    <Modal open={open} title="Novo registro" onClose={onClose} widthClassName="max-w-md">
+    <Modal
+      open={open}
+      title="Novo registro"
+      onClose={onClose}
+      widthClassName={aviacaoMode ? "max-w-lg" : "max-w-md"}
+    >
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         {!visibleFields && (
           <p className="text-xs text-zinc-500 dark:text-zinc-400">

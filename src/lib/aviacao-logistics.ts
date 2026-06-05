@@ -981,6 +981,65 @@ export function resolveAviacaoTabActionLabel(
   return from ? `Movido: ${from} → ${to}` : `Entrada: ${to}`;
 }
 
+export type AviacaoHeaderPrimaryAction = "chamar" | "iniciar" | "finalizar";
+
+export type AviacaoHeaderActionState = {
+  chamarLabel: string;
+  iniciarLabel: string;
+  finalizarLabel: string;
+  primaryAction: AviacaoHeaderPrimaryAction;
+};
+
+/** Rótulos e ênfase dos botões do painel superior conforme o estágio atual da aeronave. */
+export function resolveAviacaoHeaderActionState(
+  tabId: string | null | undefined
+): AviacaoHeaderActionState {
+  const step = normalizeAviacaoTabId(tabId ?? AVIACAO_QUEUE_TAB.TRIAGEM);
+
+  if (step === AVIACAO_QUEUE_TAB.LIBERADO) {
+    return {
+      chamarLabel: "Chamar p/ Hangar",
+      iniciarLabel: "Iniciar Operação",
+      finalizarLabel: "Finalizar",
+      primaryAction: "finalizar",
+    };
+  }
+
+  if (step === AVIACAO_QUEUE_TAB.EM_MANUTENCAO) {
+    return {
+      chamarLabel: "Chamar p/ Hangar",
+      iniciarLabel: "Iniciar Operação",
+      finalizarLabel: "Liberar / Decolar",
+      primaryAction: "iniciar",
+    };
+  }
+
+  return {
+    chamarLabel: "Chamar p/ Hangar",
+    iniciarLabel: "Iniciar Operação",
+    finalizarLabel: "Liberar / Decolar",
+    primaryAction: "chamar",
+  };
+}
+
+/** Labels dos checkboxes de registro inteligente no modo aviação MRO. */
+export const AVIACAO_REGISTER_FORM_LABELS: Record<
+  | "showClienteNome"
+  | "showProfissional"
+  | "showServico"
+  | "showLocal"
+  | "showHoraMarcada"
+  | "showObservacao",
+  string
+> = {
+  showClienteNome: "Nome do Cliente / Operador",
+  showProfissional: "Responsável / Mecânico",
+  showServico: "Serviços Solicitados",
+  showLocal: "Vaga / Hangar / Box Alocado",
+  showHoraMarcada: "ETA (Horário estimado de pouso)",
+  showObservacao: "Observações",
+};
+
 export type AviacaoCadastroFields = Partial<Record<string, string>>;
 
 export function parseAviacaoCadastroFields(

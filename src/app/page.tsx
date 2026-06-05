@@ -42,6 +42,7 @@ import {
   AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION,
   AVIACAO_BASE_LIMIT_UPSELL_TITLE,
   AVIACAO_QUEUE_TAB,
+  normalizeAviacaoTabId,
   appendAviacaoTimelineEntry,
   aviacaoStepTvStatus,
   canCreateAviacaoBase,
@@ -52,7 +53,6 @@ import {
   getAviacaoHangarLabel,
   isAviacaoSegment,
   mergeAviacaoObservacao,
-  normalizeAviacaoTabId,
   parseAviacaoCadastroFields,
   parseAviacaoFilaTabId,
   resolveAviacaoQuickCrudConfig,
@@ -416,6 +416,22 @@ export default function Home() {
     [aviacaoLogisticsActive, visibleQueueTabs]
   );
 
+  const handleSelectId = useCallback(
+    (id: string) => {
+      startTransition(() => {
+        setSelectedId(id);
+        if (aviacaoLogisticsActive && aviacaoActiveColumns.length > 0) {
+          const row = rows.find((r) => r.id === id);
+          if (row) {
+            const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, aviacaoActiveColumns);
+            if (tabId) setQueueTabId(tabId);
+          }
+        }
+      });
+    },
+    [startTransition, aviacaoLogisticsActive, aviacaoActiveColumns, rows]
+  );
+
   const queueDisplayRows = useMemo(() => {
     let result = rows;
     if (docasLogisticsActive) result = filterDocasQueueRowsForPlan(result, planTier);
@@ -448,10 +464,6 @@ export default function Home() {
   );
 
   const tenantIdForInsert = effectiveTenantId;
-
-  const handleSelectId = useCallback((id: string) => {
-    startTransition(() => setSelectedId(id));
-  }, []);
 
   const openFlowSettings = useCallback(() => {
     setSettingsInitialTab("fluxo");
@@ -1060,7 +1072,11 @@ export default function Home() {
         if (docasLogisticsActive) {
           void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
         } else if (aviacaoLogisticsActive) {
-          void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.LIBERADO, "Aguardando");
+          if (normalizeAviacaoTabId(selectedAviacaoTabId) === AVIACAO_QUEUE_TAB.LIBERADO) {
+            void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
+          } else {
+            void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.LIBERADO, "Aguardando");
+          }
         } else {
           setFinalizeOpen(true);
         }
@@ -1082,14 +1098,13 @@ export default function Home() {
     [
       canMutate,
       selectedId,
+      selectedAviacaoTabId,
       docasLogisticsActive,
       aviacaoLogisticsActive,
       advanceDocasLogistics,
       advanceAviacaoLogistics,
       updateStatus,
       openGeneralSettings,
-      shiftSelectedDocasStep,
-      aviacaoLogisticsActive,
       openAviacaoQuickCrud,
     ]
   );
@@ -1188,13 +1203,18 @@ export default function Home() {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
               } else if (aviacaoLogisticsActive) {
-                void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.LIBERADO, "Aguardando");
+                if (normalizeAviacaoTabId(selectedAviacaoTabId) === AVIACAO_QUEUE_TAB.LIBERADO) {
+                  void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
+                } else {
+                  void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.LIBERADO, "Aguardando");
+                }
               } else {
                 setFinalizeOpen(true);
               }
             }}
             onLimpar={() => setSelectedId(null)}
             onRegistrarAvaria={() => void registerAviacaoAvaria()}
+            aviacaoCurrentTabId={selectedAviacaoTabId}
             onPatch={async (patch) => {
               await patchAtendimento(patch);
             }}
