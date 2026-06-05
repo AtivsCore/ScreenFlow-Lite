@@ -133,6 +133,17 @@ export function isAviacaoRegistryFreeTextField(categoryId: string): boolean {
   return categoryId === "av-c5";
 }
 
+/** Hangar / box: select fixo (UUID em `locais`), sem texto livre. */
+export function isAviacaoHangarSelectField(categoryId: string): boolean {
+  return categoryId === AVIACAO_HANGAR_CATEGORY_ID;
+}
+
+/** Slots da aviação com partição por bucket em `servicos` no CRUD global. */
+export function isAviacaoBucketManagedField(categoryId: string): boolean {
+  const drawer = resolveAviacaoDrawerKey(categoryId);
+  return !!drawer && isAviacaoDrawerServicosBacked(drawer);
+}
+
 export function resolveAviacaoDrawerKey(fieldId: string): AviacaoDrawerKey | null {
   return AVIACAO_FIELD_DRAWER_KEY[fieldId] ?? null;
 }

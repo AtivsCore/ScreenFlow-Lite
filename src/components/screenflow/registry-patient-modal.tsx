@@ -21,6 +21,7 @@ import {
   buildAviacaoSavePayload,
   AVIACAO_QUEUE_TAB,
   AVIACAO_REQUIRED_CATEGORY_IDS,
+  isAviacaoHangarSelectField,
   isAviacaoHybridComboboxField,
   isAviacaoRegistryFreeTextField,
   isAviacaoRequiredCategory,
@@ -123,6 +124,28 @@ export function RegistryPatientModal({
     const requiredMark = isRequired ? (
       <span className="text-red-600 dark:text-red-400"> *</span>
     ) : null;
+
+    if (aviacaoMode && isAviacaoHangarSelectField(cat.id)) {
+      return (
+        <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          {resolveAviacaoCategoryLabel(cat)}
+          {requiredMark}
+          <select
+            value={formValues[cat.id] ?? ""}
+            disabled={busy}
+            onChange={(e) => setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))}
+            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+          >
+            <option value="">—</option>
+            {locais.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nome ?? m.id}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
 
     if (aviacaoMode && isAviacaoRegistryFreeTextField(cat.id)) {
       return (

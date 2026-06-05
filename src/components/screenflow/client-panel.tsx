@@ -8,6 +8,8 @@ import {
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
   buildAviacaoCategoryPatch,
   formatAviacaoObservacaoForDisplay,
+  AVIACAO_HANGAR_CATEGORY_ID,
+  isAviacaoHangarSelectField,
   isAviacaoHybridComboboxField,
   isAviacaoSegment,
   isAviacaoTextField,
@@ -166,6 +168,9 @@ export const ClientPanel = memo(function ClientPanel({
   }
 
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
+    if (aviacaoMode && cat.id === AVIACAO_HANGAR_CATEGORY_ID) {
+      return locais;
+    }
     switch (cat.tableKey) {
       case "profissionais":
         return profissionais.map((p) => ({ id: p.id, nome: formatProfissionalLabel(p) }));
@@ -257,24 +262,7 @@ export const ClientPanel = memo(function ClientPanel({
       );
     }
 
-    if (aviacaoMode && isAviacaoHybridComboboxField(cat.id)) {
-      return (
-        <AviacaoHybridCombobox
-          key={cat.id}
-          instanceId={cat.id}
-          label={label}
-          value={categoryValues[cat.id] ?? ""}
-          options={comboboxOptionsFor(cat)}
-          disabled={fieldDisabled}
-          quickAddDisabled={quickAddDisabled}
-          onChange={(v) => patchAviacaoTextField(cat.id, v)}
-          onQuickAdd={() => openCrudForCategory(cat)}
-          size="compact"
-        />
-      );
-    }
-
-    if (aviacaoMode) {
+    if (aviacaoMode && isAviacaoHangarSelectField(cat.id)) {
       return (
         <label key={cat.id} className={AVIACAO_PANEL_FIELD_CLASS}>
           <span className="flex h-4 items-center justify-between gap-1">
@@ -297,13 +285,30 @@ export const ClientPanel = memo(function ClientPanel({
             className={AVIACAO_PANEL_CONTROL_CLASS}
           >
             <option value="">—</option>
-            {optionsFor(cat).map((x) => (
+            {locais.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.nome ?? x.id}
               </option>
             ))}
           </select>
         </label>
+      );
+    }
+
+    if (aviacaoMode && isAviacaoHybridComboboxField(cat.id)) {
+      return (
+        <AviacaoHybridCombobox
+          key={cat.id}
+          instanceId={cat.id}
+          label={label}
+          value={categoryValues[cat.id] ?? ""}
+          options={comboboxOptionsFor(cat)}
+          disabled={fieldDisabled}
+          quickAddDisabled={quickAddDisabled}
+          onChange={(v) => patchAviacaoTextField(cat.id, v)}
+          onQuickAdd={() => openCrudForCategory(cat)}
+          size="compact"
+        />
       );
     }
 

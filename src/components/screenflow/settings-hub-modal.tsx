@@ -15,7 +15,7 @@ import {
   type QueueTabPreset,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
-import { isAviacaoSegment } from "@/lib/aviacao-logistics";
+import { isAviacaoSegment, resolveAviacaoCrudTable } from "@/lib/aviacao-logistics";
 import { isProPlan } from "@/lib/plan-tier";
 import { GoogleSheetsProSection } from "@/components/screenflow/google-sheets-pro-section";
 import { Briefcase, ChevronDown, ChevronUp, ClipboardList, Layers, MapPin, Palette, Settings2, UserCheck } from "lucide-react";
@@ -65,7 +65,9 @@ export function SettingsHubModal({
 }: SettingsHubModalProps) {
   const [mainTab, setMainTab] = useState<MainTab>("fluxo");
   const [draft, setDraft] = useState<ResolvedTenantConfig>(config);
-  const [crud, setCrud] = useState<null | { title: string; table: string }>(null);
+  const [crud, setCrud] = useState<null | { title: string; table: string; categoryId?: string }>(
+    null
+  );
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -700,7 +702,13 @@ export function SettingsHubModal({
                       type="button"
                       className="shrink-0 text-[10px] font-medium text-zinc-700 hover:underline dark:text-zinc-300"
                       onClick={() =>
-                        setCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) })
+                        setCrud({
+                          title: cat.label,
+                          table: aviacaoMode
+                            ? resolveAviacaoCrudTable(cat.id)
+                            : cadastroCategoryCrudTable(cat),
+                          categoryId: aviacaoMode ? cat.id : undefined,
+                        })
                       }
                     >
                       Gerenciar
@@ -770,6 +778,7 @@ export function SettingsHubModal({
           title={crud.title}
           table={crud.table}
           tenantId={tenantId}
+          cadastroCategoryId={crud.categoryId}
           onClose={() => setCrud(null)}
           onSaved={onDataChanged}
         />
