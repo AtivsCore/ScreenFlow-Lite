@@ -91,6 +91,17 @@ export function isAviacaoTextField(categoryId: string): boolean {
   return (AVIACAO_TEXT_FIELD_IDS as readonly string[]).includes(categoryId);
 }
 
+/** Campos híbridos (combobox: sugestão da lista + texto livre). */
+export function isAviacaoHybridComboboxField(categoryId: string): boolean {
+  return isAviacaoTextField(categoryId);
+}
+
+export function resolveAviacaoCategoryLabel(
+  cat: Pick<CadastroCategoryEntry, "id" | "label">
+): string {
+  return AVIACAO_CATEGORY_DISPLAY_LABELS[cat.id] ?? cat.label;
+}
+
 export function isAviacaoRequiredCategory(categoryId: string): boolean {
   return (AVIACAO_REQUIRED_CATEGORY_IDS as readonly string[]).includes(categoryId);
 }

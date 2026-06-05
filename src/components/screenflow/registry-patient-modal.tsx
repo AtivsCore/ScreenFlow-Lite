@@ -11,18 +11,23 @@ import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ResolvedTenantConfig } from "@/lib/tenant-config";
-import { useEffect, useMemo, useState } from "react";
+import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
+import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { AviacaoHybridCombobox } from "@/components/screenflow/aviacao-hybrid-combobox";
+import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import {
   buildAviacaoRegistryObservacao,
   buildAviacaoSavePayload,
   AVIACAO_QUEUE_TAB,
   AVIACAO_REQUIRED_CATEGORY_IDS,
+  isAviacaoHybridComboboxField,
   isAviacaoRequiredCategory,
   isAviacaoSegment,
   isAviacaoTextField,
+  resolveAviacaoCategoryLabel,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasRegistryObservacao,
@@ -76,6 +81,39 @@ export function RegistryPatientModal({
 
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
+  const [quickCrud, setQuickCrud] = useState<{ title: string; table: string } | null>(null);
+
+  function openCrudForCategory(cat: CadastroCategoryEntry) {
+    const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
+    setQuickCrud({ title, table: cadastroCategoryCrudTable(cat) });
+  }
+
+  function comboboxOptionsFor(cat: CadastroCategoryEntry) {
+    if (cat.tableKey === "profissionais") {
+      return profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }));
+    }
+    if (cat.tableKey === "locais") {
+      return locais.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
+    }
+    return servicos.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
+  }
+
+  const loadLookupOptions = useCallback(async () => {
+    if (!supabase) return;
+    const tid = effectiveTenantId;
+    const [p, sResult, l] = await Promise.all([
+      supabase
+        .from("profissionais")
+        .select("id,nome,especialidade")
+        .eq("tenant_id", tid)
+        .order("nome"),
+      fetchServicos(supabase, tid),
+      supabase.from("locais").select("id,nome").eq("tenant_id", tid).order("nome"),
+    ]);
+    setProfissionais((p.data as ProfissionalRow[] | null) ?? []);
+    setServicos(sResult.data);
+    setLocais((l.data as OptRow[] | null) ?? []);
+  }, [supabase, effectiveTenantId]);
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
     const isRequired =
@@ -85,7 +123,24 @@ export function RegistryPatientModal({
       <span className="text-red-600 dark:text-red-400"> *</span>
     ) : null;
 
-    if ((docasMode && isDocasTextField(cat.id)) || (aviacaoMode && isAviacaoTextField(cat.id))) {
+    if (aviacaoMode && isAviacaoHybridComboboxField(cat.id)) {
+      return (
+        <AviacaoHybridCombobox
+          key={cat.id}
+          label={resolveAviacaoCategoryLabel(cat)}
+          value={formValues[cat.id] ?? ""}
+          options={comboboxOptionsFor(cat)}
+          disabled={busy}
+          quickAddDisabled={!supabase}
+          onChange={(v) => setFormValues((prev) => ({ ...prev, [cat.id]: v }))}
+          onQuickAdd={() => openCrudForCategory(cat)}
+          size="modal"
+          requiredMark={requiredMark}
+        />
+      );
+    }
+
+    if (docasMode && isDocasTextField(cat.id)) {
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           {cat.label}
@@ -168,26 +223,8 @@ export function RegistryPatientModal({
 
   useEffect(() => {
     if (!open || !supabase) return;
-    let cancelled = false;
-    void (async () => {
-      const [p, sResult, l] = await Promise.all([
-        supabase
-          .from("profissionais")
-          .select("id,nome,especialidade")
-          .eq("tenant_id", effectiveTenantId)
-          .order("nome"),
-        fetchServicos(supabase, effectiveTenantId),
-        supabase.from("locais").select("id,nome").eq("tenant_id", effectiveTenantId).order("nome"),
-      ]);
-      if (cancelled) return;
-      setProfissionais((p.data as ProfissionalRow[] | null) ?? []);
-      setServicos(sResult.data);
-      setLocais((l.data as OptRow[] | null) ?? []);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, supabase, effectiveTenantId]);
+    void loadLookupOptions();
+  }, [open, supabase, loadLookupOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -372,6 +409,7 @@ export function RegistryPatientModal({
     rf.showObservacao;
 
   return (
+    <>
     <Modal open={open} title="Novo registro" onClose={onClose} widthClassName="max-w-md">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         {!visibleFields && (
@@ -469,5 +507,18 @@ export function RegistryPatientModal({
         </button>
       </form>
     </Modal>
+
+    {quickCrud ? (
+      <CrudEntityModal
+        open
+        supabase={supabase}
+        title={quickCrud.title}
+        table={quickCrud.table}
+        tenantId={effectiveTenantId}
+        onClose={() => setQuickCrud(null)}
+        onSaved={() => void loadLookupOptions()}
+      />
+    ) : null}
+    </>
   );
 }

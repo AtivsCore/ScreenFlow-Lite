@@ -3,15 +3,17 @@
 import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valores";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
+import { AviacaoHybridCombobox } from "@/components/screenflow/aviacao-hybrid-combobox";
 import {
-  AVIACAO_CATEGORY_DISPLAY_LABELS,
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
   buildAviacaoCategoryPatch,
   formatAviacaoObservacaoForDisplay,
+  isAviacaoHybridComboboxField,
   isAviacaoSegment,
   isAviacaoTextField,
   mergeAviacaoObservacao,
   parseAviacaoCadastroFields,
+  resolveAviacaoCategoryLabel,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasCategoryPatch,
@@ -152,7 +154,8 @@ export const ClientPanel = memo(function ClientPanel({
   }, [enabledCategories, aviacaoMode]);
 
   function openCrudForCategory(cat: CadastroCategoryEntry) {
-    setQuickCrud({ title: cat.label, table: cadastroCategoryCrudTable(cat) });
+    const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
+    setQuickCrud({ title, table: cadastroCategoryCrudTable(cat) });
   }
 
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
@@ -212,15 +215,12 @@ export const ClientPanel = memo(function ClientPanel({
     void onPatch({ observacao });
   }
 
-  function categoryLabel(cat: CadastroCategoryEntry): string {
-    if (aviacaoMode) {
-      return AVIACAO_CATEGORY_DISPLAY_LABELS[cat.id] ?? cat.label;
-    }
-    return cat.label;
+  function comboboxOptionsFor(cat: CadastroCategoryEntry) {
+    return optionsFor(cat).map((x) => ({ id: x.id, label: x.nome ?? x.id }));
   }
 
   function renderCategoryField(cat: CadastroCategoryEntry) {
-    const label = categoryLabel(cat);
+    const label = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
 
     if (docasMode && isDocasTextField(cat.id)) {
       return (
@@ -237,18 +237,19 @@ export const ClientPanel = memo(function ClientPanel({
       );
     }
 
-    if (aviacaoMode && isAviacaoTextField(cat.id)) {
+    if (aviacaoMode && isAviacaoHybridComboboxField(cat.id)) {
       return (
-        <label key={cat.id} className={AVIACAO_PANEL_FIELD_CLASS}>
-          <span className="block h-4 truncate leading-4">{label}</span>
-          <input
-            type="text"
-            value={categoryValues[cat.id] ?? ""}
-            disabled={selectDisabled}
-            onChange={(e) => patchAviacaoTextField(cat.id, e.target.value)}
-            className={AVIACAO_PANEL_CONTROL_CLASS}
-          />
-        </label>
+        <AviacaoHybridCombobox
+          key={cat.id}
+          label={label}
+          value={categoryValues[cat.id] ?? ""}
+          options={comboboxOptionsFor(cat)}
+          disabled={selectDisabled}
+          quickAddDisabled={quickAddDisabled}
+          onChange={(v) => patchAviacaoTextField(cat.id, v)}
+          onQuickAdd={() => openCrudForCategory(cat)}
+          size="compact"
+        />
       );
     }
 

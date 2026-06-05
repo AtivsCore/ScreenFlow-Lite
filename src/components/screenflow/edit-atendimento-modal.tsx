@@ -9,10 +9,12 @@ import {
 import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-valores";
 import {
   buildAviacaoSavePayload,
+  isAviacaoHybridComboboxField,
   isAviacaoSegment,
   isAviacaoTextField,
   mergeAviacaoObservacao,
   parseAviacaoCadastroFields,
+  resolveAviacaoCategoryLabel,
 } from "@/lib/aviacao-logistics";
 import {
   buildDocasSavePayload,
@@ -33,11 +35,14 @@ import {
   isoToTimeInputValue,
   mergeHoraMarcadaPreserveDate,
 } from "@/lib/hora-marcada";
-import type { ResolvedTenantConfig } from "@/lib/tenant-config";
+import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
+import { cadastroCategoryCrudTable } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { AviacaoHybridCombobox } from "@/components/screenflow/aviacao-hybrid-combobox";
+import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
 type OptRow = { id: string; nome: string | null };
@@ -132,6 +137,36 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const [servicos, setServicos] = useState<OptRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [quickCrud, setQuickCrud] = useState<{ title: string; table: string } | null>(null);
+
+  function openCrudForCategory(cat: CadastroCategoryEntry) {
+    const title = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
+    setQuickCrud({ title, table: cadastroCategoryCrudTable(cat) });
+  }
+
+  function comboboxOptionsFor(cat: CadastroCategoryEntry) {
+    if (cat.tableKey === "profissionais") {
+      return profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }));
+    }
+    if (cat.tableKey === "locais") {
+      return locais.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
+    }
+    return servicos.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
+  }
+
+  const loadLookupOptions = useCallback(async () => {
+    const tid = row.tenant_id?.trim();
+    const profQuery = tid
+      ? supabase.from("profissionais").select("id,nome,especialidade").eq("tenant_id", tid).order("nome")
+      : supabase.from("profissionais").select("id,nome,especialidade").order("nome");
+    const locQuery = tid
+      ? supabase.from("locais").select("id,nome").eq("tenant_id", tid).order("nome")
+      : supabase.from("locais").select("id,nome").order("nome");
+    const [p, l, sResult] = await Promise.all([profQuery, locQuery, fetchServicos(supabase, row.tenant_id)]);
+    setProfissionais((p.data as ProfissionalRow[] | null) ?? []);
+    setLocais((l.data as OptRow[] | null) ?? []);
+    setServicos(sResult.data);
+  }, [supabase, row.tenant_id]);
 
   const triagemTab = useMemo(
     () => queueTabs.find((t) => t.id === triagemTabId) ?? queueTabs[0],
@@ -140,25 +175,8 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const triagemLabel = triagemTab?.label ?? "Entrada na fila";
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const tid = row.tenant_id?.trim();
-      const profQuery = tid
-        ? supabase.from("profissionais").select("id,nome,especialidade").eq("tenant_id", tid).order("nome")
-        : supabase.from("profissionais").select("id,nome,especialidade").order("nome");
-      const locQuery = tid
-        ? supabase.from("locais").select("id,nome").eq("tenant_id", tid).order("nome")
-        : supabase.from("locais").select("id,nome").order("nome");
-      const [p, l, sResult] = await Promise.all([profQuery, locQuery, fetchServicos(supabase, row.tenant_id)]);
-      if (cancelled) return;
-      setProfissionais((p.data as ProfissionalRow[] | null) ?? []);
-      setLocais((l.data as OptRow[] | null) ?? []);
-      setServicos(sResult.data);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, row.tenant_id]);
+    void loadLookupOptions();
+  }, [loadLookupOptions]);
 
   function handleTriagemChange(tabId: string) {
     setTriagemTabId(tabId);
@@ -171,10 +189,23 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const showAviacaoHoraAgendada = aviacaoMode;
 
   function renderCategoryField(cat: (typeof enabledCategories)[number]) {
-    if (
-      (docasMode && isDocasTextField(cat.id)) ||
-      (aviacaoMode && isAviacaoTextField(cat.id))
-    ) {
+    if (aviacaoMode && isAviacaoHybridComboboxField(cat.id)) {
+      return (
+        <AviacaoHybridCombobox
+          key={cat.id}
+          label={resolveAviacaoCategoryLabel(cat)}
+          value={formValues[cat.id] ?? ""}
+          options={comboboxOptionsFor(cat)}
+          disabled={busy}
+          quickAddDisabled={false}
+          onChange={(v) => setFormValues((prev) => ({ ...prev, [cat.id]: v }))}
+          onQuickAdd={() => openCrudForCategory(cat)}
+          size="modal"
+        />
+      );
+    }
+
+    if (docasMode && isDocasTextField(cat.id)) {
       return (
         <label key={cat.id} className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           {cat.label}
@@ -308,6 +339,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
     rf.showObservacao;
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       {!visibleFields && (
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -397,6 +429,19 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         {busy ? "Salvando…" : "Salvar"}
       </button>
     </form>
+
+    {quickCrud ? (
+      <CrudEntityModal
+        open
+        supabase={supabase}
+        title={quickCrud.title}
+        table={quickCrud.table}
+        tenantId={row.tenant_id}
+        onClose={() => setQuickCrud(null)}
+        onSaved={() => void loadLookupOptions()}
+      />
+    ) : null}
+    </>
   );
 }
 
