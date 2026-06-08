@@ -155,6 +155,36 @@ function buildGenericPrintFields(
   return fields;
 }
 
+const PRINT_DOCUMENT_STYLE_ID = "sf-print-document-styles";
+const PRINT_CONTAINER_CLASS = "print-document-container";
+
+function ensurePrintDocumentStyles(): void {
+  if (document.getElementById(PRINT_DOCUMENT_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = PRINT_DOCUMENT_STYLE_ID;
+  style.textContent = `
+    @media print {
+      body > *:not(.${PRINT_CONTAINER_CLASS}) {
+        display: none !important;
+      }
+      .${PRINT_CONTAINER_CLASS} {
+        display: block !important;
+        width: 100%;
+      }
+      @page {
+        size: A4;
+        margin: 12mm;
+      }
+    }
+    @media screen {
+      .${PRINT_CONTAINER_CLASS} {
+        display: none !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 export function buildAtendimentoPrintHtml(ctx: PrintAtendimentoContext): string {
   const { row, tenantConfig } = ctx;
   const segmento = tenantConfig.segmentoAplicado;
@@ -162,9 +192,6 @@ export function buildAtendimentoPrintHtml(ctx: PrintAtendimentoContext): string 
   const fields = mroMode ? buildMroPrintFields(ctx) : buildGenericPrintFields(ctx);
   const timeline = mroMode ? parseAviacaoTimeline(row.observacao) : [];
   const timelineTitle = mroMode ? resolveMroTimelineSectionTitle(segmento) : "Histórico";
-  const title = mroMode
-    ? fields.find((f) => f.label.includes("Placa") || f.label.includes("Prefixo"))?.value ?? "Ficha"
-    : row.nome?.trim() || "Registro";
 
   const fieldRows = fields
     .map(
@@ -186,64 +213,80 @@ export function buildAtendimentoPrintHtml(ctx: PrintAtendimentoContext): string 
 
   const printedAt = new Date().toLocaleString("pt-BR");
 
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8" />
-  <title>Ficha — ${escapeHtml(String(title))}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: "Segoe UI", system-ui, sans-serif;
-      color: #111;
-      margin: 0;
-      padding: 24px;
-      background: #fff;
-    }
-    h1 { font-size: 1.25rem; margin: 0 0 4px; }
-    .meta { font-size: 0.75rem; color: #555; margin-bottom: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.85rem; }
-    th, td { border: 1px solid #ccc; padding: 8px 10px; text-align: left; vertical-align: top; }
-    th { width: 34%; background: #f4f4f5; font-weight: 600; }
-    h2 { font-size: 0.95rem; margin: 0 0 8px; }
-    ul { margin: 0; padding-left: 1.1rem; font-size: 0.8rem; line-height: 1.5; }
-    li { margin-bottom: 4px; }
-    @media print {
-      body { padding: 12mm; }
-      @page { size: A4; margin: 12mm; }
-    }
-  </style>
-</head>
-<body>
-  <h1>ScreenFlow Lite — Ficha do Registro</h1>
-  <p class="meta">Impresso em ${escapeHtml(printedAt)} · ID ${escapeHtml(row.id)}</p>
-  <table>
-    <tbody>${fieldRows}</tbody>
-  </table>
-  ${
-    mroMode
-      ? `<h2>${escapeHtml(timelineTitle)}</h2><ul>${timelineItems}</ul>`
-      : ""
-  }
-</body>
-</html>`;
+  return `
+    <div class="print-document-inner">
+      <h1>ScreenFlow Lite — Ficha do Registro</h1>
+      <p class="print-document-meta">Impresso em ${escapeHtml(printedAt)} · ID ${escapeHtml(row.id)}</p>
+      <table class="print-document-table">
+        <tbody>${fieldRows}</tbody>
+      </table>
+      ${
+        mroMode
+          ? `<h2>${escapeHtml(timelineTitle)}</h2><ul class="print-document-timeline">${timelineItems}</ul>`
+          : ""
+      }
+    </div>
+    <style>
+      .print-document-inner {
+        box-sizing: border-box;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: #111;
+        padding: 24px;
+        background: #fff;
+      }
+      .print-document-inner h1 { font-size: 1.25rem; margin: 0 0 4px; }
+      .print-document-meta { font-size: 0.75rem; color: #555; margin: 0 0 20px; }
+      .print-document-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 20px;
+        font-size: 0.85rem;
+      }
+      .print-document-table th,
+      .print-document-table td {
+        border: 1px solid #ccc;
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .print-document-table th {
+        width: 34%;
+        background: #f4f4f5;
+        font-weight: 600;
+      }
+      .print-document-inner h2 { font-size: 0.95rem; margin: 0 0 8px; }
+      .print-document-timeline {
+        margin: 0;
+        padding-left: 1.1rem;
+        font-size: 0.8rem;
+        line-height: 1.5;
+      }
+      .print-document-timeline li { margin-bottom: 4px; }
+    </style>
+  `;
 }
 
 export function printAtendimentoCard(ctx: PrintAtendimentoContext): void {
-  const html = buildAtendimentoPrintHtml(ctx);
-  const win = window.open("", "_blank", "noopener,noreferrer,width=820,height=900");
-  if (!win) {
-    window.alert("Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups.");
-    return;
-  }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  const trigger = () => {
-    win.print();
-    win.onafterprint = () => win.close();
+  if (typeof document === "undefined") return;
+
+  ensurePrintDocumentStyles();
+
+  const printDiv = document.createElement("div");
+  printDiv.className = PRINT_CONTAINER_CLASS;
+  printDiv.innerHTML = buildAtendimentoPrintHtml(ctx);
+  document.body.appendChild(printDiv);
+
+  const cleanup = () => {
+    printDiv.remove();
+    window.removeEventListener("afterprint", cleanup);
   };
-  if (win.document.readyState === "complete") trigger();
-  else win.onload = trigger;
+
+  window.addEventListener("afterprint", cleanup);
+
+  requestAnimationFrame(() => {
+    window.print();
+    window.setTimeout(() => {
+      if (printDiv.isConnected) cleanup();
+    }, 2000);
+  });
 }
