@@ -42,6 +42,7 @@ import {
   AVIACAO_BASE_LIMIT_UPSELL_DESCRIPTION,
   AVIACAO_BASE_LIMIT_UPSELL_TITLE,
   AVIACAO_QUEUE_TAB,
+  isAviacaoQueueTabIdInVisible,
   normalizeAviacaoTabId,
   appendAviacaoAvariaToObservacaoText,
   appendAviacaoTimelineEntry,
@@ -406,7 +407,7 @@ export default function Home() {
     const ids = visible.map((t) => t.id);
     if (!ids.length) return;
     const matches = aviacaoLogisticsActive
-      ? ids.some((id) => normalizeAviacaoTabId(id) === normalizeAviacaoTabId(queueTabId))
+      ? isAviacaoQueueTabIdInVisible(queueTabId, ids)
       : ids.includes(queueTabId);
     if (!matches) setQueueTabId(ids[0]!);
   }, [tenantConfig, queueTabId, aviacaoLogisticsActive]);
@@ -1410,7 +1411,7 @@ export default function Home() {
           if (ids.length) {
             setQueueTabId((current) => {
               const matches = aviacao
-                ? ids.some((id) => normalizeAviacaoTabId(id) === normalizeAviacaoTabId(current))
+                ? isAviacaoQueueTabIdInVisible(current, ids)
                 : ids.includes(current);
               return matches ? current : ids[0]!;
             });

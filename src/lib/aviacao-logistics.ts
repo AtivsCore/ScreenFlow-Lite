@@ -875,6 +875,31 @@ export function normalizeAviacaoTabId(tabId: string | null | undefined): Aviacao
   return LEGACY_TAB_ALIASES[tabId] ?? AVIACAO_QUEUE_TAB.TRIAGEM;
 }
 
+/** Seleção de aba na Lista MRO: "Todos" usa id próprio e não equivale a Triagem. */
+export function isAviacaoQueueTabSelected(queueTabId: string, tabId: string): boolean {
+  if (tabId === TODOS_QUEUE_TAB.id || queueTabId === TODOS_QUEUE_TAB.id) {
+    return queueTabId === tabId;
+  }
+  return normalizeAviacaoTabId(queueTabId) === normalizeAviacaoTabId(tabId);
+}
+
+/** Valida se o `queueTabId` atual ainda existe nas abas visíveis (inclui legado `av-t*`). */
+export function isAviacaoQueueTabIdInVisible(queueTabId: string, visibleTabIds: string[]): boolean {
+  if (visibleTabIds.includes(queueTabId)) return true;
+  if (queueTabId === TODOS_QUEUE_TAB.id) return false;
+  return visibleTabIds.some(
+    (id) =>
+      id !== TODOS_QUEUE_TAB.id &&
+      normalizeAviacaoTabId(id) === normalizeAviacaoTabId(queueTabId)
+  );
+}
+
+/** Id gravado ao clicar numa aba da Lista MRO (preserva `tab-todos`). */
+export function resolveAviacaoQueueTabClickId(tabId: string): string {
+  if (tabId === TODOS_QUEUE_TAB.id) return tabId;
+  return normalizeAviacaoTabId(tabId);
+}
+
 export function resolveAviacaoStepFromObservacao(
   observacao: string | null | undefined
 ): AviacaoQueueTabId {

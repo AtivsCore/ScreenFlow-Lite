@@ -7,10 +7,11 @@ import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
 import {
   formatAviacaoObservacaoForDisplay,
-  normalizeAviacaoTabId,
+  isAviacaoQueueTabSelected,
   resolveAviacaoCategoryDisplay,
   resolveAviacaoKanbanColumnLabel,
   resolveAviacaoKanbanMeta,
+  resolveAviacaoQueueTabClickId,
 } from "@/lib/aviacao-logistics";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
@@ -531,16 +532,16 @@ export function QueueSection({
 
   const isTabActive = useCallback(
     (tabId: string) =>
-      aviacaoLogisticsActive
-        ? normalizeAviacaoTabId(queueTabId) === normalizeAviacaoTabId(tabId)
-        : queueTabId === tabId,
+      aviacaoLogisticsActive ? isAviacaoQueueTabSelected(queueTabId, tabId) : queueTabId === tabId,
     [aviacaoLogisticsActive, queueTabId]
   );
 
   const activeTab = useMemo(() => {
-    const direct = queueTabs.find((t) => isTabActive(t.id));
-    return direct ?? queueTabs[0];
-  }, [queueTabs, isTabActive]);
+    const exact = queueTabs.find((t) => t.id === queueTabId);
+    if (exact) return exact;
+    const matched = queueTabs.find((t) => isTabActive(t.id));
+    return matched ?? queueTabs[0];
+  }, [queueTabs, queueTabId, isTabActive]);
 
   const listRows = useMemo(() => {
     const tab = activeTab ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" };
@@ -735,7 +736,9 @@ export function QueueSection({
                   type="button"
                   role="tab"
                   aria-selected={isTabActive(t.id)}
-                  onClick={() => onQueueTabId(aviacaoLogisticsActive ? normalizeAviacaoTabId(t.id) : t.id)}
+                  onClick={() =>
+                    onQueueTabId(aviacaoLogisticsActive ? resolveAviacaoQueueTabClickId(t.id) : t.id)
+                  }
                   className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium transition ${
                     isTabActive(t.id)
                       ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
