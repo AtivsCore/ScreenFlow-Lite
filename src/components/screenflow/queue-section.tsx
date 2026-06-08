@@ -21,7 +21,18 @@ import { AviacaoHangarStepper } from "@/components/screenflow/aviacao-hangar-ste
 import { AviacaoQueueFilterPopover } from "@/components/screenflow/aviacao-queue-filter-popover";
 import { DocasStatusStepper } from "@/components/screenflow/docas-status-stepper";
 import type { DocasQueueTabId } from "@/lib/docas-logistics";
-import { Columns3, Eye, EyeOff, LayoutList, MessageSquareText, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
+import {
+  Columns3,
+  Eye,
+  EyeOff,
+  LayoutList,
+  MessageSquareText,
+  Pencil,
+  Plus,
+  Printer,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import { memo, useCallback, useMemo, useState } from "react";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
@@ -112,6 +123,7 @@ type KanbanCardProps = {
   deleting: string | null;
   onSelectId: (id: string) => void;
   onEditRow: (row: AtendimentoLite) => void;
+  onPrintRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
 };
 
@@ -125,6 +137,7 @@ const KanbanCard = memo(function KanbanCard({
   deleting,
   onSelectId,
   onEditRow,
+  onPrintRow,
   onDelete,
 }: KanbanCardProps) {
   const prioStyle = priorityLawEnabled
@@ -239,6 +252,15 @@ const KanbanCard = memo(function KanbanCard({
           ) : null}
           <button
             type="button"
+            title="Imprimir ficha"
+            className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+            onClick={() => onPrintRow(row)}
+          >
+            <Printer className="size-3" strokeWidth={1.75} />
+            <span className="sr-only">Imprimir ficha</span>
+          </button>
+          <button
+            type="button"
             title="Editar"
             className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-blue-600 dark:hover:text-blue-400"
             onClick={() => onEditRow(row)}
@@ -274,6 +296,7 @@ type QueueRowProps = {
   deleting: string | null;
   onSelectId: (id: string) => void;
   onEditRow: (row: AtendimentoLite) => void;
+  onPrintRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
 };
 
@@ -289,6 +312,7 @@ const QueueRow = memo(function QueueRow({
   deleting,
   onSelectId,
   onEditRow,
+  onPrintRow,
   onDelete,
 }: QueueRowProps) {
   const prioStyle = priorityLawEnabled
@@ -400,11 +424,20 @@ const QueueRow = memo(function QueueRow({
       >
         {normalizeQueueStatusLabel(row.status)}
       </td>
-      <td className="w-[72px] px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
+      <td className="w-[88px] px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          title="Imprimir ficha"
+          className="inline-flex rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+          onClick={() => onPrintRow(row)}
+        >
+          <Printer className="size-3.5" strokeWidth={1.75} />
+          <span className="sr-only">Imprimir ficha</span>
+        </button>
         <button
           type="button"
           title="Editar"
-          className="inline-flex rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+          className="ml-0.5 inline-flex rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
           onClick={() => onEditRow(row)}
         >
           <Pencil className="size-3.5" strokeWidth={1.75} />
@@ -444,6 +477,7 @@ type QueueSectionProps = {
   onRegisterClick: () => void;
   onOpenFlowSettings: () => void;
   onEditRow: (row: AtendimentoLite) => void;
+  onPrintRow: (row: AtendimentoLite) => void;
   viewMode: QueueViewMode;
   onViewModeChange: (mode: QueueViewMode) => void;
   onObservacoesVisibilityChange: (visibility: ObservacoesVisibility) => void;
@@ -495,6 +529,7 @@ export function QueueSection({
   onRegisterClick,
   onOpenFlowSettings,
   onEditRow,
+  onPrintRow,
   viewMode,
   onViewModeChange,
   onObservacoesVisibilityChange,
@@ -805,6 +840,7 @@ export function QueueSection({
                       deleting={deleting}
                       onSelectId={onSelectId}
                       onEditRow={onEditRow}
+                      onPrintRow={onPrintRow}
                       onDelete={(r) => void handleDelete(r)}
                     />
                   ))
@@ -867,6 +903,7 @@ export function QueueSection({
                             deleting={deleting}
                             onSelectId={onSelectId}
                             onEditRow={onEditRow}
+                            onPrintRow={onPrintRow}
                             onDelete={(r) => void handleDelete(r)}
                           />
                         ))}

@@ -698,7 +698,7 @@ export function RegistryPatientModal({
           <label className={REGISTRY_LABEL_CLASS}>
             <span className="flex items-center gap-1.5">
               <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
-              ETA — Horário estimado de pouso
+              {mroRegisterLabels.showHoraMarcada}
             </span>
             <input
               type="time"

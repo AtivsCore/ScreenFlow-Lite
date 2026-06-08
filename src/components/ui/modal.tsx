@@ -8,9 +8,17 @@ type ModalProps = {
   onClose: () => void;
   children: React.ReactNode;
   widthClassName?: string;
+  headerAction?: React.ReactNode;
 };
 
-export function Modal({ open, title, onClose, children, widthClassName = "max-w-lg" }: ModalProps) {
+export function Modal({
+  open,
+  title,
+  onClose,
+  children,
+  widthClassName = "max-w-lg",
+  headerAction,
+}: ModalProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -45,13 +53,16 @@ export function Modal({ open, title, onClose, children, widthClassName = "max-w-
           <h2 id="modal-title" className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
             {title}
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-          >
-            Fechar
-          </button>
+          <div className="flex items-center gap-1">
+            {headerAction}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-2 py-1 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              Fechar
+            </button>
+          </div>
         </header>
         <div className="sf-scroll-y min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
       </div>

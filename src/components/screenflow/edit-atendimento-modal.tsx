@@ -6,7 +6,8 @@ import {
   resolveClassificacaoPrioridade,
   type ClassificacaoPrioridade,
 } from "@/lib/classificacao-prioridade";
-import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-valores";
+import { buildCadastroPayload, hydrateCadastroValores, type CadastroLookups } from "@/lib/cadastro-valores";
+import { printAtendimentoCard } from "@/lib/print-atendimento-card";
 import {
   appendAviacaoTimelineEntry,
   buildAviacaoSavePayload,
@@ -27,6 +28,7 @@ import {
   isMroLogisticsSegment,
   resolveMroFieldLabels,
   resolveMroRegisterFormLabels,
+  resolveMroTimelineSectionTitle,
   looksLikeAviacaoUuid,
   mergeAviacaoObservacao,
   parseAviacaoAnexos,
@@ -67,7 +69,7 @@ import {
 import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Clock, Upload } from "lucide-react";
+import { Clock, Printer, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
@@ -83,6 +85,7 @@ type EditAtendimentoModalProps = {
   tenantConfig: ResolvedTenantConfig;
   /** Bases/aeroportos MRO — rótulo da linha do tempo. */
   aviacaoBaseOptions?: AviacaoBaseOption[];
+  cadastroLookups: CadastroLookups;
   /** Data/hora completa só na Agenda PRO; na fila diária usa apenas horário (HH:MM). */
   allowFullDatetime?: boolean;
   onSaved: () => void;
@@ -762,7 +765,7 @@ function EditAtendimentoForm({
           {showDocasHoraAgendada || showAviacaoHoraAgendada ? (
             <span className="flex items-center gap-1.5">
               <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
-              {showAviacaoHoraAgendada ? "ETA (horário estimado de pouso)" : "Horário agendado"}
+              {showAviacaoHoraAgendada ? mroRegisterLabels.showHoraMarcada : "Horário agendado"}
             </span>
           ) : allowFullDatetime ? (
             "Data e hora do agendamento"
@@ -878,13 +881,13 @@ function EditAtendimentoForm({
       {aviacaoMode ? (
         <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-700 dark:bg-zinc-900/40">
           <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">
-            Linha do Tempo de Rampa
+            {resolveMroTimelineSectionTitle(tenantConfig.segmentoAplicado)}
           </p>
           {aviacaoTimeline.length > 0 ? (
             <ul className="mt-2 max-h-36 space-y-1 overflow-y-auto text-[10px] text-zinc-600 dark:text-zinc-300">
               {[...aviacaoTimeline].reverse().map((entry, idx) => (
                 <li key={`${entry.ts}-${idx}`} className="border-b border-zinc-100 py-1 last:border-0 dark:border-zinc-800">
-                  {formatAviacaoTimelineLine(entry)}
+                  {formatAviacaoTimelineLine(entry, tenantConfig.segmentoAplicado)}
                 </li>
               ))}
             </ul>
@@ -920,18 +923,43 @@ export function EditAtendimentoModal({
   supabase,
   tenantConfig,
   aviacaoBaseOptions = [],
+  cadastroLookups,
   allowFullDatetime = false,
   onSaved,
 }: EditAtendimentoModalProps) {
   const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
   const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
+
+  function handlePrint() {
+    if (!row) return;
+    printAtendimentoCard({
+      row,
+      tenantConfig,
+      cadastroLookups,
+      baseOptions: aviacaoBaseOptions,
+    });
+  }
+
   return (
     <Modal
       open={open}
       title="Editar registro"
       onClose={onClose}
       widthClassName={aviacaoMode ? "max-w-lg" : "max-w-md"}
+      headerAction={
+        row ? (
+          <button
+            type="button"
+            title="Imprimir ficha"
+            onClick={handlePrint}
+            className="inline-flex rounded-md p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          >
+            <Printer className="size-4" strokeWidth={1.75} aria-hidden />
+            <span className="sr-only">Imprimir ficha</span>
+          </button>
+        ) : null
+      }
     >
       {open && row && supabase ? (
         <EditAtendimentoForm

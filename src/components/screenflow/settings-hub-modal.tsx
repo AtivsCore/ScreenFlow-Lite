@@ -19,6 +19,7 @@ import {
   isMroLogisticsSegment,
   resolveAviacaoCrudTable,
   resolveMroRegisterFormLabels,
+  resolveMroRegisterInteligenteHint,
 } from "@/lib/aviacao-logistics";
 import { isProPlan } from "@/lib/plan-tier";
 import { GoogleSheetsProSection } from "@/components/screenflow/google-sheets-pro-section";
@@ -571,7 +572,7 @@ export function SettingsHubModal({
               </div>
               <p className="mt-2 text-[9px] text-zinc-500 dark:text-zinc-500">
                 {aviacaoMode
-                  ? "No modo aviação MRO, responsável, serviços e hangar seguem os campos do registro de rampa."
+                  ? resolveMroRegisterInteligenteHint(config.segmentoAplicado)
                   : "Profissional, serviço e local usam apenas listas do cadastro base (sem texto livre)."}
               </p>
             </div>

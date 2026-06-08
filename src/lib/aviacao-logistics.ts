@@ -823,7 +823,10 @@ export function appendAviacaoAvariaToObservacaoText(
   return existing ? `${existing} | ${snippet}` : snippet;
 }
 
-export function formatAviacaoTimelineLine(entry: AviacaoTimelineEntry): string {
+export function formatAviacaoTimelineLine(
+  entry: AviacaoTimelineEntry,
+  segmentoAplicado?: string | null
+): string {
   const when = new Date(entry.ts).toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
@@ -832,7 +835,8 @@ export function formatAviacaoTimelineLine(entry: AviacaoTimelineEntry): string {
   });
   const detail = entry.detail ? ` — ${entry.detail}` : "";
   const baseName = entry.user?.trim() || "—";
-  return `${when} | ${entry.action}${detail} | Base: ${baseName}`;
+  const prefix = mroProfileFor(segmentoAplicado).timelineLogPrefix;
+  return `${when} | ${entry.action}${detail} | ${prefix}: ${baseName}`;
 }
 
 export function buildAviacaoCanonicalQueueTabs(
@@ -1250,6 +1254,14 @@ export function resolveMroFieldLabels(segmentoAplicado?: string | null): {
     avariaPrompt: profile.avariaPrompt,
     avariaTimelineAction: profile.avariaTimelineAction,
   };
+}
+
+export function resolveMroTimelineSectionTitle(segmentoAplicado?: string | null): string {
+  return mroProfileFor(segmentoAplicado).timelineSectionTitle;
+}
+
+export function resolveMroRegisterInteligenteHint(segmentoAplicado?: string | null): string {
+  return mroProfileFor(segmentoAplicado).registerInteligenteHint;
 }
 
 export type AviacaoCadastroFields = Partial<Record<string, string>>;

@@ -20,6 +20,7 @@ import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { buildCadastroLookups, type CadastroLookups } from "@/lib/cadastro-valores";
 import { SegmentConfigModal } from "@/components/screenflow/segment-config-modal";
 import { EditAtendimentoModal } from "@/components/screenflow/edit-atendimento-modal";
+import { printAtendimentoCard } from "@/lib/print-atendimento-card";
 import {
   type AtendimentoLite,
   type AtendimentoLiteNested,
@@ -1277,6 +1278,14 @@ export default function Home() {
                 setEditFromAgenda(false);
                 setEditRow(row);
               }}
+              onPrintRow={(row) => {
+                printAtendimentoCard({
+                  row,
+                  tenantConfig,
+                  cadastroLookups,
+                  baseOptions: aviacaoLogisticsActive ? aviacaoTenantOptions : undefined,
+                });
+              }}
               viewMode={queueViewMode}
               onViewModeChange={setQueueViewMode}
               onObservacoesVisibilityChange={setObservacoesVisibility}
@@ -1472,6 +1481,7 @@ export default function Home() {
         }}
         supabase={supabase}
         tenantConfig={tenantConfig}
+        cadastroLookups={cadastroLookups}
         aviacaoBaseOptions={aviacaoLogisticsActive ? aviacaoTenantOptions : undefined}
         allowFullDatetime={proActive && editFromAgenda}
         onSaved={() => void refreshRows()}

@@ -69,6 +69,9 @@ export type MroSegmentProfile = {
   hangarQuickAddButtonLabel: string;
   hangarQuickAddButtonTitle: string;
   combustivelOptions: readonly string[];
+  timelineSectionTitle: string;
+  timelineLogPrefix: string;
+  registerInteligenteHint: string;
 };
 
 const AVIACAO_PROFILE: MroSegmentProfile = {
@@ -149,6 +152,10 @@ const AVIACAO_PROFILE: MroSegmentProfile = {
   hangarQuickAddButtonLabel: "+ Hangar",
   hangarQuickAddButtonTitle: "Cadastrar vaga / hangar / box",
   combustivelOptions: ["Vazio", "1/4", "1/2", "3/4", "Full"],
+  timelineSectionTitle: "Linha do Tempo de Rampa",
+  timelineLogPrefix: "Base",
+  registerInteligenteHint:
+    "No modo aviação MRO, responsável, serviços e hangar seguem os campos do registro de rampa.",
 };
 
 const AUTOMOTIVO_PROFILE: MroSegmentProfile = {
@@ -229,6 +236,10 @@ const AUTOMOTIVO_PROFILE: MroSegmentProfile = {
   hangarQuickAddButtonLabel: "+ Box",
   hangarQuickAddButtonTitle: "Cadastrar elevador / box",
   combustivelOptions: ["Vazio", "1/4", "1/2", "3/4", "Cheio"],
+  timelineSectionTitle: "Linha do Tempo do Box",
+  timelineLogPrefix: "Auto",
+  registerInteligenteHint:
+    "No modo Oficina Mecânica, os campos de responsável, serviços e box seguem o padrão operacional de pátio.",
 };
 
 const MRO_PROFILES: Record<MroSegmentId, MroSegmentProfile> = {
