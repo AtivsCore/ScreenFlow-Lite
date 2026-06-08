@@ -43,7 +43,9 @@ import {
   AVIACAO_BASE_LIMIT_UPSELL_TITLE,
   AVIACAO_QUEUE_TAB,
   normalizeAviacaoTabId,
+  appendAviacaoAvariaToObservacaoText,
   appendAviacaoTimelineEntry,
+  resolveAviacaoTimelineBaseLabel,
   aviacaoStepTvStatus,
   canCreateAviacaoBase,
   canShiftAviacaoTabQuick,
@@ -874,23 +876,17 @@ export default function Home() {
       const fromTabId = parseAviacaoFilaTabId(selected.observacao);
       let aviacaoFields = parseAviacaoCadastroFields(selected.observacao);
 
-      let userLabel = "Operador";
-      if (supabase) {
-        const { data } = await supabase.auth.getUser();
-        const email = data.user?.email?.trim();
-        const metaName =
-          typeof data.user?.user_metadata?.nome === "string"
-            ? data.user.user_metadata.nome.trim()
-            : "";
-        userLabel = metaName || email || userLabel;
-      }
+      const baseLabel = resolveAviacaoTimelineBaseLabel(
+        selected.tenant_id ?? effectiveTenantId,
+        aviacaoTenantOptions
+      );
 
       const action =
         opts?.action ??
         resolveAviacaoTabActionLabel(fromTabId, targetTabId);
       aviacaoFields = appendAviacaoTimelineEntry(aviacaoFields, {
         action,
-        user: userLabel,
+        user: baseLabel,
       });
 
       const observacao = mergeAviacaoObservacao({
@@ -905,7 +901,7 @@ export default function Home() {
       if (status) patch.status = status;
       await patchAtendimento(patch);
     },
-    [selectedId, selected, visibleQueueTabs, patchAtendimento, supabase]
+    [selectedId, selected, visibleQueueTabs, patchAtendimento, effectiveTenantId, aviacaoTenantOptions]
   );
 
   const registerAviacaoAvaria = useCallback(async () => {
@@ -913,28 +909,23 @@ export default function Home() {
     const detail = window.prompt("Descreva a avaria registrada:", "");
     if (!detail?.trim()) return;
 
-    let userLabel = "Operador";
-    if (supabase) {
-      const { data } = await supabase.auth.getUser();
-      const email = data.user?.email?.trim();
-      const metaName =
-        typeof data.user?.user_metadata?.nome === "string"
-          ? data.user.user_metadata.nome.trim()
-          : "";
-      userLabel = metaName || email || userLabel;
-    }
+    const baseLabel = resolveAviacaoTimelineBaseLabel(
+      selected.tenant_id ?? effectiveTenantId,
+      aviacaoTenantOptions
+    );
 
     const aviacaoFields = appendAviacaoTimelineEntry(
       parseAviacaoCadastroFields(selected.observacao),
-      { action: "Avaria registrada", user: userLabel, detail: detail.trim() }
+      { action: "Avaria registrada", user: baseLabel, detail: detail.trim() }
     );
     const observacao = mergeAviacaoObservacao({
       current: selected.observacao,
       aviacaoFields,
       preserveTabWhenUnset: true,
+      userObservacaoText: appendAviacaoAvariaToObservacaoText(selected.observacao, detail.trim()),
     });
     await patchAtendimento({ observacao });
-  }, [selectedId, selected, supabase, patchAtendimento]);
+  }, [selectedId, selected, effectiveTenantId, aviacaoTenantOptions, patchAtendimento]);
 
   const shiftSelectedAviacaoStep = useCallback(
     (delta: -1 | 1) => {
@@ -1454,6 +1445,7 @@ export default function Home() {
         }}
         supabase={supabase}
         tenantConfig={tenantConfig}
+        aviacaoBaseOptions={aviacaoLogisticsActive ? aviacaoTenantOptions : undefined}
         allowFullDatetime={proActive && editFromAgenda}
         onSaved={() => void refreshRows()}
       />

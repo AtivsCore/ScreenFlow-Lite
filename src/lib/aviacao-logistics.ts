@@ -764,6 +764,28 @@ export function appendAviacaoTimelineEntry(
   };
 }
 
+export function resolveAviacaoTimelineBaseLabel(
+  tenantId: string | null | undefined,
+  options: Array<{ id: string; nome: string | null }>
+): string {
+  const tid = tenantId?.trim();
+  if (!tid) return "Base";
+  const match = options.find((o) => o.id === tid);
+  return match?.nome?.trim() || tid;
+}
+
+/** Concatena texto de avaria ao bloco visível de observações da aeronave. */
+export function appendAviacaoAvariaToObservacaoText(
+  observacao: string | null | undefined,
+  avariaDetail: string
+): string {
+  const detail = avariaDetail.trim();
+  if (!detail) return sanitizeObservacaoForAviacaoSave(observacao) ?? "";
+  const existing = sanitizeObservacaoForAviacaoSave(observacao)?.trim() ?? "";
+  const snippet = `Avaria registrada: ${detail}`;
+  return existing ? `${existing} | ${snippet}` : snippet;
+}
+
 export function formatAviacaoTimelineLine(entry: AviacaoTimelineEntry): string {
   const when = new Date(entry.ts).toLocaleString("pt-BR", {
     day: "2-digit",
@@ -772,7 +794,8 @@ export function formatAviacaoTimelineLine(entry: AviacaoTimelineEntry): string {
     minute: "2-digit",
   });
   const detail = entry.detail ? ` — ${entry.detail}` : "";
-  return `${when} | ${entry.action} | ${entry.user}${detail}`;
+  const baseName = entry.user?.trim() || "—";
+  return `${when} | ${entry.action}${detail} | Base: ${baseName}`;
 }
 
 export function buildAviacaoCanonicalQueueTabs(): QueueTabEntry[] {

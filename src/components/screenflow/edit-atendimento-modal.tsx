@@ -35,6 +35,7 @@ import {
   resolveAviacaoHangarIdFromRow,
   resolveAviacaoQueueTabs,
   resolveAviacaoRegisterFieldVisibility,
+  resolveAviacaoTimelineBaseLabel,
   resolveAviacaoSelectOptions,
   resolveAviacaoServicosSolicitadosOptions,
   resolveAviacaoTabActionLabel,
@@ -70,12 +71,16 @@ import { PriorityClassSelector } from "@/components/screenflow/priority-class-se
 
 type OptRow = { id: string; nome: string | null };
 
+type AviacaoBaseOption = { id: string; nome: string | null };
+
 type EditAtendimentoModalProps = {
   open: boolean;
   row: AtendimentoLite | null;
   onClose: () => void;
   supabase: SupabaseClient | null;
   tenantConfig: ResolvedTenantConfig;
+  /** Bases/aeroportos MRO — rótulo da linha do tempo. */
+  aviacaoBaseOptions?: AviacaoBaseOption[];
   /** Data/hora completa só na Agenda PRO; na fila diária usa apenas horário (HH:MM). */
   allowFullDatetime?: boolean;
   onSaved: () => void;
@@ -86,6 +91,7 @@ type FormProps = {
   onClose: () => void;
   supabase: SupabaseClient;
   tenantConfig: ResolvedTenantConfig;
+  aviacaoBaseOptions: AviacaoBaseOption[];
   allowFullDatetime: boolean;
   onSaved: () => void;
 };
@@ -98,7 +104,15 @@ function toDatetimeLocal(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDatetime, onSaved }: FormProps) {
+function EditAtendimentoForm({
+  row,
+  onClose,
+  supabase,
+  tenantConfig,
+  aviacaoBaseOptions,
+  allowFullDatetime,
+  onSaved,
+}: FormProps) {
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
@@ -600,7 +614,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
       if (toTabId && fromTabId !== toTabId) {
         fieldsWithTimeline = appendAviacaoTimelineEntry(fieldsWithTimeline, {
           action: resolveAviacaoTabActionLabel(fromTabId, toTabId),
-          user: "Operador",
+          user: resolveAviacaoTimelineBaseLabel(row.tenant_id, aviacaoBaseOptions),
         });
       }
 
@@ -892,6 +906,7 @@ export function EditAtendimentoModal({
   onClose,
   supabase,
   tenantConfig,
+  aviacaoBaseOptions = [],
   allowFullDatetime = false,
   onSaved,
 }: EditAtendimentoModalProps) {
@@ -909,6 +924,7 @@ export function EditAtendimentoModal({
           row={row}
           supabase={supabase}
           tenantConfig={tenantConfig}
+          aviacaoBaseOptions={aviacaoBaseOptions}
           allowFullDatetime={allowFullDatetime}
           onClose={onClose}
           onSaved={onSaved}
