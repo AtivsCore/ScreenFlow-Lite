@@ -25,6 +25,8 @@ import {
   AVIACAO_FIELD_HOBBS,
   AVIACAO_FIELD_SERVICOS,
   AVIACAO_STORAGE_BUCKET,
+  isAviacaoAnexoStoredInBucket,
+  isSupabaseStorageRlsError,
   AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_INLINE_OBSERVACAO_FIELD_ID,
   AVIACAO_MODELO_CATEGORY_ID,
@@ -196,6 +198,7 @@ export function RegistryPatientModal({
   const [locais, setLocais] = useState<OptRow[]>([]);
   const [pendingAnexos, setPendingAnexos] = useState<AviacaoAnexo[]>([]);
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadWarning, setUploadWarning] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploadSessionId] = useState(() => crypto.randomUUID());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -271,6 +274,7 @@ export function RegistryPatientModal({
     setPendingAnexos([]);
     setDragOver(false);
     setError(null);
+    setUploadWarning(null);
   }, [open, tenantConfig.priorityLawEnabled, queueTabs, initialTriagemTabId]);
 
   async function readFileAsDataUrl(file: File): Promise<string> {
@@ -285,7 +289,7 @@ export function RegistryPatientModal({
   async function handleAviacaoUpload(files: FileList | null) {
     if (!files?.length || !aviacaoMode || !supabase) return;
     setUploadBusy(true);
-    setError(null);
+    const warnings: string[] = [];
     try {
       const added: AviacaoAnexo[] = [];
       for (const file of Array.from(files)) {
@@ -294,25 +298,48 @@ export function RegistryPatientModal({
         const tid = effectiveTenantId?.trim() || "shared";
         const path = `${tid}/registry/${uploadSessionId}/${id}-${file.name.replace(/[^\w.-]+/g, "_")}`;
 
-        let url = "";
         const { error: upErr } = await supabase.storage
           .from(AVIACAO_STORAGE_BUCKET)
-          .upload(path, file, { upsert: false });
+          .upload(path, file, { upsert: false, contentType: file.type || undefined });
+
         if (!upErr) {
           const { data } = supabase.storage.from(AVIACAO_STORAGE_BUCKET).getPublicUrl(path);
-          url = data.publicUrl;
-        } else if (file.size < 500_000 && file.type.startsWith("image/")) {
-          url = await readFileAsDataUrl(file);
-        } else {
-          setError(upErr.message || "Falha ao enviar arquivo. Configure o bucket aviacao-anexos.");
+          added.push({
+            id,
+            name: file.name,
+            mime: file.type,
+            uploadedAt,
+            url: data.publicUrl,
+          });
           continue;
         }
 
-        added.push({ id, name: file.name, mime: file.type, uploadedAt, url });
+        if (file.size < 500_000 && file.type.startsWith("image/")) {
+          const previewUrl = await readFileAsDataUrl(file);
+          added.push({
+            id,
+            name: file.name,
+            mime: file.type,
+            uploadedAt,
+            url: previewUrl,
+          });
+          warnings.push(
+            `"${file.name}" ficou só como pré-visualização local. Rode docs/supabase-lite-rls-aviacao-anexos.sql no Supabase para habilitar o storage.`
+          );
+          continue;
+        }
+
+        warnings.push(
+          isSupabaseStorageRlsError(upErr.message)
+            ? `"${file.name}" não foi enviado (permissão do bucket ${AVIACAO_STORAGE_BUCKET}). Você ainda pode salvar o registro da aeronave sem este arquivo.`
+            : `"${file.name}" não foi enviado: ${upErr.message}`
+        );
       }
+
       if (added.length > 0) {
         setPendingAnexos((prev) => [...prev, ...added]);
       }
+      setUploadWarning(warnings.length > 0 ? warnings.join(" ") : null);
     } finally {
       setUploadBusy(false);
     }
@@ -415,8 +442,9 @@ export function RegistryPatientModal({
               formValues,
               tenantConfig.cadastroCategories
             );
-            if (pendingAnexos.length > 0) {
-              aviacaoFields[AVIACAO_FIELD_ANEXOS] = JSON.stringify(pendingAnexos);
+            const storedAnexos = pendingAnexos.filter(isAviacaoAnexoStoredInBucket);
+            if (storedAnexos.length > 0) {
+              aviacaoFields[AVIACAO_FIELD_ANEXOS] = JSON.stringify(storedAnexos);
             }
             const withTimeline = appendAviacaoTimelineEntry(aviacaoFields, {
               action: "Ficha de entrada — Triagem / Check-in",
@@ -749,6 +777,11 @@ export function RegistryPatientModal({
           ) : (
             <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400">Nenhum anexo.</p>
           )}
+          {uploadWarning ? (
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+              {uploadWarning}
+            </p>
+          ) : null}
         </div>
 
         {aviacaoFields.showObservacao ? (

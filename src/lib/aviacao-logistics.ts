@@ -319,6 +319,16 @@ export type AviacaoAnexo = {
   url: string;
 };
 
+/** Anexo gravado no bucket Supabase (URL pública), não preview local em data URL. */
+export function isAviacaoAnexoStoredInBucket(anexo: AviacaoAnexo): boolean {
+  return anexo.url.startsWith("http://") || anexo.url.startsWith("https://");
+}
+
+export function isSupabaseStorageRlsError(message: string | undefined | null): boolean {
+  if (!message) return false;
+  return /row-level security/i.test(message);
+}
+
 export type AviacaoQueueFilterOptions = {
   priorityOnly?: boolean;
   hideAguardandoPecas?: boolean;
