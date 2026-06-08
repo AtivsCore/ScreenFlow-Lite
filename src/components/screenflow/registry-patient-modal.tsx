@@ -19,7 +19,7 @@ import {
   appendAviacaoTimelineEntry,
   buildAviacaoRegistryObservacao,
   buildAviacaoSavePayload,
-  AVIACAO_COMBUSTIVEL_OPTIONS,
+  resolveMroCombustivelOptions,
   AVIACAO_FIELD_ANEXOS,
   AVIACAO_FIELD_COMBUSTIVEL,
   AVIACAO_FIELD_HOBBS,
@@ -91,6 +91,7 @@ export function RegistryPatientModal({
   const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
   const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
+  const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
   const enabledCategories = useMemo(
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
@@ -653,7 +654,7 @@ export function RegistryPatientModal({
             className={REGISTRY_FIELD_CLASS}
           >
             <option value="">—</option>
-            {AVIACAO_COMBUSTIVEL_OPTIONS.map((opt) => (
+            {mroCombustivelOptions.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}
               </option>

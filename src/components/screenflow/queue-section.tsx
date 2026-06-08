@@ -10,6 +10,7 @@ import {
   isAviacaoQueueTabSelected,
   resolveAviacaoCategoryDisplay,
   resolveAviacaoKanbanColumnLabel,
+  resolveMroProfile,
   resolveAviacaoKanbanMeta,
   resolveAviacaoQueueTabClickId,
 } from "@/lib/aviacao-logistics";
@@ -531,6 +532,7 @@ export function QueueSection({
   const colSpan = 4 + enabledCategories.length;
 
   const flowTabs = useMemo(() => queueTabs.filter((t) => t.preset !== "todos"), [queueTabs]);
+  const mroProfile = useMemo(() => resolveMroProfile(mroSegmentId), [mroSegmentId]);
 
   const isTabActive = useCallback(
     (tabId: string) =>
@@ -612,11 +614,11 @@ export function QueueSection({
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
-                  title="Cadastrar vaga / hangar / box"
+                  title={mroProfile.hangarQuickAddButtonTitle}
                   onClick={onAviacaoQuickAddHangar}
                   className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
-                  + Hangar
+                  {mroProfile.hangarQuickAddButtonLabel}
                 </button>
                 <button
                   type="button"

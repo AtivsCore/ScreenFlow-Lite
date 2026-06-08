@@ -65,6 +65,10 @@ export type MroSegmentProfile = {
   avariaTimelineAction: string;
   avariaButtonLabel: string;
   timelineBaseFallback: string;
+  baseSelectorLabel: string;
+  hangarQuickAddButtonLabel: string;
+  hangarQuickAddButtonTitle: string;
+  combustivelOptions: readonly string[];
 };
 
 const AVIACAO_PROFILE: MroSegmentProfile = {
@@ -141,6 +145,10 @@ const AVIACAO_PROFILE: MroSegmentProfile = {
   avariaTimelineAction: "Avaria registrada",
   avariaButtonLabel: "Registrar Avaria",
   timelineBaseFallback: "Base",
+  baseSelectorLabel: "Base / Aeroporto",
+  hangarQuickAddButtonLabel: "+ Hangar",
+  hangarQuickAddButtonTitle: "Cadastrar vaga / hangar / box",
+  combustivelOptions: ["Vazio", "1/4", "1/2", "3/4", "Full"],
 };
 
 const AUTOMOTIVO_PROFILE: MroSegmentProfile = {
@@ -199,9 +207,9 @@ const AUTOMOTIVO_PROFILE: MroSegmentProfile = {
   baseQuickCrudTitle: "Nova unidade / filial",
   liberadoTabId: AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA,
   emManutencaoTabId: AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO,
-  headerChamarLabel: "Chamar p/ Box",
+  headerChamarLabel: "Chamar para o Box",
   headerIniciarLabel: "Iniciar Serviço",
-  headerFinalizarLabel: "Pronto / Retirada",
+  headerFinalizarLabel: "Liberar Veículo",
   headerFinalizarLiberadoLabel: "Finalizar",
   validation: {
     prefixoRequired: "Placa do Veículo é obrigatória.",
@@ -217,6 +225,10 @@ const AUTOMOTIVO_PROFILE: MroSegmentProfile = {
   avariaTimelineAction: "Dano no veículo registrado",
   avariaButtonLabel: "Registrar Danos",
   timelineBaseFallback: "Unidade",
+  baseSelectorLabel: "Auto",
+  hangarQuickAddButtonLabel: "+ Box",
+  hangarQuickAddButtonTitle: "Cadastrar elevador / box",
+  combustivelOptions: ["Vazio", "1/4", "1/2", "3/4", "Cheio"],
 };
 
 const MRO_PROFILES: Record<MroSegmentId, MroSegmentProfile> = {
@@ -241,6 +253,12 @@ export function resolveMroProfile(
 ): MroSegmentProfile {
   if (segmentoAplicado === AUTOMOTIVO_SEGMENT_ID) return AUTOMOTIVO_PROFILE;
   return AVIACAO_PROFILE;
+}
+
+export function resolveMroCombustivelOptions(
+  segmentoAplicado: string | null | undefined
+): readonly string[] {
+  return resolveMroProfile(segmentoAplicado).combustivelOptions;
 }
 
 export function buildMroCanonicalQueueTabs(

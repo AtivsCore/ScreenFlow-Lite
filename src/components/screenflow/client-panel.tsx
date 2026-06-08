@@ -17,6 +17,7 @@ import {
   isAviacaoRigidSelectField,
   isMroLogisticsSegment,
   resolveMroFieldLabels,
+  resolveMroProfile,
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryDisplay,
   resolveAviacaoCategoryLabel,
@@ -157,6 +158,7 @@ export const ClientPanel = memo(function ClientPanel({
   const docasMode = isDocasSegment(segmentoAplicado);
   const aviacaoMode = isMroLogisticsSegment(segmentoAplicado);
   const mroFieldLabels = resolveMroFieldLabels(segmentoAplicado);
+  const mroProfile = resolveMroProfile(segmentoAplicado);
   const panelCategories = useMemo(() => {
     if (!aviacaoMode) return enabledCategories;
     const hidden = new Set<string>(AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS);
@@ -469,7 +471,7 @@ export const ClientPanel = memo(function ClientPanel({
         >
           {aviacaoMode ? (
             <label className={AVIACAO_PANEL_FIELD_CLASS}>
-              <span className="block h-4 truncate leading-4">Base / Aeroporto</span>
+              <span className="block h-4 truncate leading-4">{mroProfile.baseSelectorLabel}</span>
               <select
                 value={tenantId ?? ""}
                 disabled={!canMutate || tenantOptions.length === 0}
@@ -528,7 +530,7 @@ export const ClientPanel = memo(function ClientPanel({
           >
             {docasMode
               ? "Chamar p/ Doca"
-              : aviacaoHeaderActions?.chamarLabel ?? (aviacaoMode ? "Chamar p/ Hangar" : "Chamar")}
+              : aviacaoHeaderActions?.chamarLabel ?? (aviacaoMode ? mroProfile.headerChamarLabel : "Chamar")}
           </button>
           <button
             type="button"
@@ -576,7 +578,7 @@ export const ClientPanel = memo(function ClientPanel({
             {docasMode
               ? "Liberar"
               : aviacaoHeaderActions?.finalizarLabel ??
-                (aviacaoMode ? "Liberar / Decolar" : "Finalizar")}
+                (aviacaoMode ? mroProfile.headerFinalizarLabel : "Finalizar")}
           </button>
         </div>
       </section>

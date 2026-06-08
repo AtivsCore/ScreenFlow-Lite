@@ -11,6 +11,7 @@ import {
   buildMroCanonicalQueueTabs,
   isAutomotivoSegment,
   isMroLogisticsSegment,
+  resolveMroCombustivelOptions,
   resolveMroProfile,
   type MroSegmentProfile,
 } from "@/lib/mro-segment-profile";
@@ -38,6 +39,7 @@ export {
   AUTOMOTIVO_QUEUE_TAB,
   isAutomotivoSegment,
   isMroLogisticsSegment,
+  resolveMroCombustivelOptions,
   resolveMroProfile,
 } from "@/lib/mro-segment-profile";
 

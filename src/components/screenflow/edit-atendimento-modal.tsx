@@ -10,7 +10,7 @@ import { buildCadastroPayload, hydrateCadastroValores } from "@/lib/cadastro-val
 import {
   appendAviacaoTimelineEntry,
   buildAviacaoSavePayload,
-  AVIACAO_COMBUSTIVEL_OPTIONS,
+  resolveMroCombustivelOptions,
   AVIACAO_FIELD_ANEXOS,
   AVIACAO_FIELD_COMBUSTIVEL,
   AVIACAO_FIELD_HOBBS,
@@ -121,6 +121,7 @@ function EditAtendimentoForm({
   const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
   const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
+  const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
   const queueTabs = useMemo(
     () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
     [aviacaoMode, tenantConfig]
@@ -463,7 +464,7 @@ function EditAtendimentoForm({
             className={FIELD_CLASS}
           >
             <option value="">—</option>
-            {AVIACAO_COMBUSTIVEL_OPTIONS.map((opt) => (
+            {mroCombustivelOptions.map((opt) => (
               <option key={opt} value={opt}>
                 {opt}
               </option>
