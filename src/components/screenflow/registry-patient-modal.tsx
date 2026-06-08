@@ -33,12 +33,14 @@ import {
   AVIACAO_PREFIXO_CATEGORY_ID,
   AVIACAO_RESPONSAVEL_CATEGORY_ID,
   AVIACAO_QUEUE_TAB,
-  isAviacaoSegment,
+  isMroLogisticsSegment,
+  resolveMroFieldLabels,
   parseAviacaoServicosSolicitados,
   resolveAviacaoQueueTabs,
   resolveAviacaoRegisterFieldVisibility,
   resolveAviacaoSelectOptions,
   resolveAviacaoServicosSolicitadosOptions,
+  resolveMroRegisterFormLabels,
   serializeAviacaoServicosSolicitados,
   validateAviacaoRequiredFormValues,
   type AviacaoAnexo,
@@ -86,7 +88,9 @@ export function RegistryPatientModal({
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
-  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
+  const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
+  const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
+  const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const enabledCategories = useMemo(
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
@@ -392,10 +396,14 @@ export function RegistryPatientModal({
       }
     }
     if (aviacaoMode && aviacaoFields) {
-      const requiredErr = validateAviacaoRequiredFormValues(formValues, {
-        showHangar: aviacaoFields.showHangar,
-        showServicos: aviacaoFields.showServicos,
-      });
+      const requiredErr = validateAviacaoRequiredFormValues(
+        formValues,
+        {
+          showHangar: aviacaoFields.showHangar,
+          showServicos: aviacaoFields.showServicos,
+        },
+        tenantConfig.segmentoAplicado
+      );
       if (requiredErr) {
         setError(requiredErr);
         return;
@@ -534,7 +542,7 @@ export function RegistryPatientModal({
     return (
       <>
         <label className={REGISTRY_LABEL_CLASS}>
-          Prefixo da Aeronave
+          {mroFieldLabels.prefixo}
           {REGISTRY_REQUIRED_MARK}
           <input
             type="text"
@@ -548,7 +556,7 @@ export function RegistryPatientModal({
 
         {aviacaoFields.showModelo ? (
           <label className={REGISTRY_LABEL_CLASS}>
-            Modelo da Aeronave
+            {mroFieldLabels.modelo}
             <input
               type="text"
               value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
@@ -562,7 +570,7 @@ export function RegistryPatientModal({
 
         {aviacaoFields.showClienteNome ? (
           <label className={REGISTRY_LABEL_CLASS}>
-            Nome do Cliente / Operador
+            {mroRegisterLabels.showClienteNome}
             <input
               type="text"
               value={nomeCliente}
@@ -576,7 +584,7 @@ export function RegistryPatientModal({
 
         {aviacaoFields.showProfissional ? (
           <label className={REGISTRY_LABEL_CLASS}>
-            Responsável / Mecânico
+            {mroFieldLabels.responsavel}
             <input
               type="text"
               value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
@@ -604,7 +612,7 @@ export function RegistryPatientModal({
 
         {aviacaoFields.showHangar ? (
           <label className={REGISTRY_LABEL_CLASS}>
-            Vaga / Hangar / Box
+            {mroFieldLabels.hangar}
             {REGISTRY_REQUIRED_MARK}
             <select
               value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
@@ -623,7 +631,7 @@ export function RegistryPatientModal({
         ) : null}
 
         <label className={REGISTRY_LABEL_CLASS}>
-          Horas de Voo (Hobbs)
+          {mroFieldLabels.hobbs}
           {REGISTRY_REQUIRED_MARK}
           <input
             type="text"
@@ -636,7 +644,7 @@ export function RegistryPatientModal({
         </label>
 
         <label className={REGISTRY_LABEL_CLASS}>
-          Nível de Combustível
+          {mroFieldLabels.combustivel}
           {REGISTRY_REQUIRED_MARK}
           <select
             value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}

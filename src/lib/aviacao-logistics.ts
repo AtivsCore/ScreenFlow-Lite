@@ -6,6 +6,15 @@ import {
   type CadastroValores,
 } from "@/lib/cadastro-valores";
 import {
+  AVIACAO_SEGMENT_ID,
+  AUTOMOTIVO_SEGMENT_ID,
+  buildMroCanonicalQueueTabs,
+  isAutomotivoSegment,
+  isMroLogisticsSegment,
+  resolveMroProfile,
+  type MroSegmentProfile,
+} from "@/lib/mro-segment-profile";
+import {
   embedFilaPreset,
   formatObservacaoForDisplay,
   parseFilaTabId,
@@ -23,8 +32,14 @@ import type {
 import { TODOS_QUEUE_TAB } from "@/lib/tenant-config";
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 
-/** Slug do segmento no Master / `segmentoAplicado` (Aviação e Logística de Manutenção). */
-export const AVIACAO_SEGMENT_ID = "aviacao_mro" as const;
+export {
+  AVIACAO_SEGMENT_ID,
+  AUTOMOTIVO_SEGMENT_ID,
+  AUTOMOTIVO_QUEUE_TAB,
+  isAutomotivoSegment,
+  isMroLogisticsSegment,
+  resolveMroProfile,
+} from "@/lib/mro-segment-profile";
 
 export const AVIACAO_HANGAR_UNALLOCATED_LABEL = "NÃO ALOCADO";
 
@@ -196,11 +211,15 @@ export type AviacaoQuickCrudConfig = {
 };
 
 /** Configuração canônica dos atalhos de cadastro rápido ao lado da fila (MRO). */
-export function resolveAviacaoQuickCrudConfig(kind: AviacaoQuickCrudKind): AviacaoQuickCrudConfig {
+export function resolveAviacaoQuickCrudConfig(
+  kind: AviacaoQuickCrudKind,
+  segmentoAplicado?: string | null
+): AviacaoQuickCrudConfig {
+  const profile = mroProfileFor(segmentoAplicado);
   switch (kind) {
     case "hangar":
       return {
-        title: "Vaga / Hangar / Box",
+        title: profile.hangarQuickCrudTitle,
         table: "locais",
         categoryId: AVIACAO_HANGAR_CATEGORY_ID,
       };
@@ -211,7 +230,7 @@ export function resolveAviacaoQuickCrudConfig(kind: AviacaoQuickCrudKind): Aviac
         categoryId: AVIACAO_SERVICOS_SOLICITADOS_CRUD_FIELD_ID,
       };
     case "base":
-      return { title: "Nova base / aeroporto", table: "tenants" };
+      return { title: profile.baseQuickCrudTitle, table: "tenants" };
   }
 }
 
@@ -266,25 +285,27 @@ export function resolveAviacaoRegisterFieldVisibility(
 
 export function validateAviacaoRequiredFormValues(
   formValues: Record<string, string>,
-  visibility: AviacaoRegisterFieldVisibility = { showHangar: true, showServicos: true }
+  visibility: AviacaoRegisterFieldVisibility = { showHangar: true, showServicos: true },
+  segmentoAplicado?: string | null
 ): string | null {
+  const validation = mroProfileFor(segmentoAplicado).validation;
   if (!formValues[AVIACAO_PREFIXO_CATEGORY_ID]?.trim()) {
-    return "Prefixo da Aeronave é obrigatório.";
+    return validation.prefixoRequired;
   }
   if (visibility.showHangar && !formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()) {
-    return "Vaga / Hangar / Box é obrigatório.";
+    return validation.hangarRequired;
   }
   if (!formValues[AVIACAO_FIELD_HOBBS]?.trim()) {
-    return "Horas de Voo (Hobbs) é obrigatório.";
+    return validation.hobbsRequired;
   }
   if (!formValues[AVIACAO_FIELD_COMBUSTIVEL]?.trim()) {
-    return "Nível de Combustível é obrigatório.";
+    return validation.combustivelRequired;
   }
   if (
     visibility.showServicos &&
     parseAviacaoServicosSolicitados(formValues[AVIACAO_FIELD_SERVICOS]).length === 0
   ) {
-    return "Selecione ao menos um serviço solicitado.";
+    return validation.servicosRequired;
   }
   return null;
 }
@@ -337,6 +358,10 @@ export type AviacaoQueueFilterOptions = {
 
 export function isAviacaoSegment(segmentoAplicado: string | null | undefined): boolean {
   return segmentoAplicado === AVIACAO_SEGMENT_ID;
+}
+
+function mroProfileFor(segmentoAplicado?: string | null): MroSegmentProfile {
+  return resolveMroProfile(segmentoAplicado ?? AVIACAO_SEGMENT_ID);
 }
 
 export function looksLikeAviacaoUuid(value: string | null | undefined): boolean {
@@ -479,11 +504,13 @@ export function nextAviacaoDrawerServicosOrdem(
 }
 
 export function resolveAviacaoCategoryLabel(
-  cat: Pick<CadastroCategoryEntry, "id" | "label">
+  cat: Pick<CadastroCategoryEntry, "id" | "label">,
+  segmentoAplicado?: string | null
 ): string {
   const saved = cat.label?.trim();
   if (saved) return saved;
-  return AVIACAO_CATEGORY_DISPLAY_LABELS[cat.id] ?? cat.label;
+  const profile = mroProfileFor(segmentoAplicado);
+  return profile.categoryDisplayLabels[cat.id] ?? AVIACAO_CATEGORY_DISPLAY_LABELS[cat.id] ?? cat.label;
 }
 
 export type AviacaoComboboxOption = { id: string; label: string };
@@ -509,18 +536,23 @@ function normalizeCategoryLabel(label: string): string {
 /** Resolve a categoria configurada no tenant para um slot fixo do formulário (ex.: `av-c3`). */
 export function findAviacaoCategoryForField(
   fieldId: string,
-  categories: CadastroCategoryEntry[]
+  categories: CadastroCategoryEntry[],
+  segmentoAplicado?: string | null
 ): CadastroCategoryEntry | undefined {
   const enabled = categories.filter((c) => c.enabled);
   const byId = enabled.find((c) => c.id === fieldId);
   if (byId) return byId;
 
-  const canonical = AVIACAO_HYBRID_FIELD_CANONICAL_LABELS[fieldId];
+  const profile = mroProfileFor(segmentoAplicado);
+  const canonical =
+    profile.hybridFieldCanonicalLabels[fieldId] ?? AVIACAO_HYBRID_FIELD_CANONICAL_LABELS[fieldId];
   if (!canonical) return undefined;
 
   const targets = new Set(canonical.map(normalizeCategoryLabel));
   return enabled.find((c) => {
-    const labels = [c.label, resolveAviacaoCategoryLabel(c)].map(normalizeCategoryLabel);
+    const labels = [c.label, resolveAviacaoCategoryLabel(c, segmentoAplicado)].map(
+      normalizeCategoryLabel
+    );
     return labels.some((l) => targets.has(l));
   });
 }
@@ -766,23 +798,26 @@ export function appendAviacaoTimelineEntry(
 
 export function resolveAviacaoTimelineBaseLabel(
   tenantId: string | null | undefined,
-  options: Array<{ id: string; nome: string | null }>
+  options: Array<{ id: string; nome: string | null }>,
+  segmentoAplicado?: string | null
 ): string {
   const tid = tenantId?.trim();
-  if (!tid) return "Base";
+  if (!tid) return mroProfileFor(segmentoAplicado).timelineBaseFallback;
   const match = options.find((o) => o.id === tid);
   return match?.nome?.trim() || tid;
 }
 
-/** Concatena texto de avaria ao bloco visível de observações da aeronave. */
+/** Concatena texto de avaria/dano ao bloco visível de observações do card MRO. */
 export function appendAviacaoAvariaToObservacaoText(
   observacao: string | null | undefined,
-  avariaDetail: string
+  avariaDetail: string,
+  segmentoAplicado?: string | null
 ): string {
   const detail = avariaDetail.trim();
   if (!detail) return sanitizeObservacaoForAviacaoSave(observacao) ?? "";
   const existing = sanitizeObservacaoForAviacaoSave(observacao)?.trim() ?? "";
-  const snippet = `Avaria registrada: ${detail}`;
+  const prefix = mroProfileFor(segmentoAplicado).avariaSnippetPrefix;
+  const snippet = `${prefix}: ${detail}`;
   return existing ? `${existing} | ${snippet}` : snippet;
 }
 
@@ -798,22 +833,17 @@ export function formatAviacaoTimelineLine(entry: AviacaoTimelineEntry): string {
   return `${when} | ${entry.action}${detail} | Base: ${baseName}`;
 }
 
-export function buildAviacaoCanonicalQueueTabs(): QueueTabEntry[] {
-  return [
-    { id: AVIACAO_QUEUE_TAB.TRIAGEM, preset: "outros", label: "Triagem / Check-in", customTypeLabel: "Triagem / Check-in" },
-    { id: AVIACAO_QUEUE_TAB.EM_MANUTENCAO, preset: "outros", label: "Em Manutenção", customTypeLabel: "Em Manutenção" },
-    { id: AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS, preset: "outros", label: "Aguardando Peças", customTypeLabel: "Aguardando Peças" },
-    { id: AVIACAO_QUEUE_TAB.INSPECAO_QC, preset: "outros", label: "Inspeção / QC", customTypeLabel: "Inspeção / QC" },
-    { id: AVIACAO_QUEUE_TAB.TESTE_VOO, preset: "outros", label: "Teste de Voo", customTypeLabel: "Teste de Voo" },
-    { id: AVIACAO_QUEUE_TAB.ESTETICA_LAVAGEM, preset: "outros", label: "Estética / Lavagem", customTypeLabel: "Estética / Lavagem" },
-    { id: AVIACAO_QUEUE_TAB.LIBERADO, preset: "outros", label: "Liberado / Pronto", customTypeLabel: "Liberado / Pronto" },
-  ];
+export function buildAviacaoCanonicalQueueTabs(
+  segmentoAplicado?: string | null
+): QueueTabEntry[] {
+  return buildMroCanonicalQueueTabs(segmentoAplicado);
 }
 
 /** Resolve abas do fluxo MRO a partir da configuração salva do tenant (com fallback canônico). */
 export function resolveAviacaoQueueTabs(config: ResolvedTenantConfig): QueueTabEntry[] {
   const stored = config.queueTabs.filter((t) => t.preset !== "todos");
-  const flowTabs = stored.length > 0 ? stored : buildAviacaoCanonicalQueueTabs();
+  const flowTabs =
+    stored.length > 0 ? stored : buildAviacaoCanonicalQueueTabs(config.segmentoAplicado);
   return config.showTodosTab ? [TODOS_QUEUE_TAB, ...flowTabs] : flowTabs;
 }
 
@@ -865,32 +895,52 @@ export function filterAviacaoQueueRows(
   return out;
 }
 
-export function isAviacaoQueueTabId(id: string | null | undefined): id is AviacaoQueueTabId {
-  return !!id && (AVIACAO_PIPELINE_ORDER as readonly string[]).includes(id);
+export function isAviacaoQueueTabId(
+  id: string | null | undefined,
+  segmentoAplicado?: string | null
+): id is AviacaoQueueTabId {
+  const profile = mroProfileFor(segmentoAplicado);
+  return !!id && (profile.pipelineOrder as readonly string[]).includes(id);
 }
 
-export function normalizeAviacaoTabId(tabId: string | null | undefined): AviacaoQueueTabId {
-  if (!tabId) return AVIACAO_QUEUE_TAB.TRIAGEM;
-  if (isAviacaoQueueTabId(tabId)) return tabId;
-  return LEGACY_TAB_ALIASES[tabId] ?? AVIACAO_QUEUE_TAB.TRIAGEM;
+export function normalizeAviacaoTabId(
+  tabId: string | null | undefined,
+  segmentoAplicado?: string | null
+): string {
+  const profile = mroProfileFor(segmentoAplicado);
+  if (!tabId) return profile.pipelineOrder[0] ?? AVIACAO_QUEUE_TAB.TRIAGEM;
+  if ((profile.pipelineOrder as readonly string[]).includes(tabId)) return tabId;
+  return profile.legacyTabAliases[tabId] ?? profile.pipelineOrder[0] ?? AVIACAO_QUEUE_TAB.TRIAGEM;
 }
 
 /** Seleção de aba na Lista MRO: "Todos" usa id próprio e não equivale a Triagem. */
-export function isAviacaoQueueTabSelected(queueTabId: string, tabId: string): boolean {
+export function isAviacaoQueueTabSelected(
+  queueTabId: string,
+  tabId: string,
+  segmentoAplicado?: string | null
+): boolean {
   if (tabId === TODOS_QUEUE_TAB.id || queueTabId === TODOS_QUEUE_TAB.id) {
     return queueTabId === tabId;
   }
-  return normalizeAviacaoTabId(queueTabId) === normalizeAviacaoTabId(tabId);
+  return (
+    normalizeAviacaoTabId(queueTabId, segmentoAplicado) ===
+    normalizeAviacaoTabId(tabId, segmentoAplicado)
+  );
 }
 
 /** Valida se o `queueTabId` atual ainda existe nas abas visíveis (inclui legado `av-t*`). */
-export function isAviacaoQueueTabIdInVisible(queueTabId: string, visibleTabIds: string[]): boolean {
+export function isAviacaoQueueTabIdInVisible(
+  queueTabId: string,
+  visibleTabIds: string[],
+  segmentoAplicado?: string | null
+): boolean {
   if (visibleTabIds.includes(queueTabId)) return true;
   if (queueTabId === TODOS_QUEUE_TAB.id) return false;
   return visibleTabIds.some(
     (id) =>
       id !== TODOS_QUEUE_TAB.id &&
-      normalizeAviacaoTabId(id) === normalizeAviacaoTabId(queueTabId)
+      normalizeAviacaoTabId(id, segmentoAplicado) ===
+        normalizeAviacaoTabId(queueTabId, segmentoAplicado)
   );
 }
 
@@ -901,18 +951,22 @@ export function resolveAviacaoQueueTabClickId(tabId: string): string {
 }
 
 export function resolveAviacaoStepFromObservacao(
-  observacao: string | null | undefined
-): AviacaoQueueTabId {
-  return normalizeAviacaoTabId(parseFilaTabId(observacao));
+  observacao: string | null | undefined,
+  segmentoAplicado?: string | null
+): string {
+  return normalizeAviacaoTabId(parseFilaTabId(observacao), segmentoAplicado);
 }
 
 export function findAviacaoQueueTabByStep(
   queueTabs: Pick<QueueTabEntry, "id" | "label">[],
-  step: AviacaoQueueTabId
+  step: string,
+  segmentoAplicado?: string | null
 ): Pick<QueueTabEntry, "id" | "label"> | undefined {
   const direct = queueTabs.find((t) => t.id === step);
   if (direct) return direct;
-  return queueTabs.find((t) => normalizeAviacaoTabId(t.id) === step);
+  return queueTabs.find(
+    (t) => normalizeAviacaoTabId(t.id, segmentoAplicado) === normalizeAviacaoTabId(step, segmentoAplicado)
+  );
 }
 
 export function getAviacaoStepIndex(step: AviacaoQueueTabId): number {
@@ -1039,21 +1093,27 @@ export function findAviacaoQueueTabById(
 }
 
 export function getAviacaoStepLabel(
-  step: AviacaoQueueTabId,
-  queueTabs?: Pick<QueueTabEntry, "id" | "label">[]
+  step: string,
+  queueTabs?: Pick<QueueTabEntry, "id" | "label">[],
+  segmentoAplicado?: string | null
 ): string {
-  const tab = queueTabs ? findAviacaoQueueTabByStep(queueTabs, step) : undefined;
+  const tab = queueTabs ? findAviacaoQueueTabByStep(queueTabs, step, segmentoAplicado) : undefined;
   const saved = tab?.label?.trim();
   if (saved) return saved.toUpperCase();
-  return AVIACAO_STEP_LABELS[step];
+  const profile = mroProfileFor(segmentoAplicado);
+  return profile.stepLabels[step] ?? AVIACAO_STEP_LABELS[step as AviacaoQueueTabId] ?? step;
 }
 
 /** Rótulo exibido no cabeçalho da coluna Kanban / abas da lista (prioriza configuração salva). */
-export function resolveAviacaoKanbanColumnLabel(tab: Pick<QueueTabEntry, "id" | "label">): string {
+export function resolveAviacaoKanbanColumnLabel(
+  tab: Pick<QueueTabEntry, "id" | "label">,
+  segmentoAplicado?: string | null
+): string {
   const saved = tab.label?.trim();
   if (saved) return saved.toUpperCase();
-  const step = normalizeAviacaoTabId(tab.id);
-  return AVIACAO_STEP_LABELS[step] ?? tab.id;
+  const step = normalizeAviacaoTabId(tab.id, segmentoAplicado);
+  const profile = mroProfileFor(segmentoAplicado);
+  return profile.stepLabels[step] ?? AVIACAO_STEP_LABELS[step as AviacaoQueueTabId] ?? tab.id;
 }
 
 /** Observação limpa para cards Aviação — sem resíduos de segmentos clínicos. */
@@ -1071,18 +1131,26 @@ export function formatAviacaoObservacaoForDisplay(
 }
 
 /** Status de chamada na TV conforme a etapa (quando aplicável). */
-export function aviacaoStepTvStatus(step: AviacaoQueueTabId): string | undefined {
-  if (step === AVIACAO_QUEUE_TAB.TRIAGEM) return STATUS_UPDATE.chamar;
-  if (step === AVIACAO_QUEUE_TAB.EM_MANUTENCAO) return STATUS_UPDATE.rechamar;
+export function aviacaoStepTvStatus(
+  step: string,
+  segmentoAplicado?: string | null
+): string | undefined {
+  const profile = mroProfileFor(segmentoAplicado);
+  const normalized = normalizeAviacaoTabId(step, segmentoAplicado);
+  if (normalized === profile.pipelineOrder[0]) return STATUS_UPDATE.chamar;
+  if (normalized === profile.emManutencaoTabId) return STATUS_UPDATE.rechamar;
   return undefined;
 }
 
 export function resolveAviacaoTabActionLabel(
   fromTabId: string | null | undefined,
-  toTabId: string
+  toTabId: string,
+  segmentoAplicado?: string | null
 ): string {
-  const to = getAviacaoStepLabel(normalizeAviacaoTabId(toTabId));
-  const from = fromTabId ? getAviacaoStepLabel(normalizeAviacaoTabId(fromTabId)) : null;
+  const to = getAviacaoStepLabel(normalizeAviacaoTabId(toTabId, segmentoAplicado), undefined, segmentoAplicado);
+  const from = fromTabId
+    ? getAviacaoStepLabel(normalizeAviacaoTabId(fromTabId, segmentoAplicado), undefined, segmentoAplicado)
+    : null;
   return from ? `Movido: ${from} → ${to}` : `Entrada: ${to}`;
 }
 
@@ -1095,34 +1163,36 @@ export type AviacaoHeaderActionState = {
   primaryAction: AviacaoHeaderPrimaryAction;
 };
 
-/** Rótulos e ênfase dos botões do painel superior conforme o estágio atual da aeronave. */
+/** Rótulos e ênfase dos botões do painel superior conforme o estágio atual do card MRO. */
 export function resolveAviacaoHeaderActionState(
-  tabId: string | null | undefined
+  tabId: string | null | undefined,
+  segmentoAplicado?: string | null
 ): AviacaoHeaderActionState {
-  const step = normalizeAviacaoTabId(tabId ?? AVIACAO_QUEUE_TAB.TRIAGEM);
+  const profile = mroProfileFor(segmentoAplicado);
+  const step = normalizeAviacaoTabId(tabId ?? profile.pipelineOrder[0], segmentoAplicado);
 
-  if (step === AVIACAO_QUEUE_TAB.LIBERADO) {
+  if (step === profile.liberadoTabId) {
     return {
-      chamarLabel: "Chamar p/ Hangar",
-      iniciarLabel: "Iniciar Operação",
-      finalizarLabel: "Finalizar",
+      chamarLabel: profile.headerChamarLabel,
+      iniciarLabel: profile.headerIniciarLabel,
+      finalizarLabel: profile.headerFinalizarLiberadoLabel,
       primaryAction: "finalizar",
     };
   }
 
-  if (step === AVIACAO_QUEUE_TAB.EM_MANUTENCAO) {
+  if (step === profile.emManutencaoTabId) {
     return {
-      chamarLabel: "Chamar p/ Hangar",
-      iniciarLabel: "Iniciar Operação",
-      finalizarLabel: "Liberar / Decolar",
+      chamarLabel: profile.headerChamarLabel,
+      iniciarLabel: profile.headerIniciarLabel,
+      finalizarLabel: profile.headerFinalizarLabel,
       primaryAction: "iniciar",
     };
   }
 
   return {
-    chamarLabel: "Chamar p/ Hangar",
-    iniciarLabel: "Iniciar Operação",
-    finalizarLabel: "Liberar / Decolar",
+    chamarLabel: profile.headerChamarLabel,
+    iniciarLabel: profile.headerIniciarLabel,
+    finalizarLabel: profile.headerFinalizarLabel,
     primaryAction: "chamar",
   };
 }
@@ -1148,6 +1218,37 @@ export const AVIACAO_REGISTER_FORM_LABELS: Record<
   showModelo: "Modelo da Aeronave",
   showUrgencia: "Urgência da Peça",
 };
+
+export function resolveMroRegisterFormLabels(
+  segmentoAplicado?: string | null
+): typeof AVIACAO_REGISTER_FORM_LABELS {
+  return mroProfileFor(segmentoAplicado).registerFormLabels;
+}
+
+export function resolveMroFieldLabels(segmentoAplicado?: string | null): {
+  prefixo: string;
+  modelo: string;
+  hangar: string;
+  responsavel: string;
+  hobbs: string;
+  combustivel: string;
+  avariaButton: string;
+  avariaPrompt: string;
+  avariaTimelineAction: string;
+} {
+  const profile = mroProfileFor(segmentoAplicado);
+  return {
+    prefixo: profile.categoryDisplayLabels["av-c3"] ?? "Prefixo da Aeronave",
+    modelo: profile.categoryDisplayLabels["av-c4"] ?? "Modelo da Aeronave",
+    hangar: profile.categoryDisplayLabels["av-c2"] ?? "Vaga / Hangar / Box",
+    responsavel: profile.categoryDisplayLabels["av-c1"] ?? "Responsável / Mecânico",
+    hobbs: profile.hobbsFieldLabel,
+    combustivel: profile.combustivelFieldLabel,
+    avariaButton: profile.avariaButtonLabel,
+    avariaPrompt: profile.avariaPrompt,
+    avariaTimelineAction: profile.avariaTimelineAction,
+  };
+}
 
 export type AviacaoCadastroFields = Partial<Record<string, string>>;
 
@@ -1390,7 +1491,13 @@ export function getAviacaoHangarLabel(
       categories,
       legacyCtx
     )?.trim() || null;
-  return label ? label.toUpperCase() : AVIACAO_HANGAR_UNALLOCATED_LABEL;
+  return label
+    ? label.toUpperCase()
+    : mroProfileFor(undefined).hangarUnallocatedLabel;
+}
+
+export function getAviacaoHangarUnallocatedLabel(segmentoAplicado?: string | null): string {
+  return mroProfileFor(segmentoAplicado).hangarUnallocatedLabel;
 }
 
 export function resolveAviacaoKanbanMeta(

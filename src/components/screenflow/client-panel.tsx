@@ -15,7 +15,8 @@ import {
   isAviacaoFreeTextField,
   isAviacaoObservacaoInlineField,
   isAviacaoRigidSelectField,
-  isAviacaoSegment,
+  isMroLogisticsSegment,
+  resolveMroFieldLabels,
   parseAviacaoCadastroFields,
   resolveAviacaoCategoryDisplay,
   resolveAviacaoCategoryLabel,
@@ -154,7 +155,8 @@ export const ClientPanel = memo(function ClientPanel({
     [profissionais, locais, servicos]
   );
   const docasMode = isDocasSegment(segmentoAplicado);
-  const aviacaoMode = isAviacaoSegment(segmentoAplicado);
+  const aviacaoMode = isMroLogisticsSegment(segmentoAplicado);
+  const mroFieldLabels = resolveMroFieldLabels(segmentoAplicado);
   const panelCategories = useMemo(() => {
     if (!aviacaoMode) return enabledCategories;
     const hidden = new Set<string>(AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS);
@@ -229,7 +231,7 @@ export const ClientPanel = memo(function ClientPanel({
   }
 
   function renderCategoryField(cat: CadastroCategoryEntry) {
-    const label = aviacaoMode ? resolveAviacaoCategoryLabel(cat) : cat.label;
+    const label = aviacaoMode ? resolveAviacaoCategoryLabel(cat, segmentoAplicado) : cat.label;
 
     if (docasMode && isDocasTextField(cat.id)) {
       return (
@@ -406,8 +408,11 @@ export const ClientPanel = memo(function ClientPanel({
   const selectedDisplayName = docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
 
   const aviacaoHeaderActions = useMemo(
-    () => (aviacaoMode && selected ? resolveAviacaoHeaderActionState(aviacaoCurrentTabId) : null),
-    [aviacaoMode, selected, aviacaoCurrentTabId]
+    () =>
+      aviacaoMode && selected
+        ? resolveAviacaoHeaderActionState(aviacaoCurrentTabId, segmentoAplicado)
+        : null,
+    [aviacaoMode, selected, aviacaoCurrentTabId, segmentoAplicado]
   );
 
   const primaryBtnClass =
@@ -544,7 +549,7 @@ export const ClientPanel = memo(function ClientPanel({
               onClick={onRegistrarAvaria}
               className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-amber-500 bg-amber-50 px-3 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/60"
             >
-              Registrar Avaria
+              {mroFieldLabels.avariaButton}
             </button>
           ) : (
             <button

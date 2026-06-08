@@ -456,6 +456,7 @@ type QueueSectionProps = {
   onDocasStepPrev?: () => void;
   onDocasStepNext?: () => void;
   aviacaoLogisticsActive?: boolean;
+  mroSegmentId?: string | null;
   aviacaoHangarLabel?: string | null;
   aviacaoCanGoPrev?: boolean;
   aviacaoCanGoNext?: boolean;
@@ -506,6 +507,7 @@ export function QueueSection({
   onDocasStepPrev,
   onDocasStepNext,
   aviacaoLogisticsActive = false,
+  mroSegmentId = null,
   aviacaoHangarLabel = null,
   aviacaoCanGoPrev = false,
   aviacaoCanGoNext = false,
@@ -532,8 +534,10 @@ export function QueueSection({
 
   const isTabActive = useCallback(
     (tabId: string) =>
-      aviacaoLogisticsActive ? isAviacaoQueueTabSelected(queueTabId, tabId) : queueTabId === tabId,
-    [aviacaoLogisticsActive, queueTabId]
+      aviacaoLogisticsActive
+        ? isAviacaoQueueTabSelected(queueTabId, tabId, mroSegmentId)
+        : queueTabId === tabId,
+    [aviacaoLogisticsActive, queueTabId, mroSegmentId]
   );
 
   const activeTab = useMemo(() => {
@@ -728,7 +732,9 @@ export function QueueSection({
           >
             {queueTabs.map((t) => {
               const count = tabCounts[t.id];
-              const tabLabel = aviacaoLogisticsActive ? resolveAviacaoKanbanColumnLabel(t) : t.label;
+              const tabLabel = aviacaoLogisticsActive
+                ? resolveAviacaoKanbanColumnLabel(t, mroSegmentId)
+                : t.label;
               const label = typeof count === "number" ? `${tabLabel} (${count})` : tabLabel;
               return (
                 <button
@@ -815,7 +821,7 @@ export function QueueSection({
               const cards = columnRows[tab.id] ?? [];
               const count = tabCounts[tab.id] ?? cards.length;
               const columnLabel = aviacaoLogisticsActive
-                ? resolveAviacaoKanbanColumnLabel(tab)
+                ? resolveAviacaoKanbanColumnLabel(tab, mroSegmentId)
                 : tab.label;
               return (
                 <section

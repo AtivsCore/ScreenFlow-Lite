@@ -16,9 +16,9 @@ import {
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
 import {
-  AVIACAO_REGISTER_FORM_LABELS,
-  isAviacaoSegment,
+  isMroLogisticsSegment,
   resolveAviacaoCrudTable,
+  resolveMroRegisterFormLabels,
 } from "@/lib/aviacao-logistics";
 import { isProPlan } from "@/lib/plan-tier";
 import { GoogleSheetsProSection } from "@/components/screenflow/google-sheets-pro-section";
@@ -80,12 +80,13 @@ export function SettingsHubModal({
   const [customTypeName, setCustomTypeName] = useState("");
 
   const prevOpenRef = useRef(false);
-  const aviacaoMode = isAviacaoSegment(config.segmentoAplicado);
+  const aviacaoMode = isMroLogisticsSegment(config.segmentoAplicado);
+  const mroRegisterLabels = resolveMroRegisterFormLabels(config.segmentoAplicado);
 
   function guardAviacaoRestore(): boolean {
     if (!aviacaoMode) return false;
     window.alert(
-      "No segmento Aviação (MRO), o reset padrão da clínica não se aplica. Re-aplique o preset de aviação em Configuração de Segmento para restaurar o fluxo com segurança."
+      "No segmento MRO (Aviação ou Oficina Automotiva), o reset padrão da clínica não se aplica. Re-aplique o preset do segmento em Configuração de Segmento para restaurar o fluxo com segurança."
     );
     onClose();
     onRequestSegmentConfig?.();
@@ -538,16 +539,16 @@ export function SettingsHubModal({
               <div className="grid gap-1.5 text-[10px] text-zinc-700 dark:text-zinc-300">
                 {(
                   [
-                    ["showClienteNome", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showClienteNome : "Nome do cliente"],
-                    ["showProfissional", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showProfissional : "Profissional (lista)"],
-                    ["showServico", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showServico : "Serviço (lista)"],
-                    ["showLocal", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showLocal : "Local (lista)"],
-                    ["showHoraMarcada", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showHoraMarcada : "Horário marcado"],
-                    ["showObservacao", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showObservacao : "Observações"],
+                    ["showClienteNome", aviacaoMode ? mroRegisterLabels.showClienteNome : "Nome do cliente"],
+                    ["showProfissional", aviacaoMode ? mroRegisterLabels.showProfissional : "Profissional (lista)"],
+                    ["showServico", aviacaoMode ? mroRegisterLabels.showServico : "Serviço (lista)"],
+                    ["showLocal", aviacaoMode ? mroRegisterLabels.showLocal : "Local (lista)"],
+                    ["showHoraMarcada", aviacaoMode ? mroRegisterLabels.showHoraMarcada : "Horário marcado"],
+                    ["showObservacao", aviacaoMode ? mroRegisterLabels.showObservacao : "Observações"],
                     ...(aviacaoMode
                       ? ([
-                          ["showModelo", AVIACAO_REGISTER_FORM_LABELS.showModelo],
-                          ["showUrgencia", AVIACAO_REGISTER_FORM_LABELS.showUrgencia],
+                          ["showModelo", mroRegisterLabels.showModelo],
+                          ["showUrgencia", mroRegisterLabels.showUrgencia],
                         ] as const)
                       : []),
                   ] as const

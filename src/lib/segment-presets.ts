@@ -1,4 +1,5 @@
 import { AVIACAO_QUEUE_TAB } from "@/lib/aviacao-logistics";
+import { AUTOMOTIVO_QUEUE_TAB } from "@/lib/mro-segment-profile";
 import { DOCAS_QUEUE_TAB } from "@/lib/docas-logistics";
 import {
   DEFAULT_CADASTRO_CATEGORIES,
@@ -21,7 +22,7 @@ export type SegmentPresetId =
   | "ti_reparo"
   | "docas"
   | "aviacao_mro"
-  | "oficinas_auto"
+  | "automotivo_mro"
   | "advocacia"
   | "saloes_beleza"
   | "cartorios"
@@ -52,6 +53,10 @@ function docasTab(id: string, label: string): QueueTabEntry {
 }
 
 function aviacaoTab(id: string, label: string): QueueTabEntry {
+  return { id, preset: "outros", label, customTypeLabel: label };
+}
+
+function automotivoTab(id: string, label: string): QueueTabEntry {
   return { id, preset: "outros", label, customTypeLabel: label };
 }
 
@@ -205,26 +210,28 @@ const AVIACAO = makePreset(
   { showClienteNome: false, showHoraMarcada: false, showObservacao: true, showModelo: true, showUrgencia: true }
 );
 
-const OFICINAS = makePreset(
-  "oficinas_auto",
+const AUTOMOTIVO = makePreset(
+  "automotivo_mro",
   "🚗",
   "Oficinas Mecânicas e Estética Automotiva",
-  "Cliente/Veículo, Mecânico/Detalhador, Elevador/Box, Tipo de Serviço, Seguradora/Particular",
-  "Orçamento → Aguardando Peça → Na Valeta → Lavagem → Pronto para Entrega",
+  "Mecânico / Detalhador, Elevador / Box Ocupado, Placa do Veículo, Marca / Modelo do Carro, Urgência da Peça",
+  "Triagem / Check-in → Orçamento → Aguardando Peças → Em Manutenção → Lavagem / Estética → Pronto / Retirada",
   [
-    cat("of-c1", "Cliente/Veículo", "locais"),
-    cat("of-c2", "Mecânico/Detalhador", "profissionais"),
-    cat("of-c3", "Elevador/Box", "locais"),
-    cat("of-c4", "Tipo de Serviço", "servicos"),
-    cat("of-c5", "Seguradora/Particular", "servicos"),
+    cat("av-c1", "Mecânico / Detalhador", "profissionais"),
+    cat("av-c2", "Elevador / Box Ocupado", "locais"),
+    cat("av-c3", "Placa do Veículo", "servicos"),
+    cat("av-c4", "Marca / Modelo do Carro", "servicos"),
+    cat("av-c5", "Urgência da Peça", "servicos"),
   ],
   [
-    flowTab("of-t1", "Orçamento"),
-    flowTab("of-t2", "Aguardando Peça"),
-    flowTab("of-t3", "Na Valeta"),
-    flowTab("of-t4", "Lavagem"),
-    flowTab("of-t5", "Pronto para Entrega"),
-  ]
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.TRIAGEM, "Triagem / Check-in"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.ORCAMENTO, "Orçamento"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.AGUARDANDO_PECAS, "Aguardando Peças"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO, "Em Manutenção"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.LAVAGEM_ESTETICA, "Lavagem / Estética"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA, "Pronto / Retirada"),
+  ],
+  { showClienteNome: true, showHoraMarcada: false, showObservacao: true, showModelo: true, showUrgencia: true }
 );
 
 const ADVOCACIA = makePreset(
@@ -339,7 +346,7 @@ export const SEGMENT_PRESETS: SegmentPresetMeta[] = [
   TI_REPARO,
   DOCAS,
   AVIACAO,
-  OFICINAS,
+  AUTOMOTIVO,
   ADVOCACIA,
   SALOES,
   CARTORIOS,
@@ -361,8 +368,10 @@ const ALIAS_TO_ID: Record<string, SegmentPresetId> = {
   ti_reparo: "ti_reparo",
   docas: "docas",
   aviacao_mro: "aviacao_mro",
-  oficinas_auto: "oficinas_auto",
-  oficinas: "oficinas_auto",
+  automotivo_mro: "automotivo_mro",
+  oficinas_auto: "automotivo_mro",
+  oficinas: "automotivo_mro",
+  "oficinas mecanicas e estetica automotiva": "automotivo_mro",
   advocacia: "advocacia",
   saloes_beleza: "saloes_beleza",
   cartorios: "cartorios",

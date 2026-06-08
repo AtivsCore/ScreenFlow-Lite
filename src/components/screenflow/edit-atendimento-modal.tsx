@@ -24,7 +24,9 @@ import {
   formatAviacaoTimelineLine,
   hydrateAviacaoHangarSelectValue,
   hydrateAviacaoResponsavelValue,
-  isAviacaoSegment,
+  isMroLogisticsSegment,
+  resolveMroFieldLabels,
+  resolveMroRegisterFormLabels,
   looksLikeAviacaoUuid,
   mergeAviacaoObservacao,
   parseAviacaoAnexos,
@@ -116,7 +118,9 @@ function EditAtendimentoForm({
   const rf = tenantConfig.registerForm;
   const law = tenantConfig.priorityLawEnabled;
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
-  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
+  const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
+  const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
+  const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const queueTabs = useMemo(
     () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
     [aviacaoMode, tenantConfig]
@@ -348,7 +352,7 @@ function EditAtendimentoForm({
     return (
       <>
         <label className={LABEL_CLASS}>
-          Prefixo da Aeronave
+          {mroFieldLabels.prefixo}
           {REQUIRED_MARK}
           <input
             type="text"
@@ -362,7 +366,7 @@ function EditAtendimentoForm({
 
         {aviacaoFields.showModelo ? (
           <label className={LABEL_CLASS}>
-            Modelo da Aeronave
+            {mroFieldLabels.modelo}
             <input
               type="text"
               value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
@@ -376,7 +380,7 @@ function EditAtendimentoForm({
 
         {aviacaoFields.showClienteNome ? (
           <label className={LABEL_CLASS}>
-            Nome do Cliente / Operador
+            {mroRegisterLabels.showClienteNome}
             <input
               type="text"
               value={nomeCliente}
@@ -390,7 +394,7 @@ function EditAtendimentoForm({
 
         {aviacaoFields.showProfissional ? (
           <label className={LABEL_CLASS}>
-            Responsável / Mecânico
+            {mroFieldLabels.responsavel}
             <input
               type="text"
               value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
@@ -418,7 +422,7 @@ function EditAtendimentoForm({
 
         {aviacaoFields.showHangar ? (
           <label className={LABEL_CLASS}>
-            Vaga / Hangar / Box
+            {mroFieldLabels.hangar}
             {REQUIRED_MARK}
             <select
               value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
@@ -437,7 +441,7 @@ function EditAtendimentoForm({
         ) : null}
 
         <label className={LABEL_CLASS}>
-          Horas de Voo (Hobbs)
+          {mroFieldLabels.hobbs}
           {REQUIRED_MARK}
           <input
             type="text"
@@ -450,7 +454,7 @@ function EditAtendimentoForm({
         </label>
 
         <label className={LABEL_CLASS}>
-          Nível de Combustível
+          {mroFieldLabels.combustivel}
           {REQUIRED_MARK}
           <select
             value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
@@ -543,10 +547,14 @@ function EditAtendimentoForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (aviacaoMode && aviacaoFields) {
-      const requiredErr = validateAviacaoRequiredFormValues(formValues, {
-        showHangar: aviacaoFields.showHangar,
-        showServicos: aviacaoFields.showServicos,
-      });
+      const requiredErr = validateAviacaoRequiredFormValues(
+        formValues,
+        {
+          showHangar: aviacaoFields.showHangar,
+          showServicos: aviacaoFields.showServicos,
+        },
+        tenantConfig.segmentoAplicado
+      );
       if (requiredErr) {
         setError(requiredErr);
         return;
@@ -613,8 +621,12 @@ function EditAtendimentoForm({
       let fieldsWithTimeline = aviacaoFields;
       if (toTabId && fromTabId !== toTabId) {
         fieldsWithTimeline = appendAviacaoTimelineEntry(fieldsWithTimeline, {
-          action: resolveAviacaoTabActionLabel(fromTabId, toTabId),
-          user: resolveAviacaoTimelineBaseLabel(row.tenant_id, aviacaoBaseOptions),
+          action: resolveAviacaoTabActionLabel(fromTabId, toTabId, tenantConfig.segmentoAplicado),
+          user: resolveAviacaoTimelineBaseLabel(
+            row.tenant_id,
+            aviacaoBaseOptions,
+            tenantConfig.segmentoAplicado
+          ),
         });
       }
 
@@ -910,7 +922,9 @@ export function EditAtendimentoModal({
   allowFullDatetime = false,
   onSaved,
 }: EditAtendimentoModalProps) {
-  const aviacaoMode = isAviacaoSegment(tenantConfig.segmentoAplicado);
+  const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
+  const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
+  const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   return (
     <Modal
       open={open}

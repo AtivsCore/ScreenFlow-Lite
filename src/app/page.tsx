@@ -54,8 +54,10 @@ import {
   findAviacaoQueueTabById,
   getAviacaoActiveColumns,
   getAviacaoHangarLabel,
-  isAviacaoSegment,
+  isMroLogisticsSegment,
   mergeAviacaoObservacao,
+  resolveMroFieldLabels,
+  resolveMroProfile,
   parseAviacaoCadastroFields,
   parseAviacaoFilaTabId,
   resolveAviacaoQuickCrudConfig,
@@ -188,7 +190,12 @@ export default function Home() {
   const [aviacaoSelectedHangarIds, setAviacaoSelectedHangarIds] = useState<string[]>([]);
 
   const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
-  const aviacaoLogisticsActive = isAviacaoSegment(tenantConfig.segmentoAplicado);
+  const aviacaoLogisticsActive = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
+  const mroSegmentId = tenantConfig.segmentoAplicado;
+  const mroFieldLabels = useMemo(
+    () => resolveMroFieldLabels(mroSegmentId),
+    [mroSegmentId]
+  );
 
   const defaultTenantId = sessionTenantId ?? tenantIdFromRows ?? ENV_TENANT_ID ?? fallbackTenantId;
   const effectiveTenantId =
@@ -242,13 +249,13 @@ export default function Home() {
   }, [supabase, aviacaoLogisticsActive]);
 
   const openAviacaoQuickCrud = useCallback((kind: "hangar" | "servicos") => {
-    const cfg = resolveAviacaoQuickCrudConfig(kind);
+    const cfg = resolveAviacaoQuickCrudConfig(kind, mroSegmentId);
     setQuickCrud({
       title: cfg.title,
       table: cfg.table,
       categoryId: cfg.categoryId,
     });
-  }, []);
+  }, [mroSegmentId]);
 
   const handleAviacaoBaseQuickAdd = useCallback(() => {
     if (!canCreateAviacaoBase(aviacaoTenantOptions.length, proActive)) {
@@ -407,10 +414,10 @@ export default function Home() {
     const ids = visible.map((t) => t.id);
     if (!ids.length) return;
     const matches = aviacaoLogisticsActive
-      ? isAviacaoQueueTabIdInVisible(queueTabId, ids)
+      ? isAviacaoQueueTabIdInVisible(queueTabId, ids, mroSegmentId)
       : ids.includes(queueTabId);
     if (!matches) setQueueTabId(ids[0]!);
-  }, [tenantConfig, queueTabId, aviacaoLogisticsActive]);
+  }, [tenantConfig, queueTabId, aviacaoLogisticsActive, mroSegmentId]);
 
   const visibleQueueTabs = useMemo(
     () =>
@@ -433,12 +440,12 @@ export default function Home() {
           const row = rows.find((r) => r.id === id);
           if (row) {
             const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, aviacaoActiveColumns);
-            if (tabId) setQueueTabId(normalizeAviacaoTabId(tabId));
+            if (tabId) setQueueTabId(normalizeAviacaoTabId(tabId, mroSegmentId));
           }
         }
       });
     },
-    [startTransition, aviacaoLogisticsActive, aviacaoActiveColumns, rows]
+    [startTransition, aviacaoLogisticsActive, aviacaoActiveColumns, rows, mroSegmentId]
   );
 
   const queueDisplayRows = useMemo(() => {
@@ -884,7 +891,7 @@ export default function Home() {
 
       const action =
         opts?.action ??
-        resolveAviacaoTabActionLabel(fromTabId, targetTabId);
+        resolveAviacaoTabActionLabel(fromTabId, targetTabId, mroSegmentId);
       aviacaoFields = appendAviacaoTimelineEntry(aviacaoFields, {
         action,
         user: baseLabel,
@@ -902,40 +909,56 @@ export default function Home() {
       if (status) patch.status = status;
       await patchAtendimento(patch);
     },
-    [selectedId, selected, visibleQueueTabs, patchAtendimento, effectiveTenantId, aviacaoTenantOptions]
+    [selectedId, selected, visibleQueueTabs, patchAtendimento, effectiveTenantId, aviacaoTenantOptions, mroSegmentId]
   );
 
   const registerAviacaoAvaria = useCallback(async () => {
     if (!selectedId || !selected) return;
-    const detail = window.prompt("Descreva a avaria registrada:", "");
+    const detail = window.prompt(mroFieldLabels.avariaPrompt, "");
     if (!detail?.trim()) return;
 
     const baseLabel = resolveAviacaoTimelineBaseLabel(
       selected.tenant_id ?? effectiveTenantId,
-      aviacaoTenantOptions
+      aviacaoTenantOptions,
+      mroSegmentId
     );
 
     const aviacaoFields = appendAviacaoTimelineEntry(
       parseAviacaoCadastroFields(selected.observacao),
-      { action: "Avaria registrada", user: baseLabel, detail: detail.trim() }
+      { action: mroFieldLabels.avariaTimelineAction, user: baseLabel, detail: detail.trim() }
     );
     const observacao = mergeAviacaoObservacao({
       current: selected.observacao,
       aviacaoFields,
       preserveTabWhenUnset: true,
-      userObservacaoText: appendAviacaoAvariaToObservacaoText(selected.observacao, detail.trim()),
+      userObservacaoText: appendAviacaoAvariaToObservacaoText(
+        selected.observacao,
+        detail.trim(),
+        mroSegmentId
+      ),
     });
     await patchAtendimento({ observacao });
-  }, [selectedId, selected, effectiveTenantId, aviacaoTenantOptions, patchAtendimento]);
+  }, [
+    selectedId,
+    selected,
+    effectiveTenantId,
+    aviacaoTenantOptions,
+    patchAtendimento,
+    mroFieldLabels,
+    mroSegmentId,
+  ]);
 
   const shiftSelectedAviacaoStep = useCallback(
     (delta: -1 | 1) => {
       if (!selectedAviacaoTabId || aviacaoActiveColumns.length === 0) return;
       const target = shiftAviacaoTabQuick(selectedAviacaoTabId, delta, aviacaoActiveColumns);
       if (!target) return;
-      void advanceAviacaoLogistics(target, aviacaoStepTvStatus(normalizeAviacaoTabId(target)));
+      void advanceAviacaoLogistics(
+        target,
+        aviacaoStepTvStatus(normalizeAviacaoTabId(target, mroSegmentId), mroSegmentId)
+      );
     },
-    [selectedAviacaoTabId, aviacaoActiveColumns, advanceAviacaoLogistics]
+    [selectedAviacaoTabId, aviacaoActiveColumns, advanceAviacaoLogistics, mroSegmentId]
   );
 
   useEffect(() => {
@@ -1056,10 +1079,11 @@ export default function Home() {
         if (docasLogisticsActive) {
           void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
         } else if (aviacaoLogisticsActive) {
-          if (normalizeAviacaoTabId(selectedAviacaoTabId) === AVIACAO_QUEUE_TAB.LIBERADO) {
+          const liberadoTabId = resolveMroProfile(mroSegmentId).liberadoTabId;
+          if (normalizeAviacaoTabId(selectedAviacaoTabId, mroSegmentId) === liberadoTabId) {
             void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
           } else {
-            void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.LIBERADO, "Aguardando");
+            void advanceAviacaoLogistics(liberadoTabId, "Aguardando");
           }
         } else {
           setFinalizeOpen(true);
@@ -1187,10 +1211,11 @@ export default function Home() {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
               } else if (aviacaoLogisticsActive) {
-                if (normalizeAviacaoTabId(selectedAviacaoTabId) === AVIACAO_QUEUE_TAB.LIBERADO) {
+                const liberadoTabId = resolveMroProfile(mroSegmentId).liberadoTabId;
+                if (normalizeAviacaoTabId(selectedAviacaoTabId, mroSegmentId) === liberadoTabId) {
                   void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
                 } else {
-                  void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.LIBERADO, "Aguardando");
+                  void advanceAviacaoLogistics(liberadoTabId, "Aguardando");
                 }
               } else {
                 setFinalizeOpen(true);
@@ -1265,6 +1290,7 @@ export default function Home() {
               onDocasStepPrev={() => shiftSelectedDocasStep(-1)}
               onDocasStepNext={() => shiftSelectedDocasStep(1)}
               aviacaoLogisticsActive={aviacaoLogisticsActive}
+              mroSegmentId={mroSegmentId}
               aviacaoHangarLabel={selectedAviacaoHangarLabel}
               aviacaoCanGoPrev={canShiftAviacaoTabQuick(selectedAviacaoTabId, -1, aviacaoActiveColumns)}
               aviacaoCanGoNext={canShiftAviacaoTabQuick(selectedAviacaoTabId, 1, aviacaoActiveColumns)}
@@ -1405,13 +1431,13 @@ export default function Home() {
         initialMainTab={settingsInitialTab}
         onConfigUpdated={(c) => {
           setTenantConfig(c);
-          const aviacao = isAviacaoSegment(c.segmentoAplicado);
-          const visible = aviacao ? resolveAviacaoQueueTabs(c) : resolveVisibleQueueTabs(c);
+          const mro = isMroLogisticsSegment(c.segmentoAplicado);
+          const visible = mro ? resolveAviacaoQueueTabs(c) : resolveVisibleQueueTabs(c);
           const ids = visible.map((t) => t.id);
           if (ids.length) {
             setQueueTabId((current) => {
-              const matches = aviacao
-                ? isAviacaoQueueTabIdInVisible(current, ids)
+              const matches = mro
+                ? isAviacaoQueueTabIdInVisible(current, ids, c.segmentoAplicado)
                 : ids.includes(current);
               return matches ? current : ids[0]!;
             });
