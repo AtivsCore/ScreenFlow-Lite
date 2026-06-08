@@ -7,6 +7,7 @@ import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
 import {
   formatAviacaoObservacaoForDisplay,
+  normalizeAviacaoTabId,
   resolveAviacaoCategoryDisplay,
   resolveAviacaoKanbanColumnLabel,
   resolveAviacaoKanbanMeta,
@@ -19,7 +20,7 @@ import { AviacaoQueueFilterPopover } from "@/components/screenflow/aviacao-queue
 import { DocasStatusStepper } from "@/components/screenflow/docas-status-stepper";
 import type { DocasQueueTabId } from "@/lib/docas-logistics";
 import { Columns3, Eye, EyeOff, LayoutList, MessageSquareText, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 
@@ -528,10 +529,18 @@ export function QueueSection({
 
   const flowTabs = useMemo(() => queueTabs.filter((t) => t.preset !== "todos"), [queueTabs]);
 
-  const activeTab = useMemo(
-    () => queueTabs.find((t) => t.id === queueTabId) ?? queueTabs[0],
-    [queueTabs, queueTabId]
+  const isTabActive = useCallback(
+    (tabId: string) =>
+      aviacaoLogisticsActive
+        ? normalizeAviacaoTabId(queueTabId) === normalizeAviacaoTabId(tabId)
+        : queueTabId === tabId,
+    [aviacaoLogisticsActive, queueTabId]
   );
+
+  const activeTab = useMemo(() => {
+    const direct = queueTabs.find((t) => isTabActive(t.id));
+    return direct ?? queueTabs[0];
+  }, [queueTabs, isTabActive]);
 
   const listRows = useMemo(() => {
     const tab = activeTab ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" };
@@ -725,10 +734,10 @@ export function QueueSection({
                   key={t.id}
                   type="button"
                   role="tab"
-                  aria-selected={queueTabId === t.id}
-                  onClick={() => onQueueTabId(t.id)}
+                  aria-selected={isTabActive(t.id)}
+                  onClick={() => onQueueTabId(aviacaoLogisticsActive ? normalizeAviacaoTabId(t.id) : t.id)}
                   className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium transition ${
-                    queueTabId === t.id
+                    isTabActive(t.id)
                       ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
                       : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
                   }`}

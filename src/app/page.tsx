@@ -398,10 +398,16 @@ export default function Home() {
   ]);
 
   useEffect(() => {
-    const visible = resolveVisibleQueueTabs(tenantConfig);
+    const visible = aviacaoLogisticsActive
+      ? resolveAviacaoQueueTabs(tenantConfig)
+      : resolveVisibleQueueTabs(tenantConfig);
     const ids = visible.map((t) => t.id);
-    if (ids.length && !ids.includes(queueTabId)) setQueueTabId(ids[0]!);
-  }, [tenantConfig, queueTabId]);
+    if (!ids.length) return;
+    const matches = aviacaoLogisticsActive
+      ? ids.some((id) => normalizeAviacaoTabId(id) === normalizeAviacaoTabId(queueTabId))
+      : ids.includes(queueTabId);
+    if (!matches) setQueueTabId(ids[0]!);
+  }, [tenantConfig, queueTabId, aviacaoLogisticsActive]);
 
   const visibleQueueTabs = useMemo(
     () =>
@@ -424,7 +430,7 @@ export default function Home() {
           const row = rows.find((r) => r.id === id);
           if (row) {
             const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, aviacaoActiveColumns);
-            if (tabId) setQueueTabId(tabId);
+            if (tabId) setQueueTabId(normalizeAviacaoTabId(tabId));
           }
         }
       });
@@ -939,20 +945,6 @@ export default function Home() {
     },
     [selectedAviacaoTabId, aviacaoActiveColumns, advanceAviacaoLogistics]
   );
-
-  useEffect(() => {
-    if (!docasLogisticsActive || !selected) return;
-    const step = resolveDocasStepFromObservacao(selected.observacao);
-    if (tenantConfig.queueTabs.some((t) => t.id === step)) {
-      setQueueTabId(step);
-    }
-  }, [docasLogisticsActive, selected, tenantConfig.queueTabs]);
-
-  useEffect(() => {
-    if (!aviacaoLogisticsActive || !selected || aviacaoActiveColumns.length === 0) return;
-    const tabId = resolveAviacaoTabIdFromObservacao(selected.observacao, aviacaoActiveColumns);
-    if (tabId) setQueueTabId(tabId);
-  }, [aviacaoLogisticsActive, selected, aviacaoActiveColumns]);
 
   useEffect(() => {
     if (!sessionReady || envMissing || appView !== "fila" || !docasLogisticsActive) return;

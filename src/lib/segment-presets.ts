@@ -184,7 +184,7 @@ const AVIACAO = makePreset(
   "aviacao_mro",
   "✈️",
   "Aviação e Logística de Manutenção (MRO)",
-  "Responsável / Mecânico, Vaga / Hangar, Prefixo da Aeronave, Modelo, Urgência da Peça",
+  "Responsável / Mecânico, Vaga / Hangar / Box Alocado, Prefixo da Aeronave, Modelo, Urgência da Peça",
   "Triagem → Em Manutenção → Aguardando Peças → Inspeção/QC → Teste de Voo → Estética → Liberado",
   [
     cat("av-c1", "Responsável / Mecânico", "profissionais"),
@@ -202,7 +202,7 @@ const AVIACAO = makePreset(
     aviacaoTab(AVIACAO_QUEUE_TAB.ESTETICA_LAVAGEM, "Estética / Lavagem"),
     aviacaoTab(AVIACAO_QUEUE_TAB.LIBERADO, "Liberado / Pronto"),
   ],
-  { showClienteNome: false, showHoraMarcada: false, showObservacao: true }
+  { showClienteNome: false, showHoraMarcada: false, showObservacao: true, showModelo: true, showUrgencia: true }
 );
 
 const OFICINAS = makePreset(

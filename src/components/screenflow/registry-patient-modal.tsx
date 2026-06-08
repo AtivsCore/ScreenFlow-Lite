@@ -34,6 +34,7 @@ import {
   isAviacaoSegment,
   parseAviacaoServicosSolicitados,
   resolveAviacaoQueueTabs,
+  resolveAviacaoRegisterFieldVisibility,
   resolveAviacaoSelectOptions,
   resolveAviacaoServicosSolicitadosOptions,
   serializeAviacaoServicosSolicitados,
@@ -91,6 +92,13 @@ export function RegistryPatientModal({
   const queueTabs = useMemo(
     () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
     [aviacaoMode, tenantConfig]
+  );
+  const aviacaoFields = useMemo(
+    () =>
+      aviacaoMode
+        ? resolveAviacaoRegisterFieldVisibility(rf, tenantConfig.cadastroCategories)
+        : null,
+    [aviacaoMode, rf, tenantConfig.cadastroCategories]
   );
 
   const [error, setError] = useState<string | null>(null);
@@ -356,8 +364,11 @@ export function RegistryPatientModal({
         return;
       }
     }
-    if (aviacaoMode) {
-      const requiredErr = validateAviacaoRequiredFormValues(formValues);
+    if (aviacaoMode && aviacaoFields) {
+      const requiredErr = validateAviacaoRequiredFormValues(formValues, {
+        showHangar: aviacaoFields.showHangar,
+        showServicos: aviacaoFields.showServicos,
+      });
       if (requiredErr) {
         setError(requiredErr);
         return;
@@ -442,7 +453,10 @@ export function RegistryPatientModal({
       };
 
       const wantsHora =
-        docasMode || aviacaoMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
+        docasMode ||
+        (aviacaoMode && rf.showHoraMarcada) ||
+        triagemTab?.preset === "hora" ||
+        (!aviacaoMode && rf.showHoraMarcada);
       if (wantsHora && horaMarcada.trim()) {
         payload.hora_marcada = buildHoraMarcadaTodayIso(horaMarcada);
       } else if (!docasMode && !aviacaoMode && triagemTab?.preset === "encaixe") {
@@ -488,6 +502,7 @@ export function RegistryPatientModal({
       rf.showObservacao;
 
   function renderAviacaoRegistryForm() {
+    if (!aviacaoFields) return null;
     return (
       <>
         <label className={REGISTRY_LABEL_CLASS}>
@@ -503,71 +518,81 @@ export function RegistryPatientModal({
           />
         </label>
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          Modelo da Aeronave
-          <input
-            type="text"
-            value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchAviacaoField(AVIACAO_MODELO_CATEGORY_ID, e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-            autoComplete="off"
-          />
-        </label>
+        {aviacaoFields.showModelo ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            Modelo da Aeronave
+            <input
+              type="text"
+              value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchAviacaoField(AVIACAO_MODELO_CATEGORY_ID, e.target.value)}
+              className={REGISTRY_FIELD_CLASS}
+              autoComplete="off"
+            />
+          </label>
+        ) : null}
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          Nome do Cliente / Operador
-          <input
-            type="text"
-            value={nomeCliente}
-            disabled={busy}
-            onChange={(e) => setNomeCliente(e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-            autoComplete="off"
-          />
-        </label>
+        {aviacaoFields.showClienteNome ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            Nome do Cliente / Operador
+            <input
+              type="text"
+              value={nomeCliente}
+              disabled={busy}
+              onChange={(e) => setNomeCliente(e.target.value)}
+              className={REGISTRY_FIELD_CLASS}
+              autoComplete="off"
+            />
+          </label>
+        ) : null}
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          Responsável / Mecânico
-          <input
-            type="text"
-            value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchAviacaoField(AVIACAO_RESPONSAVEL_CATEGORY_ID, e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-            autoComplete="off"
-          />
-        </label>
+        {aviacaoFields.showProfissional ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            Responsável / Mecânico
+            <input
+              type="text"
+              value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchAviacaoField(AVIACAO_RESPONSAVEL_CATEGORY_ID, e.target.value)}
+              className={REGISTRY_FIELD_CLASS}
+              autoComplete="off"
+            />
+          </label>
+        ) : null}
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          Urgência da Peça
-          <input
-            type="text"
-            value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchAviacaoField(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-            autoComplete="off"
-          />
-        </label>
+        {aviacaoFields.showUrgencia ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            Urgência da Peça
+            <input
+              type="text"
+              value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchAviacaoField(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, e.target.value)}
+              className={REGISTRY_FIELD_CLASS}
+              autoComplete="off"
+            />
+          </label>
+        ) : null}
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          Vaga / Hangar / Box
-          {REGISTRY_REQUIRED_MARK}
-          <select
-            value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchAviacaoField(AVIACAO_HANGAR_CATEGORY_ID, e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-          >
-            <option value="">—</option>
-            {aviacaoHangarOptions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nome ?? m.id}
-              </option>
-            ))}
-          </select>
-        </label>
+        {aviacaoFields.showHangar ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            Vaga / Hangar / Box
+            {REGISTRY_REQUIRED_MARK}
+            <select
+              value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchAviacaoField(AVIACAO_HANGAR_CATEGORY_ID, e.target.value)}
+              className={REGISTRY_FIELD_CLASS}
+            >
+              <option value="">—</option>
+              {aviacaoHangarOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome ?? m.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label className={REGISTRY_LABEL_CLASS}>
           Horas de Voo (Hobbs)
@@ -600,49 +625,53 @@ export function RegistryPatientModal({
           </select>
         </label>
 
-        <fieldset className={REGISTRY_LABEL_CLASS}>
-          <legend className="mb-1">
-            Serviços Solicitados
-            {REGISTRY_REQUIRED_MARK}
-          </legend>
-          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
-            {aviacaoServicosOptions.length > 0 ? (
-              aviacaoServicosOptions.map((svc) => (
-                <label
-                  key={svc.id}
-                  className="inline-flex cursor-pointer items-center gap-2 font-normal"
-                >
-                  <input
-                    type="checkbox"
-                    checked={aviacaoServicosSelected.includes(svc.id)}
-                    disabled={busy}
-                    onChange={() => toggleAviacaoServico(svc.id)}
-                    className="size-3.5 rounded border-zinc-300"
-                  />
-                  {svc.nome ?? svc.id}
-                </label>
-              ))
-            ) : (
-              <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
-                Cadastre serviços na base ativa para habilitar esta seleção.
-              </p>
-            )}
-          </div>
-        </fieldset>
+        {aviacaoFields.showServicos ? (
+          <fieldset className={REGISTRY_LABEL_CLASS}>
+            <legend className="mb-1">
+              Serviços Solicitados
+              {REGISTRY_REQUIRED_MARK}
+            </legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+              {aviacaoServicosOptions.length > 0 ? (
+                aviacaoServicosOptions.map((svc) => (
+                  <label
+                    key={svc.id}
+                    className="inline-flex cursor-pointer items-center gap-2 font-normal"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={aviacaoServicosSelected.includes(svc.id)}
+                      disabled={busy}
+                      onChange={() => toggleAviacaoServico(svc.id)}
+                      className="size-3.5 rounded border-zinc-300"
+                    />
+                    {svc.nome ?? svc.id}
+                  </label>
+                ))
+              ) : (
+                <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
+                  Cadastre serviços na base ativa para habilitar esta seleção.
+                </p>
+              )}
+            </div>
+          </fieldset>
+        ) : null}
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          <span className="flex items-center gap-1.5">
-            <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
-            ETA — Horário estimado de pouso
-          </span>
-          <input
-            type="time"
-            value={horaMarcada}
-            disabled={busy}
-            onChange={(e) => setHoraMarcada(e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-          />
-        </label>
+        {aviacaoFields.showHoraMarcada ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            <span className="flex items-center gap-1.5">
+              <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
+              ETA — Horário estimado de pouso
+            </span>
+            <input
+              type="time"
+              value={horaMarcada}
+              disabled={busy}
+              onChange={(e) => setHoraMarcada(e.target.value)}
+              className={REGISTRY_FIELD_CLASS}
+            />
+          </label>
+        ) : null}
 
         <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-700">
           <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-200">Anexos / Arquivos</p>
@@ -722,16 +751,18 @@ export function RegistryPatientModal({
           )}
         </div>
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          Observações
-          <textarea
-            value={observacaoBase}
-            disabled={busy}
-            onChange={(e) => setObservacaoBase(e.target.value)}
-            rows={3}
-            className={`${REGISTRY_FIELD_CLASS} resize-none`}
-          />
-        </label>
+        {aviacaoFields.showObservacao ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            Observações
+            <textarea
+              value={observacaoBase}
+              disabled={busy}
+              onChange={(e) => setObservacaoBase(e.target.value)}
+              rows={3}
+              className={`${REGISTRY_FIELD_CLASS} resize-none`}
+            />
+          </label>
+        ) : null}
       </>
     );
   }

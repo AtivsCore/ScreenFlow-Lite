@@ -14,7 +14,12 @@ import {
 import { STATUS_UPDATE, type QueueTabId } from "@/lib/atendimentos-lite";
 import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
-import type { CadastroCategoryEntry, QueueTabEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
+import type {
+  CadastroCategoryEntry,
+  QueueTabEntry,
+  RegisterFormConfig,
+  ResolvedTenantConfig,
+} from "@/lib/tenant-config";
 import { TODOS_QUEUE_TAB } from "@/lib/tenant-config";
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 
@@ -228,13 +233,45 @@ export const AVIACAO_REGISTRY_REQUIRED_FIELD_IDS = [
 
 export const AVIACAO_REQUIRED_CATEGORY_IDS = ["av-c3", AVIACAO_FIELD_HOBBS, AVIACAO_FIELD_COMBUSTIVEL] as const;
 
+export type AviacaoRegisterFieldVisibility = {
+  showHangar: boolean;
+  showServicos: boolean;
+};
+
+export function resolveAviacaoRegisterFieldVisibility(
+  rf: RegisterFormConfig,
+  categories: CadastroCategoryEntry[]
+): {
+  showClienteNome: boolean;
+  showProfissional: boolean;
+  showServicos: boolean;
+  showHangar: boolean;
+  showHoraMarcada: boolean;
+  showObservacao: boolean;
+  showModelo: boolean;
+  showUrgencia: boolean;
+} {
+  const catEnabled = (id: string) => categories.some((c) => c.id === id && c.enabled);
+  return {
+    showClienteNome: rf.showClienteNome,
+    showProfissional: rf.showProfissional,
+    showServicos: rf.showServico,
+    showHangar: rf.showLocal,
+    showHoraMarcada: rf.showHoraMarcada,
+    showObservacao: rf.showObservacao,
+    showModelo: rf.showModelo ?? catEnabled(AVIACAO_MODELO_CATEGORY_ID),
+    showUrgencia: rf.showUrgencia ?? catEnabled(AVIACAO_INLINE_OBSERVACAO_FIELD_ID),
+  };
+}
+
 export function validateAviacaoRequiredFormValues(
-  formValues: Record<string, string>
+  formValues: Record<string, string>,
+  visibility: AviacaoRegisterFieldVisibility = { showHangar: true, showServicos: true }
 ): string | null {
   if (!formValues[AVIACAO_PREFIXO_CATEGORY_ID]?.trim()) {
     return "Prefixo da Aeronave é obrigatório.";
   }
-  if (!formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()) {
+  if (visibility.showHangar && !formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()) {
     return "Vaga / Hangar / Box é obrigatório.";
   }
   if (!formValues[AVIACAO_FIELD_HOBBS]?.trim()) {
@@ -243,7 +280,10 @@ export function validateAviacaoRequiredFormValues(
   if (!formValues[AVIACAO_FIELD_COMBUSTIVEL]?.trim()) {
     return "Nível de Combustível é obrigatório.";
   }
-  if (parseAviacaoServicosSolicitados(formValues[AVIACAO_FIELD_SERVICOS]).length === 0) {
+  if (
+    visibility.showServicos &&
+    parseAviacaoServicosSolicitados(formValues[AVIACAO_FIELD_SERVICOS]).length === 0
+  ) {
     return "Selecione ao menos um serviço solicitado.";
   }
   return null;
@@ -1029,7 +1069,9 @@ export const AVIACAO_REGISTER_FORM_LABELS: Record<
   | "showServico"
   | "showLocal"
   | "showHoraMarcada"
-  | "showObservacao",
+  | "showObservacao"
+  | "showModelo"
+  | "showUrgencia",
   string
 > = {
   showClienteNome: "Nome do Cliente / Operador",
@@ -1038,6 +1080,8 @@ export const AVIACAO_REGISTER_FORM_LABELS: Record<
   showLocal: "Vaga / Hangar / Box Alocado",
   showHoraMarcada: "ETA (Horário estimado de pouso)",
   showObservacao: "Observações",
+  showModelo: "Modelo da Aeronave",
+  showUrgencia: "Urgência da Peça",
 };
 
 export type AviacaoCadastroFields = Partial<Record<string, string>>;

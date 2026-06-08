@@ -34,6 +34,7 @@ import {
   parseAviacaoTimeline,
   resolveAviacaoHangarIdFromRow,
   resolveAviacaoQueueTabs,
+  resolveAviacaoRegisterFieldVisibility,
   resolveAviacaoSelectOptions,
   resolveAviacaoServicosSolicitadosOptions,
   resolveAviacaoTabActionLabel,
@@ -105,6 +106,13 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   const queueTabs = useMemo(
     () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
     [aviacaoMode, tenantConfig]
+  );
+  const aviacaoFields = useMemo(
+    () =>
+      aviacaoMode
+        ? resolveAviacaoRegisterFieldVisibility(rf, tenantConfig.cadastroCategories)
+        : null,
+    [aviacaoMode, rf, tenantConfig.cadastroCategories]
   );
   const enabledCategories = useMemo(
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
@@ -303,7 +311,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   }
 
   const showDocasHoraAgendada = docasMode;
-  const showAviacaoHoraAgendada = aviacaoMode;
+  const showAviacaoHoraAgendada = aviacaoMode && rf.showHoraMarcada;
 
   const FIELD_CLASS =
     "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50";
@@ -322,6 +330,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
   }
 
   function renderAviacaoEditForm() {
+    if (!aviacaoFields) return null;
     return (
       <>
         <label className={LABEL_CLASS}>
@@ -337,71 +346,81 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
           />
         </label>
 
-        <label className={LABEL_CLASS}>
-          Modelo da Aeronave
-          <input
-            type="text"
-            value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchField(AVIACAO_MODELO_CATEGORY_ID, e.target.value)}
-            className={FIELD_CLASS}
-            autoComplete="off"
-          />
-        </label>
+        {aviacaoFields.showModelo ? (
+          <label className={LABEL_CLASS}>
+            Modelo da Aeronave
+            <input
+              type="text"
+              value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchField(AVIACAO_MODELO_CATEGORY_ID, e.target.value)}
+              className={FIELD_CLASS}
+              autoComplete="off"
+            />
+          </label>
+        ) : null}
 
-        <label className={LABEL_CLASS}>
-          Nome do Cliente / Operador
-          <input
-            type="text"
-            value={nomeCliente}
-            disabled={busy}
-            onChange={(e) => setNomeCliente(e.target.value)}
-            className={FIELD_CLASS}
-            autoComplete="off"
-          />
-        </label>
+        {aviacaoFields.showClienteNome ? (
+          <label className={LABEL_CLASS}>
+            Nome do Cliente / Operador
+            <input
+              type="text"
+              value={nomeCliente}
+              disabled={busy}
+              onChange={(e) => setNomeCliente(e.target.value)}
+              className={FIELD_CLASS}
+              autoComplete="off"
+            />
+          </label>
+        ) : null}
 
-        <label className={LABEL_CLASS}>
-          Responsável / Mecânico
-          <input
-            type="text"
-            value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchField(AVIACAO_RESPONSAVEL_CATEGORY_ID, e.target.value)}
-            className={FIELD_CLASS}
-            autoComplete="off"
-          />
-        </label>
+        {aviacaoFields.showProfissional ? (
+          <label className={LABEL_CLASS}>
+            Responsável / Mecânico
+            <input
+              type="text"
+              value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchField(AVIACAO_RESPONSAVEL_CATEGORY_ID, e.target.value)}
+              className={FIELD_CLASS}
+              autoComplete="off"
+            />
+          </label>
+        ) : null}
 
-        <label className={LABEL_CLASS}>
-          Urgência da Peça
-          <input
-            type="text"
-            value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchField(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, e.target.value)}
-            className={FIELD_CLASS}
-            autoComplete="off"
-          />
-        </label>
+        {aviacaoFields.showUrgencia ? (
+          <label className={LABEL_CLASS}>
+            Urgência da Peça
+            <input
+              type="text"
+              value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchField(AVIACAO_INLINE_OBSERVACAO_FIELD_ID, e.target.value)}
+              className={FIELD_CLASS}
+              autoComplete="off"
+            />
+          </label>
+        ) : null}
 
-        <label className={LABEL_CLASS}>
-          Vaga / Hangar / Box
-          {REQUIRED_MARK}
-          <select
-            value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchField(AVIACAO_HANGAR_CATEGORY_ID, e.target.value)}
-            className={FIELD_CLASS}
-          >
-            <option value="">—</option>
-            {aviacaoHangarOptions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.nome ?? m.id}
-              </option>
-            ))}
-          </select>
-        </label>
+        {aviacaoFields.showHangar ? (
+          <label className={LABEL_CLASS}>
+            Vaga / Hangar / Box
+            {REQUIRED_MARK}
+            <select
+              value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchField(AVIACAO_HANGAR_CATEGORY_ID, e.target.value)}
+              className={FIELD_CLASS}
+            >
+              <option value="">—</option>
+              {aviacaoHangarOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nome ?? m.id}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label className={LABEL_CLASS}>
           Horas de Voo (Hobbs)
@@ -434,32 +453,34 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
           </select>
         </label>
 
-        <fieldset className={LABEL_CLASS}>
-          <legend className="mb-1">
-            Serviços Solicitados
-            {REQUIRED_MARK}
-          </legend>
-          <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
-            {aviacaoServicosOptions.length > 0 ? (
-              aviacaoServicosOptions.map((svc) => (
-                <label key={svc.id} className="inline-flex cursor-pointer items-center gap-2 font-normal">
-                  <input
-                    type="checkbox"
-                    checked={aviacaoServicosSelected.includes(svc.id)}
-                    disabled={busy}
-                    onChange={() => toggleAviacaoServico(svc.id)}
-                    className="size-3.5 rounded border-zinc-300"
-                  />
-                  {svc.nome ?? svc.id}
-                </label>
-              ))
-            ) : (
-              <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
-                Cadastre serviços na base ativa para habilitar esta seleção.
-              </p>
-            )}
-          </div>
-        </fieldset>
+        {aviacaoFields.showServicos ? (
+          <fieldset className={LABEL_CLASS}>
+            <legend className="mb-1">
+              Serviços Solicitados
+              {REQUIRED_MARK}
+            </legend>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+              {aviacaoServicosOptions.length > 0 ? (
+                aviacaoServicosOptions.map((svc) => (
+                  <label key={svc.id} className="inline-flex cursor-pointer items-center gap-2 font-normal">
+                    <input
+                      type="checkbox"
+                      checked={aviacaoServicosSelected.includes(svc.id)}
+                      disabled={busy}
+                      onChange={() => toggleAviacaoServico(svc.id)}
+                      className="size-3.5 rounded border-zinc-300"
+                    />
+                    {svc.nome ?? svc.id}
+                  </label>
+                ))
+              ) : (
+                <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
+                  Cadastre serviços na base ativa para habilitar esta seleção.
+                </p>
+              )}
+            </div>
+          </fieldset>
+        ) : null}
       </>
     );
   }
@@ -507,8 +528,11 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (aviacaoMode) {
-      const requiredErr = validateAviacaoRequiredFormValues(formValues);
+    if (aviacaoMode && aviacaoFields) {
+      const requiredErr = validateAviacaoRequiredFormValues(formValues, {
+        showHangar: aviacaoFields.showHangar,
+        showServicos: aviacaoFields.showServicos,
+      });
       if (requiredErr) {
         setError(requiredErr);
         return;
@@ -731,7 +755,7 @@ function EditAtendimentoForm({ row, onClose, supabase, tenantConfig, allowFullDa
         <PriorityClassSelector value={classificacao} onChange={setClassificacao} disabled={busy} />
       ) : null}
 
-      {rf.showObservacao || aviacaoMode ? (
+      {rf.showObservacao ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           Observações
           <textarea

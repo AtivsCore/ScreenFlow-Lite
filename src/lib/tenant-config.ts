@@ -58,6 +58,10 @@ export type RegisterFormConfig = {
   showLocal: boolean;
   showHoraMarcada: boolean;
   showObservacao: boolean;
+  /** Modo aviação MRO — modelo da aeronave. */
+  showModelo?: boolean;
+  /** Modo aviação MRO — urgência da peça. */
+  showUrgencia?: boolean;
 };
 
 export type ObservacoesVisibility = "hidden" | "always";
@@ -174,6 +178,8 @@ function parseRegisterForm(raw: unknown): Partial<RegisterFormConfig> | null {
     showLocal: b("showLocal"),
     showHoraMarcada: b("showHoraMarcada"),
     showObservacao: b("showObservacao"),
+    showModelo: b("showModelo"),
+    showUrgencia: b("showUrgencia"),
   };
 }
 
@@ -253,14 +259,17 @@ export function mergeTenantConfig(raw: unknown): ResolvedTenantConfig {
 
   const cadastroCategories = parseCadastroCategories(obj.cadastroCategories) ?? DEFAULT_CADASTRO_CATEGORIES;
   const rfBase = { ...DEFAULT_REGISTER_FORM, ...parseRegisterForm(obj.registerForm) };
-  const rf = syncRegisterFormFromCategories(cadastroCategories, rfBase);
-  const tv = { ...DEFAULT_TV_DISPLAY, ...parseTvDisplay(obj.tvDisplay) };
-  const observacoesVisibility: ObservacoesVisibility =
-    obj.observacoesVisibility === "always" ? "always" : "hidden";
   const segmentoAplicado =
     typeof obj.segmentoAplicado === "string" && obj.segmentoAplicado.trim()
       ? obj.segmentoAplicado.trim()
       : null;
+  const rf =
+    segmentoAplicado === "aviacao_mro"
+      ? rfBase
+      : syncRegisterFormFromCategories(cadastroCategories, rfBase);
+  const tv = { ...DEFAULT_TV_DISPLAY, ...parseTvDisplay(obj.tvDisplay) };
+  const observacoesVisibility: ObservacoesVisibility =
+    obj.observacoesVisibility === "always" ? "always" : "hidden";
 
   const planTier: PlanTier = obj.planTier === "pro" ? "pro" : "lifetime";
   const googleSheetsUrl =

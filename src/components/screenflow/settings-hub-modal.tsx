@@ -115,6 +115,15 @@ export function SettingsHubModal({
     );
   }, [open, config.observacoesVisibility]);
 
+  useEffect(() => {
+    if (!open) return;
+    setDraft((prev) => {
+      const keys = Object.keys(config.registerForm) as (keyof typeof config.registerForm)[];
+      if (keys.every((k) => prev.registerForm[k] === config.registerForm[k])) return prev;
+      return { ...prev, registerForm: { ...config.registerForm } };
+    });
+  }, [open, config.registerForm]);
+
   function moveQueueTab(index: number, direction: -1 | 1) {
     const swapIndex = index + direction;
     if (swapIndex < 0 || swapIndex >= draft.queueTabs.length) return;
@@ -175,7 +184,9 @@ export function SettingsHubModal({
       return {
         ...d,
         cadastroCategories,
-        registerForm: syncRegisterFormFromCategories(cadastroCategories, d.registerForm),
+        registerForm: aviacaoMode
+          ? d.registerForm
+          : syncRegisterFormFromCategories(cadastroCategories, d.registerForm),
       };
     });
   }
@@ -481,6 +492,12 @@ export function SettingsHubModal({
                     ["showLocal", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showLocal : "Local (lista)"],
                     ["showHoraMarcada", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showHoraMarcada : "Horário marcado"],
                     ["showObservacao", aviacaoMode ? AVIACAO_REGISTER_FORM_LABELS.showObservacao : "Observações"],
+                    ...(aviacaoMode
+                      ? ([
+                          ["showModelo", AVIACAO_REGISTER_FORM_LABELS.showModelo],
+                          ["showUrgencia", AVIACAO_REGISTER_FORM_LABELS.showUrgencia],
+                        ] as const)
+                      : []),
                   ] as const
                 ).map(([key, label]) => (
                   <label key={key} className="flex cursor-pointer items-center justify-between gap-2 rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800">
@@ -488,7 +505,7 @@ export function SettingsHubModal({
                     <input
                       type="checkbox"
                       className="size-3.5 accent-zinc-900 dark:accent-zinc-100"
-                      checked={draft.registerForm[key]}
+                      checked={draft.registerForm[key as keyof typeof draft.registerForm] ?? true}
                       onChange={(e) =>
                         updateDraft((d) => ({
                           ...d,
