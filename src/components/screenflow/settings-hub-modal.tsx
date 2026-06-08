@@ -124,6 +124,36 @@ export function SettingsHubModal({
     });
   }, [open, config.registerForm]);
 
+  useEffect(() => {
+    if (!open) return;
+    setDraft((prev) => {
+      const sameTabs =
+        prev.queueTabs.length === config.queueTabs.length &&
+        prev.queueTabs.every(
+          (tab, i) =>
+            tab.id === config.queueTabs[i]?.id &&
+            tab.label === config.queueTabs[i]?.label &&
+            tab.preset === config.queueTabs[i]?.preset
+        );
+      const sameCats =
+        prev.cadastroCategories.length === config.cadastroCategories.length &&
+        prev.cadastroCategories.every(
+          (cat, i) =>
+            cat.id === config.cadastroCategories[i]?.id &&
+            cat.label === config.cadastroCategories[i]?.label &&
+            cat.enabled === config.cadastroCategories[i]?.enabled &&
+            cat.tableKey === config.cadastroCategories[i]?.tableKey
+        );
+      if (sameTabs && sameCats && prev.showTodosTab === config.showTodosTab) return prev;
+      return {
+        ...prev,
+        queueTabs: config.queueTabs,
+        cadastroCategories: config.cadastroCategories,
+        showTodosTab: config.showTodosTab,
+      };
+    });
+  }, [open, config.queueTabs, config.cadastroCategories, config.showTodosTab]);
+
   function moveQueueTab(index: number, direction: -1 | 1) {
     const swapIndex = index + direction;
     if (swapIndex < 0 || swapIndex >= draft.queueTabs.length) return;
@@ -145,24 +175,37 @@ export function SettingsHubModal({
     return { ...next, queueTabs: tabs };
   }
 
-  async function persist(next: ResolvedTenantConfig) {
+  async function persist(next: ResolvedTenantConfig): Promise<boolean> {
     setSaving(true);
     setSaveErr(null);
     const payload = configuracoesForSupabase(next);
     if (!tenantId || !supabase) {
+      setDraft(next);
       onConfigUpdated(next);
+      onDataChanged?.();
       setSaving(false);
-      return;
+      return true;
     }
     const { error } = await supabase.from("tenants").update({ configuracoes: payload }).eq("id", tenantId);
     if (error) {
       setSaveErr(error.message);
       setSaving(false);
-      return;
+      return false;
     }
+    setDraft(next);
     onConfigUpdated(next);
     onDataChanged?.();
     setSaving(false);
+    return true;
+  }
+
+  async function handleSaveTabs() {
+    const next = enforcePriorityLaw(draft);
+    await persist(next);
+  }
+
+  async function handleSaveBaseSettings() {
+    await persist(draft);
   }
 
   function updateDraft(mut: (d: ResolvedTenantConfig) => ResolvedTenantConfig) {
@@ -304,12 +347,21 @@ export function SettingsHubModal({
                   </div>
                   <input
                     value={tab.label}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const label = e.target.value;
                       updateDraft((d) => ({
                         ...d,
-                        queueTabs: d.queueTabs.map((t) => (t.id === tab.id ? { ...t, label: e.target.value } : t)),
-                      }))
-                    }
+                        queueTabs: d.queueTabs.map((t) =>
+                          t.id === tab.id
+                            ? {
+                                ...t,
+                                label,
+                                ...(t.preset === "outros" ? { customTypeLabel: label } : {}),
+                              }
+                            : t
+                        ),
+                      }));
+                    }}
                     className="min-w-[8rem] flex-1 rounded border border-zinc-200 bg-white px-2 py-1 text-[11px] dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
                   />
                   <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-medium uppercase text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
@@ -413,7 +465,7 @@ export function SettingsHubModal({
             <button
               type="button"
               disabled={saving}
-              onClick={() => void persist(draft)}
+              onClick={() => void handleSaveTabs()}
               className="w-full rounded-lg bg-zinc-900 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
             >
               {saving ? "Salvando…" : "Salvar fluxo de abas"}
@@ -779,7 +831,7 @@ export function SettingsHubModal({
             <button
               type="button"
               disabled={saving}
-              onClick={() => void persist(draft)}
+              onClick={() => void handleSaveBaseSettings()}
               className="w-full rounded-lg bg-zinc-900 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
             >
               {saving ? "Salvando…" : "Salvar cadastros base"}

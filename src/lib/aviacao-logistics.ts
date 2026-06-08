@@ -471,6 +471,8 @@ export function nextAviacaoDrawerServicosOrdem(
 export function resolveAviacaoCategoryLabel(
   cat: Pick<CadastroCategoryEntry, "id" | "label">
 ): string {
+  const saved = cat.label?.trim();
+  if (saved) return saved;
   return AVIACAO_CATEGORY_DISPLAY_LABELS[cat.id] ?? cat.label;
 }
 
@@ -775,10 +777,11 @@ export function buildAviacaoCanonicalQueueTabs(): QueueTabEntry[] {
   ];
 }
 
-/** Força as 7 colunas canônicas do MRO, preservando a aba virtual "Todos" quando ativa. */
+/** Resolve abas do fluxo MRO a partir da configuração salva do tenant (com fallback canônico). */
 export function resolveAviacaoQueueTabs(config: ResolvedTenantConfig): QueueTabEntry[] {
-  const canonical = buildAviacaoCanonicalQueueTabs();
-  return config.showTodosTab ? [TODOS_QUEUE_TAB, ...canonical] : canonical;
+  const stored = config.queueTabs.filter((t) => t.preset !== "todos");
+  const flowTabs = stored.length > 0 ? stored : buildAviacaoCanonicalQueueTabs();
+  return config.showTodosTab ? [TODOS_QUEUE_TAB, ...flowTabs] : flowTabs;
 }
 
 /** MRO: movimentação livre — sem justificativa obrigatória. */
@@ -982,13 +985,17 @@ export function getAviacaoStepLabel(
   queueTabs?: Pick<QueueTabEntry, "id" | "label">[]
 ): string {
   const tab = queueTabs ? findAviacaoQueueTabByStep(queueTabs, step) : undefined;
-  return tab?.label?.toUpperCase() ?? AVIACAO_STEP_LABELS[step];
+  const saved = tab?.label?.trim();
+  if (saved) return saved.toUpperCase();
+  return AVIACAO_STEP_LABELS[step];
 }
 
-/** Rótulo exibido no cabeçalho da coluna Kanban (fluxo MRO canônico). */
+/** Rótulo exibido no cabeçalho da coluna Kanban / abas da lista (prioriza configuração salva). */
 export function resolveAviacaoKanbanColumnLabel(tab: Pick<QueueTabEntry, "id" | "label">): string {
+  const saved = tab.label?.trim();
+  if (saved) return saved.toUpperCase();
   const step = normalizeAviacaoTabId(tab.id);
-  return AVIACAO_STEP_LABELS[step] ?? tab.label;
+  return AVIACAO_STEP_LABELS[step] ?? tab.id;
 }
 
 /** Observação limpa para cards Aviação — sem resíduos de segmentos clínicos. */

@@ -1411,7 +1411,21 @@ export default function Home() {
         tenantId={effectiveTenantId}
         config={tenantConfig}
         initialMainTab={settingsInitialTab}
-        onConfigUpdated={(c) => setTenantConfig(c)}
+        onConfigUpdated={(c) => {
+          setTenantConfig(c);
+          const aviacao = isAviacaoSegment(c.segmentoAplicado);
+          const visible = aviacao ? resolveAviacaoQueueTabs(c) : resolveVisibleQueueTabs(c);
+          const ids = visible.map((t) => t.id);
+          if (ids.length) {
+            setQueueTabId((current) => {
+              const matches = aviacao
+                ? ids.some((id) => normalizeAviacaoTabId(id) === normalizeAviacaoTabId(current))
+                : ids.includes(current);
+              return matches ? current : ids[0]!;
+            });
+          }
+          void refreshRows();
+        }}
         onDataChanged={() => void refreshRows()}
         onRequestSegmentConfig={() => {
           setSettingsOpen(false);
