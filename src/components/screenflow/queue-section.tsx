@@ -14,6 +14,7 @@ import {
   resolveAviacaoKanbanMeta,
   resolveAviacaoQueueTabClickId,
 } from "@/lib/aviacao-logistics";
+import { isAutomotivoSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -25,6 +26,7 @@ import {
   Columns3,
   Eye,
   EyeOff,
+  LayoutGrid,
   LayoutList,
   MessageSquareText,
   Pencil,
@@ -116,6 +118,7 @@ function formatKanbanContextLine(meta: { profissional: string | null; local: str
 type KanbanCardProps = {
   row: AtendimentoLite;
   isSel: boolean;
+  isCompactView: boolean;
   priorityLawEnabled: boolean;
   notesInline: boolean;
   aviacaoLogisticsActive: boolean;
@@ -130,6 +133,7 @@ type KanbanCardProps = {
 const KanbanCard = memo(function KanbanCard({
   row,
   isSel,
+  isCompactView,
   priorityLawEnabled,
   notesInline,
   aviacaoLogisticsActive,
@@ -151,6 +155,103 @@ const KanbanCard = memo(function KanbanCard({
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
 
+  const cardShellClass = `group cursor-pointer border-l-2 bg-white text-left transition hover:bg-zinc-50/90 dark:bg-zinc-900 dark:hover:bg-zinc-800/40 ${
+    isSel
+      ? "border-l-orange-500 bg-orange-50/30 dark:bg-orange-950/15"
+      : "border-l-zinc-300 dark:border-l-zinc-600"
+  } ${isCompactView ? "px-2 py-1" : "px-2 py-1.5"}`;
+
+  const actionButtons = (
+    <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
+      {!isCompactView && !notesInline && observacaoText ? (
+        <Tooltip content={observacaoText} side="top" align="end">
+          <button
+            type="button"
+            aria-label="Ver observação"
+            className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-300"
+          >
+            <MessageSquareText className="size-3.5" strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+      ) : null}
+      <button
+        type="button"
+        title="Imprimir ficha"
+        className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+        onClick={() => onPrintRow(row)}
+      >
+        <Printer className="size-3" strokeWidth={1.75} />
+        <span className="sr-only">Imprimir ficha</span>
+      </button>
+      <button
+        type="button"
+        title="Editar"
+        className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-blue-600 dark:hover:text-blue-400"
+        onClick={() => onEditRow(row)}
+      >
+        <Pencil className="size-3" strokeWidth={1.75} />
+        <span className="sr-only">Editar</span>
+      </button>
+      {!isCompactView ? (
+        <button
+          type="button"
+          title="Excluir"
+          disabled={deleting === row.id}
+          className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
+          onClick={() => onDelete(row)}
+        >
+          <Trash2 className="size-3" strokeWidth={1.75} />
+          <span className="sr-only">Excluir</span>
+        </button>
+      ) : null}
+    </div>
+  );
+
+  if (isCompactView) {
+    return (
+      <article
+        role="button"
+        tabIndex={0}
+        onClick={() => onSelectId(row.id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelectId(row.id);
+          }
+        }}
+        className={cardShellClass}
+      >
+        <div className="flex items-center justify-between gap-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+            <span
+              title={clientName !== "—" ? clientName : undefined}
+              className="shrink-0 font-mono text-[10px] font-bold uppercase leading-none tracking-wide text-zinc-900 dark:text-zinc-100"
+            >
+              {clientName}
+            </span>
+            {meta.servico ? (
+              <span
+                className="min-w-0 truncate text-[9px] uppercase leading-none tracking-wide text-zinc-500 dark:text-zinc-400"
+                title={meta.servico}
+              >
+                {meta.servico}
+              </span>
+            ) : null}
+            {meta.hangarAlocado ? (
+              <span
+                className="shrink-0 truncate text-[9px] font-semibold uppercase leading-none tracking-wide text-orange-700 dark:text-orange-400"
+                title={meta.hangarAlocado}
+              >
+                {meta.hangarAlocado}
+              </span>
+            ) : null}
+          </div>
+          {actionButtons}
+        </div>
+      </article>
+    );
+  }
+
   return (
     <article
       role="button"
@@ -162,11 +263,7 @@ const KanbanCard = memo(function KanbanCard({
           onSelectId(row.id);
         }
       }}
-      className={`group cursor-pointer border-l-2 bg-white px-2 py-1.5 text-left transition hover:bg-zinc-50/90 dark:bg-zinc-900 dark:hover:bg-zinc-800/40 ${
-        isSel
-          ? "border-l-orange-500 bg-orange-50/30 dark:bg-orange-950/15"
-          : "border-l-zinc-300 dark:border-l-zinc-600"
-      }`}
+      className={cardShellClass}
     >
       <div className="flex items-center justify-between gap-1">
         <p
@@ -238,47 +335,7 @@ const KanbanCard = memo(function KanbanCard({
             </span>
           ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
-          {!notesInline && observacaoText ? (
-            <Tooltip content={observacaoText} side="top" align="end">
-              <button
-                type="button"
-                aria-label="Ver observação"
-                className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-300"
-              >
-                <MessageSquareText className="size-3.5" strokeWidth={1.75} />
-              </button>
-            </Tooltip>
-          ) : null}
-          <button
-            type="button"
-            title="Imprimir ficha"
-            className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
-            onClick={() => onPrintRow(row)}
-          >
-            <Printer className="size-3" strokeWidth={1.75} />
-            <span className="sr-only">Imprimir ficha</span>
-          </button>
-          <button
-            type="button"
-            title="Editar"
-            className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-blue-600 dark:hover:text-blue-400"
-            onClick={() => onEditRow(row)}
-          >
-            <Pencil className="size-3" strokeWidth={1.75} />
-            <span className="sr-only">Editar</span>
-          </button>
-          <button
-            type="button"
-            title="Excluir"
-            disabled={deleting === row.id}
-            className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-red-600 disabled:opacity-40 dark:hover:text-red-400"
-            onClick={() => onDelete(row)}
-          >
-            <Trash2 className="size-3" strokeWidth={1.75} />
-            <span className="sr-only">Excluir</span>
-          </button>
-        </div>
+        {actionButtons}
       </div>
     </article>
   );
@@ -562,9 +619,12 @@ export function QueueSection({
   onAviacaoQuickAddBase,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [isCompactView, setIsCompactView] = useState(false);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
   const notesInline = observacoesVisibility === "always";
   const colSpan = 4 + enabledCategories.length;
+  const automotivoMroActive = isAutomotivoSegment(mroSegmentId);
+  const compactKanbanActive = automotivoMroActive && viewMode === "kanban" && isCompactView;
 
   const flowTabs = useMemo(() => queueTabs.filter((t) => t.preset !== "todos"), [queueTabs]);
   const mroProfile = useMemo(() => resolveMroProfile(mroSegmentId), [mroSegmentId]);
@@ -700,6 +760,23 @@ export function QueueSection({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {automotivoMroActive && viewMode === "kanban" ? (
+              <button
+                type="button"
+                aria-pressed={isCompactView}
+                title={isCompactView ? "Desativar modo compacto" : "Ativar modo compacto"}
+                onClick={() => setIsCompactView((v) => !v)}
+                className={`flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
+                  isCompactView
+                    ? "border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-300"
+                    : "border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                <LayoutGrid className="size-3" strokeWidth={2} aria-hidden />
+                Modo Compacto
+              </button>
+            ) : null}
+
             <button
               type="button"
               aria-pressed={notesInline}
@@ -884,12 +961,13 @@ export function QueueSection({
                     {cards.length === 0 ? (
                       <p className="py-6 text-center text-[9px] text-zinc-400 dark:text-zinc-500">—</p>
                     ) : (
-                      <div className="flex flex-col gap-1">
+                      <div className={`flex flex-col ${compactKanbanActive ? "gap-0.5" : "gap-1"}`}>
                         {cards.map((row) => (
                           <KanbanCard
                             key={row.id}
                             row={row}
                             isSel={row.id === selectedId}
+                            isCompactView={compactKanbanActive}
                             priorityLawEnabled={priorityLawEnabled}
                             notesInline={notesInline}
                             aviacaoLogisticsActive={aviacaoLogisticsActive}
