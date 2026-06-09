@@ -38,7 +38,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ObservacaoPopover } from "@/components/screenflow/observacao-popover";
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
+import { formatHoraMarcada } from "@/lib/atendimentos-lite";
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
+import { Printer } from "lucide-react";
 
 type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
@@ -74,7 +76,11 @@ type ClientPanelProps = {
   /** Bases/aeroportos do usuário (somente aviação). */
   tenantOptions?: Opt[];
   onTenantChange?: (tenantId: string) => void;
+  /** Opções fixas do seletor superior (ex.: tipo de dispositivo em hardware_ti). */
+  baseSelectorValue?: string;
+  onBaseSelectorChange?: (value: string) => void;
   onRegistrarAvaria?: () => void;
+  onPrintSelected?: () => void;
   /** Estágio atual da aeronave selecionada (coluna Kanban/lista). */
   aviacaoCurrentTabId?: string | null;
 };
@@ -130,7 +136,10 @@ export const ClientPanel = memo(function ClientPanel({
   tenantId,
   tenantOptions = [],
   onTenantChange,
+  baseSelectorValue = "",
+  onBaseSelectorChange,
   onRegistrarAvaria,
+  onPrintSelected,
   aviacaoCurrentTabId,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
@@ -408,6 +417,8 @@ export const ClientPanel = memo(function ClientPanel({
         )?.trim() ?? null
       : null;
   const selectedDisplayName = docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
+  const previsaoRetiradaLabel =
+    selected?.hora_marcada ? formatHoraMarcada(selected.hora_marcada) : null;
 
   const aviacaoHeaderActions = useMemo(
     () =>
@@ -437,6 +448,26 @@ export const ClientPanel = memo(function ClientPanel({
                 <p className="shrink-0 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
                   {selectedDisplayName ?? "—"}
                 </p>
+                {previsaoRetiradaLabel ? (
+                  <span
+                    className="shrink-0 rounded-md border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200"
+                    title={`Previsão de retirada: ${previsaoRetiradaLabel}`}
+                  >
+                    Retirada {previsaoRetiradaLabel}
+                  </span>
+                ) : null}
+                {onPrintSelected ? (
+                  <button
+                    type="button"
+                    title="Imprimir comprovante de entrada"
+                    aria-label="Imprimir comprovante de entrada"
+                    disabled={!canMutate}
+                    onClick={onPrintSelected}
+                    className="inline-flex shrink-0 rounded-md border border-zinc-300 p-1 text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                  >
+                    <Printer className="size-3.5" strokeWidth={1.75} aria-hidden />
+                  </button>
+                ) : null}
                 {observacoesAlwaysVisible && hasObs ? (
                   <span
                     className="min-w-0 max-w-[45%] truncate text-xs text-zinc-600 dark:text-zinc-300"
@@ -470,29 +501,48 @@ export const ClientPanel = memo(function ClientPanel({
           }
         >
           {aviacaoMode ? (
-            <label className={AVIACAO_PANEL_FIELD_CLASS}>
-              <span className="block h-4 truncate leading-4">{mroProfile.baseSelectorLabel}</span>
-              <select
-                value={tenantId ?? ""}
-                disabled={!canMutate || tenantOptions.length === 0}
-                required
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v) onTenantChange?.(v);
-                }}
-                className={AVIACAO_PANEL_CONTROL_CLASS}
-              >
-                {tenantOptions.length === 0 ? (
-                  <option value={tenantId ?? ""}>{tenantId ?? "—"}</option>
-                ) : (
-                  tenantOptions.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nome ?? t.id}
+            mroProfile.baseSelectorOptions?.length ? (
+              <label className={AVIACAO_PANEL_FIELD_CLASS}>
+                <span className="block h-4 truncate leading-4">{mroProfile.baseSelectorLabel}</span>
+                <select
+                  value={baseSelectorValue}
+                  disabled={!canMutate}
+                  onChange={(e) => onBaseSelectorChange?.(e.target.value)}
+                  className={AVIACAO_PANEL_CONTROL_CLASS}
+                >
+                  <option value="">—</option>
+                  {mroProfile.baseSelectorOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
                     </option>
-                  ))
-                )}
-              </select>
-            </label>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className={AVIACAO_PANEL_FIELD_CLASS}>
+                <span className="block h-4 truncate leading-4">{mroProfile.baseSelectorLabel}</span>
+                <select
+                  value={tenantId ?? ""}
+                  disabled={!canMutate || tenantOptions.length === 0}
+                  required
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v) onTenantChange?.(v);
+                  }}
+                  className={AVIACAO_PANEL_CONTROL_CLASS}
+                >
+                  {tenantOptions.length === 0 ? (
+                    <option value={tenantId ?? ""}>{tenantId ?? "—"}</option>
+                  ) : (
+                    tenantOptions.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.nome ?? t.id}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+            )
           ) : null}
           {panelCategories.map((cat) => renderCategoryField(cat))}
 

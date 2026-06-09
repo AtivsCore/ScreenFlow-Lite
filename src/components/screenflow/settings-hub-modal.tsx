@@ -87,7 +87,7 @@ export function SettingsHubModal({
   function guardAviacaoRestore(): boolean {
     if (!aviacaoMode) return false;
     window.alert(
-      "No segmento MRO (Aviação ou Oficina Automotiva), o reset padrão da clínica não se aplica. Re-aplique o preset do segmento em Configuração de Segmento para restaurar o fluxo com segurança."
+      "No segmento MRO (Aviação, Oficina Automotiva ou Hardware/TI), o reset padrão da clínica não se aplica. Re-aplique o preset do segmento em Configuração de Segmento para restaurar o fluxo com segurança."
     );
     onClose();
     onRequestSegmentConfig?.();

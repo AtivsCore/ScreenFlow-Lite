@@ -36,11 +36,15 @@ import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 export {
   AVIACAO_SEGMENT_ID,
   AUTOMOTIVO_SEGMENT_ID,
+  HARDWARE_TI_SEGMENT_ID,
   AUTOMOTIVO_QUEUE_TAB,
   isAutomotivoSegment,
+  isHardwareTiSegment,
   isMroLogisticsSegment,
+  isMroPatioCompactSegment,
   resolveMroCombustivelOptions,
   resolveMroProfile,
+  resolveMroRegistryExtras,
 } from "@/lib/mro-segment-profile";
 
 export const AVIACAO_HANGAR_UNALLOCATED_LABEL = "NÃO ALOCADO";
@@ -204,7 +208,7 @@ export const AVIACAO_CATEGORY_DISPLAY_LABELS: Partial<Record<string, string>> = 
   "av-c5": "Urgência da Peça",
 };
 
-export type AviacaoQuickCrudKind = "hangar" | "servicos" | "base";
+export type AviacaoQuickCrudKind = "hangar" | "servicos" | "base" | "equipe";
 
 export type AviacaoQuickCrudConfig = {
   title: string;
@@ -233,6 +237,12 @@ export function resolveAviacaoQuickCrudConfig(
       };
     case "base":
       return { title: profile.baseQuickCrudTitle, table: "tenants" };
+    case "equipe":
+      return {
+        title: profile.equipeQuickAddButtonTitle,
+        table: "profissionais",
+        categoryId: AVIACAO_RESPONSAVEL_CATEGORY_ID,
+      };
   }
 }
 
@@ -290,20 +300,23 @@ export function validateAviacaoRequiredFormValues(
   visibility: AviacaoRegisterFieldVisibility = { showHangar: true, showServicos: true },
   segmentoAplicado?: string | null
 ): string | null {
-  const validation = mroProfileFor(segmentoAplicado).validation;
+  const profile = mroProfileFor(segmentoAplicado);
+  const validation = profile.validation;
+  const extras = profile.registryExtras;
   if (!formValues[AVIACAO_PREFIXO_CATEGORY_ID]?.trim()) {
     return validation.prefixoRequired;
   }
   if (visibility.showHangar && !formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()) {
     return validation.hangarRequired;
   }
-  if (!formValues[AVIACAO_FIELD_HOBBS]?.trim()) {
+  if (extras.requireHobbs && !formValues[AVIACAO_FIELD_HOBBS]?.trim()) {
     return validation.hobbsRequired;
   }
-  if (!formValues[AVIACAO_FIELD_COMBUSTIVEL]?.trim()) {
+  if (extras.requireCombustivel && !formValues[AVIACAO_FIELD_COMBUSTIVEL]?.trim()) {
     return validation.combustivelRequired;
   }
   if (
+    extras.requireServicosCheckboxes &&
     visibility.showServicos &&
     parseAviacaoServicosSolicitados(formValues[AVIACAO_FIELD_SERVICOS]).length === 0
   ) {

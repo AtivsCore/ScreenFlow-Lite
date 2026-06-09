@@ -1,9 +1,13 @@
-/** Perfis do motor MRO compartilhado (Aviação e Oficina Automotiva). */
+/** Perfis do motor MRO compartilhado (Aviação, Oficina Automotiva e Hardware/TI). */
 
 export const AVIACAO_SEGMENT_ID = "aviacao_mro" as const;
 export const AUTOMOTIVO_SEGMENT_ID = "automotivo_mro" as const;
+export const HARDWARE_TI_SEGMENT_ID = "hardware_ti" as const;
 
-export type MroSegmentId = typeof AVIACAO_SEGMENT_ID | typeof AUTOMOTIVO_SEGMENT_ID;
+export type MroSegmentId =
+  | typeof AVIACAO_SEGMENT_ID
+  | typeof AUTOMOTIVO_SEGMENT_ID
+  | typeof HARDWARE_TI_SEGMENT_ID;
 
 export const AVIACAO_QUEUE_TAB = {
   TRIAGEM: "triagem",
@@ -34,6 +38,28 @@ export type MroRegisterFormLabelKey =
   | "showModelo"
   | "showUrgencia";
 
+/** Campos extras do registro MRO (hobbs, combustível, serviços checkbox). */
+export type MroRegistryExtras = {
+  showHobbsCombustivel: boolean;
+  requireHobbs: boolean;
+  requireCombustivel: boolean;
+  requireServicosCheckboxes: boolean;
+};
+
+const MRO_REGISTRY_EXTRAS_DEFAULT: MroRegistryExtras = {
+  showHobbsCombustivel: true,
+  requireHobbs: true,
+  requireCombustivel: true,
+  requireServicosCheckboxes: true,
+};
+
+const MRO_REGISTRY_EXTRAS_HARDWARE_TI: MroRegistryExtras = {
+  showHobbsCombustivel: false,
+  requireHobbs: false,
+  requireCombustivel: false,
+  requireServicosCheckboxes: false,
+};
+
 export type MroSegmentProfile = {
   segmentId: MroSegmentId;
   pipelineOrder: readonly string[];
@@ -45,6 +71,8 @@ export type MroSegmentProfile = {
   hangarUnallocatedLabel: string;
   hangarQuickCrudTitle: string;
   baseQuickCrudTitle: string;
+  /** Quando definido, substitui o seletor de base/unidade por opções fixas (ex.: tipo de dispositivo). */
+  baseSelectorOptions?: readonly string[];
   liberadoTabId: string;
   emManutencaoTabId: string;
   headerChamarLabel: string;
@@ -72,6 +100,9 @@ export type MroSegmentProfile = {
   timelineSectionTitle: string;
   timelineLogPrefix: string;
   registerInteligenteHint: string;
+  registryExtras: MroRegistryExtras;
+  equipeQuickAddButtonLabel: string;
+  equipeQuickAddButtonTitle: string;
 };
 
 const AVIACAO_PROFILE: MroSegmentProfile = {
@@ -156,6 +187,9 @@ const AVIACAO_PROFILE: MroSegmentProfile = {
   timelineLogPrefix: "Base",
   registerInteligenteHint:
     "No modo aviação MRO, responsável, serviços e hangar seguem os campos do registro de rampa.",
+  registryExtras: MRO_REGISTRY_EXTRAS_DEFAULT,
+  equipeQuickAddButtonLabel: "+ Equipe",
+  equipeQuickAddButtonTitle: "Cadastrar responsável / mecânico",
 };
 
 const AUTOMOTIVO_PROFILE: MroSegmentProfile = {
@@ -240,17 +274,115 @@ const AUTOMOTIVO_PROFILE: MroSegmentProfile = {
   timelineLogPrefix: "Auto",
   registerInteligenteHint:
     "No modo Oficina Mecânica, os campos de responsável, serviços e box seguem o padrão operacional de pátio.",
+  registryExtras: MRO_REGISTRY_EXTRAS_DEFAULT,
+  equipeQuickAddButtonLabel: "+ Equipe",
+  equipeQuickAddButtonTitle: "Cadastrar mecânico / detalhador",
+};
+
+const HARDWARE_TI_PROFILE: MroSegmentProfile = {
+  segmentId: HARDWARE_TI_SEGMENT_ID,
+  pipelineOrder: [
+    AUTOMOTIVO_QUEUE_TAB.TRIAGEM,
+    AUTOMOTIVO_QUEUE_TAB.ORCAMENTO,
+    AUTOMOTIVO_QUEUE_TAB.AGUARDANDO_PECAS,
+    AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO,
+    AUTOMOTIVO_QUEUE_TAB.LAVAGEM_ESTETICA,
+    AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA,
+  ],
+  stepLabels: {
+    [AUTOMOTIVO_QUEUE_TAB.TRIAGEM]: "TRIAGEM / ENTRADA",
+    [AUTOMOTIVO_QUEUE_TAB.ORCAMENTO]: "DIAGNÓSTICO / ORÇAMENTO",
+    [AUTOMOTIVO_QUEUE_TAB.AGUARDANDO_PECAS]: "AGUARDANDO PEÇAS",
+    [AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO]: "EM REPARO",
+    [AUTOMOTIVO_QUEUE_TAB.LAVAGEM_ESTETICA]: "HIGIENIZAÇÃO / TESTES",
+    [AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA]: "PRONTO PARA RETIRADA",
+  },
+  legacyTabAliases: {
+    ...AUTOMOTIVO_PROFILE.legacyTabAliases,
+  },
+  categoryDisplayLabels: {
+    "av-c1": "Técnico Responsável",
+    "av-c2": "Bancada de Trabalho",
+    "av-c3": "Número de Série (S/N) / ID da OS",
+    "av-c4": "Tipo de Defeito",
+    "av-c5": "Peça Necessária",
+  },
+  hybridFieldCanonicalLabels: {
+    "av-c1": ["Técnico Responsável"],
+    "av-c3": ["Número de Série (S/N) / ID da OS"],
+    "av-c4": ["Tipo de Defeito"],
+    "av-c5": ["Peça Necessária"],
+  },
+  registerFormLabels: {
+    showClienteNome: "Nome do Cliente",
+    showProfissional: "Técnico Responsável",
+    showServico: "Serviços Solicitados",
+    showLocal: "Bancada de Trabalho",
+    showHoraMarcada: "Previsão de Retirada",
+    showObservacao: "Observações",
+    showModelo: "Tipo de Defeito",
+    showUrgencia: "Peça Necessária",
+  },
+  hangarUnallocatedLabel: "SEM BANCADA",
+  hangarQuickCrudTitle: "Bancada de Trabalho",
+  baseQuickCrudTitle: "Nova unidade / filial",
+  baseSelectorOptions: ["Notebook", "Smartphone", "Desktop", "Console", "Servidor", "Outros"],
+  liberadoTabId: AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA,
+  emManutencaoTabId: AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO,
+  headerChamarLabel: "Chamar para Bancada",
+  headerIniciarLabel: "Iniciar Reparo",
+  headerFinalizarLabel: "Entregar Equipamento",
+  headerFinalizarLiberadoLabel: "Finalizar",
+  validation: {
+    prefixoRequired: "Número de Série (S/N) / ID da OS é obrigatório.",
+    hangarRequired: "Bancada de Trabalho é obrigatória.",
+    hobbsRequired: "Capacidade / Armazenamento é obrigatório.",
+    combustivelRequired: "Nível de Bateria é obrigatório.",
+    servicosRequired: "Selecione ao menos um serviço solicitado.",
+  },
+  hobbsFieldLabel: "Capacidade / Armazenamento",
+  combustivelFieldLabel: "Nível de Bateria",
+  avariaSnippetPrefix: "Condição física registrada",
+  avariaPrompt: "Descreva a condição física do equipamento:",
+  avariaTimelineAction: "Condição física registrada",
+  avariaButtonLabel: "Registrar Condição Física",
+  timelineBaseFallback: "Unidade",
+  baseSelectorLabel: "Tipo de Dispositivo",
+  hangarQuickAddButtonLabel: "+ Bancada",
+  hangarQuickAddButtonTitle: "Cadastrar bancada de trabalho",
+  combustivelOptions: ["Crítico", "Baixo", "Médio", "Alto", "100%"],
+  timelineSectionTitle: "Linha do Tempo do Reparo",
+  timelineLogPrefix: "TI",
+  registerInteligenteHint:
+    "No modo Assistência de Hardware/TI, S/N, defeito e peça são digitados livremente; bancada e técnico podem ser alocados na triagem.",
+  registryExtras: MRO_REGISTRY_EXTRAS_HARDWARE_TI,
+  equipeQuickAddButtonLabel: "+ Equipe",
+  equipeQuickAddButtonTitle: "Cadastrar técnico responsável",
 };
 
 const MRO_PROFILES: Record<MroSegmentId, MroSegmentProfile> = {
   [AVIACAO_SEGMENT_ID]: AVIACAO_PROFILE,
   [AUTOMOTIVO_SEGMENT_ID]: AUTOMOTIVO_PROFILE,
+  [HARDWARE_TI_SEGMENT_ID]: HARDWARE_TI_PROFILE,
 };
+
+function normalizeMroSegmentKey(
+  segmentoAplicado: string | null | undefined
+): string | null {
+  if (!segmentoAplicado?.trim()) return null;
+  if (segmentoAplicado === "ti_reparo") return HARDWARE_TI_SEGMENT_ID;
+  return segmentoAplicado;
+}
 
 export function isMroLogisticsSegment(
   segmentoAplicado: string | null | undefined
 ): segmentoAplicado is MroSegmentId {
-  return segmentoAplicado === AVIACAO_SEGMENT_ID || segmentoAplicado === AUTOMOTIVO_SEGMENT_ID;
+  const key = normalizeMroSegmentKey(segmentoAplicado);
+  return (
+    key === AVIACAO_SEGMENT_ID ||
+    key === AUTOMOTIVO_SEGMENT_ID ||
+    key === HARDWARE_TI_SEGMENT_ID
+  );
 }
 
 export function isAutomotivoSegment(
@@ -259,10 +391,25 @@ export function isAutomotivoSegment(
   return segmentoAplicado === AUTOMOTIVO_SEGMENT_ID;
 }
 
+export function isHardwareTiSegment(
+  segmentoAplicado: string | null | undefined
+): segmentoAplicado is typeof HARDWARE_TI_SEGMENT_ID {
+  return normalizeMroSegmentKey(segmentoAplicado) === HARDWARE_TI_SEGMENT_ID;
+}
+
+/** Segmentos MRO de pátio/bancada com linha compacta S/N + modelo + alocação. */
+export function isMroPatioCompactSegment(
+  segmentoAplicado: string | null | undefined
+): boolean {
+  return isAutomotivoSegment(segmentoAplicado) || isHardwareTiSegment(segmentoAplicado);
+}
+
 export function resolveMroProfile(
   segmentoAplicado: string | null | undefined
 ): MroSegmentProfile {
-  if (segmentoAplicado === AUTOMOTIVO_SEGMENT_ID) return AUTOMOTIVO_PROFILE;
+  const key = normalizeMroSegmentKey(segmentoAplicado);
+  if (key === AUTOMOTIVO_SEGMENT_ID) return AUTOMOTIVO_PROFILE;
+  if (key === HARDWARE_TI_SEGMENT_ID) return HARDWARE_TI_PROFILE;
   return AVIACAO_PROFILE;
 }
 
@@ -270,6 +417,12 @@ export function resolveMroCombustivelOptions(
   segmentoAplicado: string | null | undefined
 ): readonly string[] {
   return resolveMroProfile(segmentoAplicado).combustivelOptions;
+}
+
+export function resolveMroRegistryExtras(
+  segmentoAplicado: string | null | undefined
+): MroRegistryExtras {
+  return resolveMroProfile(segmentoAplicado).registryExtras;
 }
 
 export function buildMroCanonicalQueueTabs(
@@ -283,28 +436,43 @@ export function buildMroCanonicalQueueTabs(
         .map((part) => part.trim())
         .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
         .join(" / ") ?? id;
+    const isHardwareTi = profile.segmentId === HARDWARE_TI_SEGMENT_ID;
     const display =
-      id === AUTOMOTIVO_QUEUE_TAB.TRIAGEM || id === AVIACAO_QUEUE_TAB.TRIAGEM
-        ? "Triagem / Check-in"
-        : id === AUTOMOTIVO_QUEUE_TAB.ORCAMENTO
-          ? "Orçamento"
-          : id === AUTOMOTIVO_QUEUE_TAB.AGUARDANDO_PECAS || id === AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS
+      isHardwareTi && id === AUTOMOTIVO_QUEUE_TAB.TRIAGEM
+        ? "Triagem / Entrada"
+        : isHardwareTi && id === AUTOMOTIVO_QUEUE_TAB.ORCAMENTO
+          ? "Diagnóstico / Orçamento"
+          : isHardwareTi && id === AUTOMOTIVO_QUEUE_TAB.AGUARDANDO_PECAS
             ? "Aguardando Peças"
-            : id === AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO || id === AVIACAO_QUEUE_TAB.EM_MANUTENCAO
-              ? "Em Manutenção"
-              : id === AUTOMOTIVO_QUEUE_TAB.LAVAGEM_ESTETICA
-                ? "Lavagem / Estética"
-                : id === AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA
-                  ? "Pronto / Retirada"
-                  : id === AVIACAO_QUEUE_TAB.INSPECAO_QC
-                    ? "Inspeção / QC"
-                    : id === AVIACAO_QUEUE_TAB.TESTE_VOO
-                      ? "Teste de Voo"
-                      : id === AVIACAO_QUEUE_TAB.ESTETICA_LAVAGEM
-                        ? "Estética / Lavagem"
-                        : id === AVIACAO_QUEUE_TAB.LIBERADO
-                          ? "Liberado / Pronto"
-                          : label;
+            : isHardwareTi && id === AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO
+              ? "Em Reparo"
+              : isHardwareTi && id === AUTOMOTIVO_QUEUE_TAB.LAVAGEM_ESTETICA
+                ? "Higienização / Testes"
+                : isHardwareTi && id === AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA
+                  ? "Pronto para Retirada"
+                  : id === AUTOMOTIVO_QUEUE_TAB.TRIAGEM || id === AVIACAO_QUEUE_TAB.TRIAGEM
+                    ? "Triagem / Check-in"
+                    : id === AUTOMOTIVO_QUEUE_TAB.ORCAMENTO
+                      ? "Orçamento"
+                      : id === AUTOMOTIVO_QUEUE_TAB.AGUARDANDO_PECAS ||
+                          id === AVIACAO_QUEUE_TAB.AGUARDANDO_PECAS
+                        ? "Aguardando Peças"
+                        : id === AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO ||
+                            id === AVIACAO_QUEUE_TAB.EM_MANUTENCAO
+                          ? "Em Manutenção"
+                          : id === AUTOMOTIVO_QUEUE_TAB.LAVAGEM_ESTETICA
+                            ? "Lavagem / Estética"
+                            : id === AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA
+                              ? "Pronto / Retirada"
+                              : id === AVIACAO_QUEUE_TAB.INSPECAO_QC
+                                ? "Inspeção / QC"
+                                : id === AVIACAO_QUEUE_TAB.TESTE_VOO
+                                  ? "Teste de Voo"
+                                  : id === AVIACAO_QUEUE_TAB.ESTETICA_LAVAGEM
+                                    ? "Estética / Lavagem"
+                                    : id === AVIACAO_QUEUE_TAB.LIBERADO
+                                      ? "Liberado / Pronto"
+                                      : label;
     return { id, preset: "outros" as const, label: display, customTypeLabel: display };
   });
 }

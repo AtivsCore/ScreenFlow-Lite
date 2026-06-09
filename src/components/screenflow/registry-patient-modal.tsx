@@ -41,6 +41,7 @@ import {
   resolveAviacaoSelectOptions,
   resolveAviacaoServicosSolicitadosOptions,
   resolveMroRegisterFormLabels,
+  resolveMroRegistryExtras,
   serializeAviacaoServicosSolicitados,
   validateAviacaoRequiredFormValues,
   type AviacaoAnexo,
@@ -92,6 +93,7 @@ export function RegistryPatientModal({
   const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
+  const mroRegistryExtras = resolveMroRegistryExtras(tenantConfig.segmentoAplicado);
   const enabledCategories = useMemo(
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
@@ -557,7 +559,7 @@ export function RegistryPatientModal({
 
         {aviacaoFields.showModelo ? (
           <label className={REGISTRY_LABEL_CLASS}>
-            {mroFieldLabels.modelo}
+            {mroRegisterLabels.showModelo}
             <input
               type="text"
               value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
@@ -599,7 +601,7 @@ export function RegistryPatientModal({
 
         {aviacaoFields.showUrgencia ? (
           <label className={REGISTRY_LABEL_CLASS}>
-            Urgência da Peça
+            {mroRegisterLabels.showUrgencia}
             <input
               type="text"
               value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
@@ -631,38 +633,42 @@ export function RegistryPatientModal({
           </label>
         ) : null}
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          {mroFieldLabels.hobbs}
-          {REGISTRY_REQUIRED_MARK}
-          <input
-            type="text"
-            inputMode="decimal"
-            value={formValues[AVIACAO_FIELD_HOBBS] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchAviacaoField(AVIACAO_FIELD_HOBBS, e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-          />
-        </label>
+        {mroRegistryExtras.showHobbsCombustivel ? (
+          <>
+            <label className={REGISTRY_LABEL_CLASS}>
+              {mroFieldLabels.hobbs}
+              {REGISTRY_REQUIRED_MARK}
+              <input
+                type="text"
+                inputMode="decimal"
+                value={formValues[AVIACAO_FIELD_HOBBS] ?? ""}
+                disabled={busy}
+                onChange={(e) => patchAviacaoField(AVIACAO_FIELD_HOBBS, e.target.value)}
+                className={REGISTRY_FIELD_CLASS}
+              />
+            </label>
 
-        <label className={REGISTRY_LABEL_CLASS}>
-          {mroFieldLabels.combustivel}
-          {REGISTRY_REQUIRED_MARK}
-          <select
-            value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchAviacaoField(AVIACAO_FIELD_COMBUSTIVEL, e.target.value)}
-            className={REGISTRY_FIELD_CLASS}
-          >
-            <option value="">—</option>
-            {mroCombustivelOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-        </label>
+            <label className={REGISTRY_LABEL_CLASS}>
+              {mroFieldLabels.combustivel}
+              {REGISTRY_REQUIRED_MARK}
+              <select
+                value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
+                disabled={busy}
+                onChange={(e) => patchAviacaoField(AVIACAO_FIELD_COMBUSTIVEL, e.target.value)}
+                className={REGISTRY_FIELD_CLASS}
+              >
+                <option value="">—</option>
+                {mroCombustivelOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
 
-        {aviacaoFields.showServicos ? (
+        {aviacaoFields.showServicos && mroRegistryExtras.requireServicosCheckboxes ? (
           <fieldset className={REGISTRY_LABEL_CLASS}>
             <legend className="mb-1">
               Serviços Solicitados

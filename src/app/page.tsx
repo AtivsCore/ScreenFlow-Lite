@@ -55,6 +55,7 @@ import {
   findAviacaoQueueTabById,
   getAviacaoActiveColumns,
   getAviacaoHangarLabel,
+  isHardwareTiSegment,
   isMroLogisticsSegment,
   mergeAviacaoObservacao,
   resolveMroFieldLabels,
@@ -66,6 +67,7 @@ import {
   resolveAviacaoTabActionLabel,
   resolveAviacaoTabIdFromObservacao,
   shiftAviacaoTabQuick,
+  type AviacaoQuickCrudKind,
 } from "@/lib/aviacao-logistics";
 import {
   DOCAS_QUEUE_TAB,
@@ -189,10 +191,14 @@ export default function Home() {
   const [aviacaoFilterPriorityOnly, setAviacaoFilterPriorityOnly] = useState(false);
   const [aviacaoHideAguardandoPecas, setAviacaoHideAguardandoPecas] = useState(false);
   const [aviacaoSelectedHangarIds, setAviacaoSelectedHangarIds] = useState<string[]>([]);
+  const [hardwareDeviceType, setHardwareDeviceType] = useState("");
 
   const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoLogisticsActive = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
   const mroSegmentId = tenantConfig.segmentoAplicado;
+  const mroProfile = useMemo(() => resolveMroProfile(mroSegmentId), [mroSegmentId]);
+  const useStaticBaseSelector = Boolean(mroProfile.baseSelectorOptions?.length);
+  const hardwareTiMode = isHardwareTiSegment(mroSegmentId);
   const mroFieldLabels = useMemo(
     () => resolveMroFieldLabels(mroSegmentId),
     [mroSegmentId]
@@ -200,7 +206,7 @@ export default function Home() {
 
   const defaultTenantId = sessionTenantId ?? tenantIdFromRows ?? ENV_TENANT_ID ?? fallbackTenantId;
   const effectiveTenantId =
-    aviacaoLogisticsActive && aviacaoBaseTenantId
+    aviacaoLogisticsActive && aviacaoBaseTenantId && !useStaticBaseSelector
       ? aviacaoBaseTenantId
       : defaultTenantId;
 
@@ -249,7 +255,7 @@ export default function Home() {
     setAviacaoTenantOptions(opts);
   }, [supabase, aviacaoLogisticsActive]);
 
-  const openAviacaoQuickCrud = useCallback((kind: "hangar" | "servicos") => {
+  const openAviacaoQuickCrud = useCallback((kind: AviacaoQuickCrudKind) => {
     const cfg = resolveAviacaoQuickCrudConfig(kind, mroSegmentId);
     setQuickCrud({
       title: cfg.title,
@@ -1094,9 +1100,13 @@ export default function Home() {
       onNovoRegistro: () => setRegistryOpen(true),
       onToggleView: () => setQueueViewMode((m) => (m === "list" ? "kanban" : "list")),
       onOpenSettings: () => openGeneralSettings(),
-      onCrudProfissionais: aviacaoLogisticsActive
-        ? undefined
-        : () => setQuickCrud({ title: "Equipe (profissionais)", table: "profissionais" }),
+      onCrudProfissionais:
+        aviacaoLogisticsActive && !hardwareTiMode
+          ? undefined
+          : () => {
+              if (hardwareTiMode) openAviacaoQuickCrud("equipe");
+              else setQuickCrud({ title: "Equipe (profissionais)", table: "profissionais" });
+            },
       onCrudLocais: aviacaoLogisticsActive
         ? () => openAviacaoQuickCrud("hangar")
         : () => setQuickCrud({ title: "Locais", table: "locais" }),
@@ -1115,6 +1125,7 @@ export default function Home() {
       updateStatus,
       openGeneralSettings,
       openAviacaoQuickCrud,
+      hardwareTiMode,
     ]
   );
 
@@ -1188,8 +1199,10 @@ export default function Home() {
             cadastroCategories={tenantConfig.cadastroCategories}
             segmentoAplicado={tenantConfig.segmentoAplicado}
             tenantId={effectiveTenantId}
-            tenantOptions={aviacaoLogisticsActive ? aviacaoTenantOptions : undefined}
-            onTenantChange={aviacaoLogisticsActive ? handleAviacaoBaseChange : undefined}
+            tenantOptions={aviacaoLogisticsActive && !useStaticBaseSelector ? aviacaoTenantOptions : undefined}
+            onTenantChange={aviacaoLogisticsActive && !useStaticBaseSelector ? handleAviacaoBaseChange : undefined}
+            baseSelectorValue={useStaticBaseSelector ? hardwareDeviceType : undefined}
+            onBaseSelectorChange={useStaticBaseSelector ? setHardwareDeviceType : undefined}
             onChamar={() => {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
@@ -1224,6 +1237,17 @@ export default function Home() {
             }}
             onLimpar={() => setSelectedId(null)}
             onRegistrarAvaria={() => void registerAviacaoAvaria()}
+            onPrintSelected={
+              aviacaoLogisticsActive && selected
+                ? () =>
+                    printAtendimentoCard({
+                      row: selected,
+                      tenantConfig,
+                      cadastroLookups,
+                      baseOptions: aviacaoLogisticsActive ? aviacaoTenantOptions : undefined,
+                    })
+                : undefined
+            }
             aviacaoCurrentTabId={selectedAviacaoTabId}
             onPatch={async (patch) => {
               await patchAtendimento(patch);
@@ -1322,7 +1346,10 @@ export default function Home() {
                 aviacaoLogisticsActive ? () => openAviacaoQuickCrud("servicos") : undefined
               }
               onAviacaoQuickAddBase={
-                aviacaoLogisticsActive ? handleAviacaoBaseQuickAdd : undefined
+                aviacaoLogisticsActive && !useStaticBaseSelector ? handleAviacaoBaseQuickAdd : undefined
+              }
+              onAviacaoQuickAddEquipe={
+                hardwareTiMode ? () => openAviacaoQuickCrud("equipe") : undefined
               }
             />
           )}

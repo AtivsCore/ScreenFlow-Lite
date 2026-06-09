@@ -14,7 +14,7 @@ import {
   resolveAviacaoKanbanMeta,
   resolveAviacaoQueueTabClickId,
 } from "@/lib/aviacao-logistics";
-import { isAutomotivoSegment } from "@/lib/mro-segment-profile";
+import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -130,7 +130,7 @@ function resolveCompactKanbanLine(
   docasLogisticsActive: boolean,
   aviacaoLogisticsActive: boolean
 ): CompactKanbanLine {
-  if (isAutomotivoSegment(segmentoId)) {
+  if (isMroPatioCompactSegment(segmentoId)) {
     return {
       primary: meta.title,
       secondary: meta.servico,
@@ -281,6 +281,14 @@ const KanbanCard = memo(function KanbanCard({
         }}
         className={cardShellClass}
       >
+        {horaMarcadaLabel ? (
+          <p
+            className="mb-0.5 truncate text-[9px] font-semibold leading-none tracking-wide text-teal-700 dark:text-teal-400"
+            title={`Previsão de retirada: ${horaMarcadaLabel}`}
+          >
+            Retirada {horaMarcadaLabel}
+          </p>
+        ) : null}
         <div className="flex items-center justify-between gap-1">
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
             <span
@@ -327,6 +335,14 @@ const KanbanCard = memo(function KanbanCard({
       }}
       className={cardShellClass}
     >
+      {horaMarcadaLabel ? (
+        <p
+          className="mb-0.5 truncate text-[9px] font-semibold leading-none tracking-wide text-teal-700 dark:text-teal-400"
+          title={`Previsão de retirada: ${horaMarcadaLabel}`}
+        >
+          Retirada {horaMarcadaLabel}
+        </p>
+      ) : null}
       <div className="flex items-center justify-between gap-1">
         <p
           title={clientName !== "—" ? clientName : undefined}
@@ -627,6 +643,7 @@ type QueueSectionProps = {
   onAviacaoQuickAddHangar?: () => void;
   onAviacaoQuickAddServicos?: () => void;
   onAviacaoQuickAddBase?: () => void;
+  onAviacaoQuickAddEquipe?: () => void;
 };
 
 export function QueueSection({
@@ -679,6 +696,7 @@ export function QueueSection({
   onAviacaoQuickAddHangar,
   onAviacaoQuickAddServicos,
   onAviacaoQuickAddBase,
+  onAviacaoQuickAddEquipe,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [isCompactView, setIsCompactView] = useState(false);
@@ -764,34 +782,51 @@ export function QueueSection({
               />
             ) : null}
             {aviacaoLogisticsActive &&
-            onAviacaoQuickAddHangar &&
-            onAviacaoQuickAddServicos &&
-            onAviacaoQuickAddBase ? (
+            (onAviacaoQuickAddHangar ||
+              onAviacaoQuickAddServicos ||
+              onAviacaoQuickAddBase ||
+              onAviacaoQuickAddEquipe) ? (
               <div className="flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  title={mroProfile.hangarQuickAddButtonTitle}
-                  onClick={onAviacaoQuickAddHangar}
-                  className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  {mroProfile.hangarQuickAddButtonLabel}
-                </button>
-                <button
-                  type="button"
-                  title="Cadastrar serviços operacionais"
-                  onClick={onAviacaoQuickAddServicos}
-                  className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  + Serviços
-                </button>
-                <button
-                  type="button"
-                  title="Cadastrar nova base / aeroporto"
-                  onClick={onAviacaoQuickAddBase}
-                  className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  + Base
-                </button>
+                {onAviacaoQuickAddHangar ? (
+                  <button
+                    type="button"
+                    title={mroProfile.hangarQuickAddButtonTitle}
+                    onClick={onAviacaoQuickAddHangar}
+                    className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    {mroProfile.hangarQuickAddButtonLabel}
+                  </button>
+                ) : null}
+                {onAviacaoQuickAddServicos ? (
+                  <button
+                    type="button"
+                    title="Cadastrar serviços operacionais"
+                    onClick={onAviacaoQuickAddServicos}
+                    className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    + Serviços
+                  </button>
+                ) : null}
+                {onAviacaoQuickAddEquipe ? (
+                  <button
+                    type="button"
+                    title={mroProfile.equipeQuickAddButtonTitle}
+                    onClick={onAviacaoQuickAddEquipe}
+                    className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    {mroProfile.equipeQuickAddButtonLabel}
+                  </button>
+                ) : null}
+                {onAviacaoQuickAddBase ? (
+                  <button
+                    type="button"
+                    title="Cadastrar nova base / aeroporto"
+                    onClick={onAviacaoQuickAddBase}
+                    className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    + Base
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>

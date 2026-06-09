@@ -28,6 +28,7 @@ import {
   isMroLogisticsSegment,
   resolveMroFieldLabels,
   resolveMroRegisterFormLabels,
+  resolveMroRegistryExtras,
   resolveMroTimelineSectionTitle,
   looksLikeAviacaoUuid,
   mergeAviacaoObservacao,
@@ -125,6 +126,7 @@ function EditAtendimentoForm({
   const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
+  const mroRegistryExtras = resolveMroRegistryExtras(tenantConfig.segmentoAplicado);
   const queueTabs = useMemo(
     () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
     [aviacaoMode, tenantConfig]
@@ -370,7 +372,7 @@ function EditAtendimentoForm({
 
         {aviacaoFields.showModelo ? (
           <label className={LABEL_CLASS}>
-            {mroFieldLabels.modelo}
+            {mroRegisterLabels.showModelo}
             <input
               type="text"
               value={formValues[AVIACAO_MODELO_CATEGORY_ID] ?? ""}
@@ -412,7 +414,7 @@ function EditAtendimentoForm({
 
         {aviacaoFields.showUrgencia ? (
           <label className={LABEL_CLASS}>
-            Urgência da Peça
+            {mroRegisterLabels.showUrgencia}
             <input
               type="text"
               value={formValues[AVIACAO_INLINE_OBSERVACAO_FIELD_ID] ?? ""}
@@ -444,38 +446,42 @@ function EditAtendimentoForm({
           </label>
         ) : null}
 
-        <label className={LABEL_CLASS}>
-          {mroFieldLabels.hobbs}
-          {REQUIRED_MARK}
-          <input
-            type="text"
-            inputMode="decimal"
-            value={formValues[AVIACAO_FIELD_HOBBS] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchField(AVIACAO_FIELD_HOBBS, e.target.value)}
-            className={FIELD_CLASS}
-          />
-        </label>
+        {mroRegistryExtras.showHobbsCombustivel ? (
+          <>
+            <label className={LABEL_CLASS}>
+              {mroFieldLabels.hobbs}
+              {REQUIRED_MARK}
+              <input
+                type="text"
+                inputMode="decimal"
+                value={formValues[AVIACAO_FIELD_HOBBS] ?? ""}
+                disabled={busy}
+                onChange={(e) => patchField(AVIACAO_FIELD_HOBBS, e.target.value)}
+                className={FIELD_CLASS}
+              />
+            </label>
 
-        <label className={LABEL_CLASS}>
-          {mroFieldLabels.combustivel}
-          {REQUIRED_MARK}
-          <select
-            value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
-            disabled={busy}
-            onChange={(e) => patchField(AVIACAO_FIELD_COMBUSTIVEL, e.target.value)}
-            className={FIELD_CLASS}
-          >
-            <option value="">—</option>
-            {mroCombustivelOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-        </label>
+            <label className={LABEL_CLASS}>
+              {mroFieldLabels.combustivel}
+              {REQUIRED_MARK}
+              <select
+                value={formValues[AVIACAO_FIELD_COMBUSTIVEL] ?? ""}
+                disabled={busy}
+                onChange={(e) => patchField(AVIACAO_FIELD_COMBUSTIVEL, e.target.value)}
+                className={FIELD_CLASS}
+              >
+                <option value="">—</option>
+                {mroCombustivelOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : null}
 
-        {aviacaoFields.showServicos ? (
+        {aviacaoFields.showServicos && mroRegistryExtras.requireServicosCheckboxes ? (
           <fieldset className={LABEL_CLASS}>
             <legend className="mb-1">
               Serviços Solicitados

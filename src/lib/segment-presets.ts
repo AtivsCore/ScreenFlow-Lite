@@ -19,7 +19,7 @@ export type SegmentPresetId =
   | "clinicas_consultorios"
   | "ambulancias"
   | "cozinhas"
-  | "ti_reparo"
+  | "hardware_ti"
   | "docas"
   | "aviacao_mro"
   | "automotivo_mro"
@@ -140,26 +140,35 @@ const COZINHAS = makePreset(
   ]
 );
 
-const TI_REPARO = makePreset(
-  "ti_reparo",
+const HARDWARE_TI = makePreset(
+  "hardware_ti",
   "💻",
   "Centros de Reparo de Hardware e TI",
-  "Cliente, Equipamento (Nº Série), Técnico Alocado, Tipo de Defeito, Peça Necessária",
-  "Entrada (Triagem) → Em Orçamento → Aguardando Aprovação → Em Manutenção → Pronto / Retirada",
+  "Técnico Responsável, Bancada de Trabalho, Número de Série (S/N), Tipo de Defeito, Peça Necessária",
+  "Triagem / Entrada → Diagnóstico / Orçamento → Aguardando Peças → Em Reparo → Higienização / Testes → Pronto para Retirada",
   [
-    cat("ti-c1", "Equipamento (Nº Série)", "locais"),
-    cat("ti-c2", "Técnico Alocado", "profissionais"),
-    cat("ti-c3", "Tipo de Defeito", "servicos"),
-    cat("ti-c4", "Peça Necessária", "servicos"),
+    cat("av-c1", "Técnico Responsável", "profissionais"),
+    cat("av-c2", "Bancada de Trabalho", "locais"),
+    cat("av-c3", "Número de Série (S/N) / ID da OS", "servicos"),
+    cat("av-c4", "Tipo de Defeito", "servicos"),
+    cat("av-c5", "Peça Necessária", "servicos"),
   ],
   [
-    flowTab("ti-t1", "Entrada (Triagem)"),
-    flowTab("ti-t2", "Em Orçamento"),
-    flowTab("ti-t3", "Aguardando Aprovação"),
-    flowTab("ti-t4", "Em Manutenção"),
-    flowTab("ti-t5", "Pronto / Retirada"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.TRIAGEM, "Triagem / Entrada"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.ORCAMENTO, "Diagnóstico / Orçamento"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.AGUARDANDO_PECAS, "Aguardando Peças"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.EM_MANUTENCAO, "Em Reparo"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.LAVAGEM_ESTETICA, "Higienização / Testes"),
+    automotivoTab(AUTOMOTIVO_QUEUE_TAB.PRONTO_RETIRADA, "Pronto para Retirada"),
   ],
-  { showClienteNome: true }
+  {
+    showClienteNome: true,
+    showHoraMarcada: true,
+    showObservacao: true,
+    showModelo: true,
+    showUrgencia: true,
+    showServico: false,
+  }
 );
 
 const DOCAS = makePreset(
@@ -343,7 +352,7 @@ export const SEGMENT_PRESETS: SegmentPresetMeta[] = [
   CLINICAS,
   AMBULANCIAS,
   COZINHAS,
-  TI_REPARO,
+  HARDWARE_TI,
   DOCAS,
   AVIACAO,
   AUTOMOTIVO,
@@ -365,7 +374,9 @@ const ALIAS_TO_ID: Record<string, SegmentPresetId> = {
   ambulancias: "ambulancias",
   ambulancia: "ambulancias",
   cozinhas: "cozinhas",
-  ti_reparo: "ti_reparo",
+  ti_reparo: "hardware_ti",
+  hardware_ti: "hardware_ti",
+  "centros de reparo de hardware e ti": "hardware_ti",
   docas: "docas",
   aviacao_mro: "aviacao_mro",
   automotivo_mro: "automotivo_mro",
