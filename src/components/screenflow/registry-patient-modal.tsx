@@ -469,6 +469,8 @@ export function RegistryPatientModal({
               formValues,
               tenantConfig.cadastroCategories
             );
+            const deviceType = formValues[AVIACAO_FIELD_DEVICE_TYPE]?.trim();
+            if (deviceType) aviacaoFields[AVIACAO_FIELD_DEVICE_TYPE] = deviceType;
             const storedAnexos = pendingAnexos.filter(isAviacaoAnexoStoredInBucket);
             if (storedAnexos.length > 0) {
               aviacaoFields[AVIACAO_FIELD_ANEXOS] = JSON.stringify(storedAnexos);

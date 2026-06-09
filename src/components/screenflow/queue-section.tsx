@@ -40,7 +40,7 @@ import {
   Trash2,
   UserPlus,
 } from "lucide-react";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 
@@ -675,6 +675,7 @@ type QueueSectionProps = {
   onAviacaoQuickAddEquipe?: () => void;
   queueSearchQuery?: string;
   onQueueSearchQueryChange?: (query: string) => void;
+  onQueueSearchMatch?: (row: AtendimentoLite) => void;
 };
 
 export function QueueSection({
@@ -730,9 +731,11 @@ export function QueueSection({
   onAviacaoQuickAddEquipe,
   queueSearchQuery = "",
   onQueueSearchQueryChange,
+  onQueueSearchMatch,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const lastSearchOpenRef = useRef<string | null>(null);
   const [isCompactView, setIsCompactView] = useState(false);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
   const notesInline = observacoesVisibility === "always";
@@ -750,20 +753,33 @@ export function QueueSection({
     [aviacaoLogisticsActive, queueTabId, mroSegmentId]
   );
 
-  const searchedRows = useMemo(() => {
-    if (!aviacaoLogisticsActive || !queueSearchQuery.trim()) return rows;
-    return rows.filter((r) => rowMatchesMroQueueSearch(r, queueSearchQuery));
-  }, [rows, aviacaoLogisticsActive, queueSearchQuery]);
-
   const filterRowsForTab = useCallback(
     (tab: QueueTabEntry) => {
       if (aviacaoLogisticsActive) {
-        return filterAndSortMroQueue(searchedRows, tab, mroSegmentId);
+        return filterAndSortMroQueue(rows, tab, mroSegmentId);
       }
-      return filterAndSortQueue(searchedRows, tab, { priorityLawEnabled });
+      return filterAndSortQueue(rows, tab, { priorityLawEnabled });
     },
-    [aviacaoLogisticsActive, searchedRows, mroSegmentId, priorityLawEnabled]
+    [aviacaoLogisticsActive, rows, mroSegmentId, priorityLawEnabled]
   );
+
+  useEffect(() => {
+    if (!aviacaoLogisticsActive || !onQueueSearchMatch) return;
+    const q = queueSearchQuery.trim();
+    if (!q) {
+      lastSearchOpenRef.current = null;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      const match = rows.find((r) => rowMatchesMroQueueSearch(r, q));
+      if (!match) return;
+      const key = `${q.toLowerCase()}:${match.id}`;
+      if (lastSearchOpenRef.current === key) return;
+      lastSearchOpenRef.current = key;
+      onQueueSearchMatch(match);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [queueSearchQuery, rows, aviacaoLogisticsActive, onQueueSearchMatch]);
 
   const handleCopyRow = useCallback(
     async (row: AtendimentoLite) => {
@@ -816,8 +832,16 @@ export function QueueSection({
     <TooltipProvider>
     <div
       id={id}
-      className="flex h-full min-h-0 w-full max-w-full flex-1 flex-col overflow-x-hidden overflow-y-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+      className="relative flex h-full min-h-0 w-full max-w-full flex-1 flex-col overflow-x-hidden overflow-y-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
     >
+      {copyFeedback ? (
+        <div
+          role="status"
+          className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 whitespace-nowrap rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-medium text-emerald-800 shadow-md dark:border-emerald-900/60 dark:bg-emerald-950/95 dark:text-emerald-200"
+        >
+          {copyFeedback}
+        </div>
+      ) : null}
       <div className="shrink-0 border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
         <div className="flex w-full items-center justify-between gap-2">
           <div className="flex min-w-0 shrink-0 items-center gap-1.5">
@@ -1015,12 +1039,6 @@ export function QueueSection({
           </div>
         </div>
 
-        {copyFeedback ? (
-          <p className="mt-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-400" role="status">
-            {copyFeedback}
-          </p>
-        ) : null}
-
         {viewMode === "list" ? (
           <div
             className="mt-2 flex gap-0.5 overflow-x-auto pb-0.5 sf-scroll-y-hidden"
@@ -1042,10 +1060,10 @@ export function QueueSection({
                   onClick={() =>
                     onQueueTabId(aviacaoLogisticsActive ? resolveAviacaoQueueTabClickId(t.id) : t.id)
                   }
-                  className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                  className={`shrink-0 whitespace-nowrap border-b-2 px-2 py-1 text-[10px] transition ${
                     isTabActive(t.id)
-                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                      : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                      ? "border-orange-500 font-semibold text-zinc-900 dark:text-zinc-100"
+                      : "border-transparent font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
                   }`}
                 >
                   {label}

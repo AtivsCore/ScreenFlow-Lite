@@ -1,6 +1,7 @@
 "use client";
 
 import { ClientPanel } from "@/components/screenflow/client-panel";
+import { AtendimentoDetailModal } from "@/components/screenflow/atendimento-detail-modal";
 import { AgendaProView } from "@/components/screenflow/agenda-pro-view";
 import { AppSidebar, type AppView } from "@/components/screenflow/app-sidebar";
 import { CrudEntityModal } from "@/components/screenflow/crud-entity-modal";
@@ -47,6 +48,9 @@ import {
   normalizeAviacaoTabId,
   appendAviacaoAvariaToObservacaoText,
   appendAviacaoTimelineEntry,
+  AVIACAO_FIELD_DEVICE_TYPE,
+  mergeAviacaoObservacao,
+  parseAviacaoCadastroFields,
   resolveAviacaoTimelineBaseLabel,
   aviacaoStepTvStatus,
   canCreateAviacaoBase,
@@ -58,10 +62,8 @@ import {
   getAviacaoHangarLabel,
   isHardwareTiSegment,
   isMroLogisticsSegment,
-  mergeAviacaoObservacao,
   resolveMroFieldLabels,
   resolveMroProfile,
-  parseAviacaoCadastroFields,
   parseAviacaoFilaTabId,
   resolveAviacaoQuickCrudConfig,
   resolveAviacaoQueueTabs,
@@ -104,6 +106,7 @@ export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [queueTabId, setQueueTabId] = useState<string>("tab-ordem");
   const [queueSearchQuery, setQueueSearchQuery] = useState("");
+  const [searchDetailRow, setSearchDetailRow] = useState<AtendimentoLite | null>(null);
   const [cadastrosRevision, setCadastrosRevision] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -492,6 +495,21 @@ export default function Home() {
     [rows, selectedId]
   );
 
+  useEffect(() => {
+    if (!useStaticBaseSelector) return;
+    if (!selected) {
+      setHardwareDeviceType("");
+      return;
+    }
+    const deviceType =
+      parseAviacaoCadastroFields(selected.observacao)[AVIACAO_FIELD_DEVICE_TYPE]?.trim() ?? "";
+    setHardwareDeviceType(deviceType);
+  }, [selected, useStaticBaseSelector]);
+
+  const handleQueueSearchMatch = useCallback((row: AtendimentoLite) => {
+    setSearchDetailRow(row);
+  }, []);
+
   const tenantIdForInsert = effectiveTenantId;
 
   const openFlowSettings = useCallback(() => {
@@ -786,6 +804,24 @@ export default function Home() {
       }
     },
     [supabase, selectedId, applyLocalPatch, refreshRows, tryProxyPatch]
+  );
+
+  const handleHardwareDeviceTypeChange = useCallback(
+    (value: string) => {
+      setHardwareDeviceType(value);
+      if (!selectedId || !selected) return;
+      const aviacaoFields = { ...parseAviacaoCadastroFields(selected.observacao) };
+      const trimmed = value.trim();
+      if (trimmed) aviacaoFields[AVIACAO_FIELD_DEVICE_TYPE] = trimmed;
+      else delete aviacaoFields[AVIACAO_FIELD_DEVICE_TYPE];
+      const observacao = mergeAviacaoObservacao({
+        current: selected.observacao,
+        aviacaoFields,
+        preserveTabWhenUnset: true,
+      });
+      void patchAtendimento({ observacao });
+    },
+    [selectedId, selected, patchAtendimento]
   );
 
   const purgeRow = useCallback(
@@ -1224,7 +1260,9 @@ export default function Home() {
             tenantOptions={aviacaoLogisticsActive && !useStaticBaseSelector ? aviacaoTenantOptions : undefined}
             onTenantChange={aviacaoLogisticsActive && !useStaticBaseSelector ? handleAviacaoBaseChange : undefined}
             baseSelectorValue={useStaticBaseSelector ? hardwareDeviceType : undefined}
-            onBaseSelectorChange={useStaticBaseSelector ? setHardwareDeviceType : undefined}
+            onBaseSelectorChange={
+              useStaticBaseSelector ? handleHardwareDeviceTypeChange : undefined
+            }
             onChamar={() => {
               if (docasLogisticsActive) {
                 void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
@@ -1376,12 +1414,28 @@ export default function Home() {
               }
               queueSearchQuery={aviacaoLogisticsActive ? queueSearchQuery : undefined}
               onQueueSearchQueryChange={aviacaoLogisticsActive ? setQueueSearchQuery : undefined}
+              onQueueSearchMatch={aviacaoLogisticsActive ? handleQueueSearchMatch : undefined}
             />
           )}
         </main>
       </div>
 
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      <AtendimentoDetailModal
+        open={searchDetailRow !== null}
+        row={searchDetailRow}
+        onClose={() => setSearchDetailRow(null)}
+        cadastroCategories={tenantConfig.cadastroCategories}
+        cadastroLookups={cadastroLookups}
+        segmentoAplicado={mroSegmentId}
+        queueTabs={visibleQueueTabs}
+        onEdit={(row) => {
+          setEditFromAgenda(false);
+          setEditRow(row);
+        }}
+        onSelect={handleSelectId}
+      />
 
       <ReportsModal open={reportsOpen} onClose={() => setReportsOpen(false)} proActive={proActive} />
 
