@@ -115,6 +115,61 @@ function formatKanbanContextLine(meta: { profissional: string | null; local: str
   return parts.length ? parts.join(" • ") : null;
 }
 
+const CLINICAS_SEGMENT_ID = "clinicas_consultorios";
+
+type CompactKanbanLine = {
+  primary: string;
+  secondary: string | null;
+  allocated: string | null;
+  primaryMono: boolean;
+};
+
+function resolveCompactKanbanLine(
+  segmentoId: string | null | undefined,
+  meta: ReturnType<typeof resolveKanbanMeta>,
+  docasLogisticsActive: boolean,
+  aviacaoLogisticsActive: boolean
+): CompactKanbanLine {
+  if (isAutomotivoSegment(segmentoId)) {
+    return {
+      primary: meta.title,
+      secondary: meta.servico,
+      allocated: meta.hangarAlocado ?? null,
+      primaryMono: true,
+    };
+  }
+  if (segmentoId === CLINICAS_SEGMENT_ID || !segmentoId?.trim()) {
+    return {
+      primary: meta.title,
+      secondary: meta.servico,
+      allocated: meta.local,
+      primaryMono: false,
+    };
+  }
+  if (docasLogisticsActive) {
+    return {
+      primary: meta.title,
+      secondary: meta.servico,
+      allocated: meta.docaAlocada ?? null,
+      primaryMono: false,
+    };
+  }
+  if (aviacaoLogisticsActive) {
+    return {
+      primary: meta.title,
+      secondary: meta.servico,
+      allocated: meta.hangarAlocado ?? null,
+      primaryMono: true,
+    };
+  }
+  return {
+    primary: meta.title,
+    secondary: meta.servico,
+    allocated: meta.local ?? meta.docaAlocada ?? meta.hangarAlocado ?? null,
+    primaryMono: false,
+  };
+}
+
 type KanbanCardProps = {
   row: AtendimentoLite;
   isSel: boolean;
@@ -122,6 +177,8 @@ type KanbanCardProps = {
   priorityLawEnabled: boolean;
   notesInline: boolean;
   aviacaoLogisticsActive: boolean;
+  docasLogisticsActive: boolean;
+  segmentoId: string | null | undefined;
   meta: ReturnType<typeof resolveKanbanMeta>;
   deleting: string | null;
   onSelectId: (id: string) => void;
@@ -137,6 +194,8 @@ const KanbanCard = memo(function KanbanCard({
   priorityLawEnabled,
   notesInline,
   aviacaoLogisticsActive,
+  docasLogisticsActive,
+  segmentoId,
   meta,
   deleting,
   onSelectId,
@@ -208,6 +267,7 @@ const KanbanCard = memo(function KanbanCard({
   );
 
   if (isCompactView) {
+    const line = resolveCompactKanbanLine(segmentoId, meta, docasLogisticsActive, aviacaoLogisticsActive);
     return (
       <article
         role="button"
@@ -224,25 +284,27 @@ const KanbanCard = memo(function KanbanCard({
         <div className="flex items-center justify-between gap-1">
           <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
             <span
-              title={clientName !== "—" ? clientName : undefined}
-              className="shrink-0 font-mono text-[10px] font-bold uppercase leading-none tracking-wide text-zinc-900 dark:text-zinc-100"
+              title={line.primary !== "—" ? line.primary : undefined}
+              className={`shrink-0 text-[10px] font-bold uppercase leading-none tracking-wide text-zinc-900 dark:text-zinc-100 ${
+                line.primaryMono ? "font-mono" : ""
+              }`}
             >
-              {clientName}
+              {line.primary}
             </span>
-            {meta.servico ? (
+            {line.secondary ? (
               <span
                 className="min-w-0 truncate text-[9px] uppercase leading-none tracking-wide text-zinc-500 dark:text-zinc-400"
-                title={meta.servico}
+                title={line.secondary}
               >
-                {meta.servico}
+                {line.secondary}
               </span>
             ) : null}
-            {meta.hangarAlocado ? (
+            {line.allocated ? (
               <span
                 className="shrink-0 truncate text-[9px] font-semibold uppercase leading-none tracking-wide text-orange-700 dark:text-orange-400"
-                title={meta.hangarAlocado}
+                title={line.allocated}
               >
-                {meta.hangarAlocado}
+                {line.allocated}
               </span>
             ) : null}
           </div>
@@ -623,8 +685,7 @@ export function QueueSection({
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
   const notesInline = observacoesVisibility === "always";
   const colSpan = 4 + enabledCategories.length;
-  const automotivoMroActive = isAutomotivoSegment(mroSegmentId);
-  const compactKanbanActive = automotivoMroActive && viewMode === "kanban" && isCompactView;
+  const compactKanbanActive = viewMode === "kanban" && isCompactView;
 
   const flowTabs = useMemo(() => queueTabs.filter((t) => t.preset !== "todos"), [queueTabs]);
   const mroProfile = useMemo(() => resolveMroProfile(mroSegmentId), [mroSegmentId]);
@@ -760,7 +821,7 @@ export function QueueSection({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            {automotivoMroActive && viewMode === "kanban" ? (
+            {viewMode === "kanban" ? (
               <button
                 type="button"
                 aria-pressed={isCompactView}
@@ -971,6 +1032,8 @@ export function QueueSection({
                             priorityLawEnabled={priorityLawEnabled}
                             notesInline={notesInline}
                             aviacaoLogisticsActive={aviacaoLogisticsActive}
+                            docasLogisticsActive={docasLogisticsActive}
+                            segmentoId={mroSegmentId}
                             meta={resolveKanbanMeta(
                               row,
                               enabledCategories,
