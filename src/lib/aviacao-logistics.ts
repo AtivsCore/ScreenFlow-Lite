@@ -88,6 +88,7 @@ export const AVIACAO_STEP_LABELS: Record<AviacaoQueueTabId, string> = {
 };
 
 /** Campos inline extras na tag `__sf_aviacao:` (MRO). */
+export const AVIACAO_FIELD_DEVICE_TYPE = "av-dev" as const;
 export const AVIACAO_FIELD_HOBBS = "av-hobbs" as const;
 export const AVIACAO_FIELD_COMBUSTIVEL = "av-comb" as const;
 export const AVIACAO_FIELD_SERVICOS = "av-svc" as const;
@@ -95,6 +96,7 @@ export const AVIACAO_FIELD_ANEXOS = "av-anex" as const;
 export const AVIACAO_FIELD_TIMELINE = "av-tml" as const;
 
 export const AVIACAO_EXTENDED_INLINE_FIELD_IDS = [
+  AVIACAO_FIELD_DEVICE_TYPE,
   AVIACAO_FIELD_HOBBS,
   AVIACAO_FIELD_COMBUSTIVEL,
   AVIACAO_FIELD_SERVICOS,
@@ -311,7 +313,11 @@ export function validateAviacaoRequiredFormValues(
   if (!formValues[AVIACAO_PREFIXO_CATEGORY_ID]?.trim()) {
     return validation.prefixoRequired;
   }
-  if (visibility.showHangar && !formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()) {
+  if (
+    extras.requireHangar &&
+    visibility.showHangar &&
+    !formValues[AVIACAO_HANGAR_CATEGORY_ID]?.trim()
+  ) {
     return validation.hangarRequired;
   }
   if (extras.requireHobbs && !formValues[AVIACAO_FIELD_HOBBS]?.trim()) {

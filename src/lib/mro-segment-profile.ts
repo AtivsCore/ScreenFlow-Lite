@@ -45,6 +45,7 @@ export type MroRegistryExtras = {
   requireCombustivel: boolean;
   showServicosCheckboxes: boolean;
   requireServicosCheckboxes: boolean;
+  requireHangar: boolean;
 };
 
 const MRO_REGISTRY_EXTRAS_DEFAULT: MroRegistryExtras = {
@@ -53,6 +54,7 @@ const MRO_REGISTRY_EXTRAS_DEFAULT: MroRegistryExtras = {
   requireCombustivel: true,
   showServicosCheckboxes: true,
   requireServicosCheckboxes: true,
+  requireHangar: true,
 };
 
 const MRO_REGISTRY_EXTRAS_HARDWARE_TI: MroRegistryExtras = {
@@ -61,6 +63,7 @@ const MRO_REGISTRY_EXTRAS_HARDWARE_TI: MroRegistryExtras = {
   requireCombustivel: false,
   showServicosCheckboxes: true,
   requireServicosCheckboxes: false,
+  requireHangar: false,
 };
 
 export type MroSegmentProfile = {

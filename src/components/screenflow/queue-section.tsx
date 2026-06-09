@@ -17,7 +17,6 @@ import {
   rowMatchesMroQueueSearch,
 } from "@/lib/aviacao-logistics";
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
-import { TODOS_QUEUE_TAB } from "@/lib/tenant-config";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
@@ -578,11 +577,12 @@ const QueueRow = memo(function QueueRow({
       >
         {normalizeQueueStatusLabel(row.status)}
       </td>
-      <td className="w-[88px] px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
+      <td className="w-[108px] px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-row items-center justify-end gap-1">
         <button
           type="button"
           title="Copiar resumo"
-          className="inline-flex rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+          className="inline-flex shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
           onClick={() => onCopyRow(row)}
         >
           <Copy className="size-3.5" strokeWidth={1.75} />
@@ -591,7 +591,7 @@ const QueueRow = memo(function QueueRow({
         <button
           type="button"
           title="Imprimir ficha"
-          className="inline-flex rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+          className="inline-flex shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
           onClick={() => onPrintRow(row)}
         >
           <Printer className="size-3.5" strokeWidth={1.75} />
@@ -600,7 +600,7 @@ const QueueRow = memo(function QueueRow({
         <button
           type="button"
           title="Editar"
-          className="ml-0.5 inline-flex rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+          className="inline-flex shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
           onClick={() => onEditRow(row)}
         >
           <Pencil className="size-3.5" strokeWidth={1.75} />
@@ -610,12 +610,13 @@ const QueueRow = memo(function QueueRow({
           type="button"
           title="Excluir"
           disabled={deleting === row.id}
-          className="ml-0.5 inline-flex rounded p-0.5 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-950/50"
+          className="inline-flex shrink-0 rounded p-0.5 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-950/50"
           onClick={() => onDelete(row)}
         >
           <Trash2 className="size-3.5" strokeWidth={1.75} />
           <span className="sr-only">Excluir</span>
         </button>
+        </div>
       </td>
     </tr>
   );
@@ -792,12 +793,6 @@ export function QueueSection({
   }, [activeTab, filterRowsForTab]);
 
   const kanbanColumns = flowTabs;
-
-  const visibleKanbanColumns = useMemo(() => {
-    if (!aviacaoLogisticsActive || queueTabId === TODOS_QUEUE_TAB.id) return kanbanColumns;
-    const active = kanbanColumns.find((t) => isTabActive(t.id));
-    return active ? [active] : kanbanColumns;
-  }, [aviacaoLogisticsActive, kanbanColumns, queueTabId, isTabActive]);
 
   const columnRows = useMemo(() => {
     const map: Record<string, AtendimentoLite[]> = {};
@@ -1026,7 +1021,7 @@ export function QueueSection({
           </p>
         ) : null}
 
-        {aviacaoLogisticsActive || viewMode === "list" ? (
+        {viewMode === "list" ? (
           <div
             className="mt-2 flex gap-0.5 overflow-x-auto pb-0.5 sf-scroll-y-hidden"
             role="tablist"
@@ -1080,7 +1075,7 @@ export function QueueSection({
                     </th>
                   ))}
                   <th className="w-24 px-2 py-1.5">Status</th>
-                  <th className="w-[72px] px-2 py-1.5 text-right">Ações</th>
+                  <th className="w-[108px] px-2 py-1.5 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -1121,7 +1116,7 @@ export function QueueSection({
         ) : (
           <div className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden pb-3 sf-scroll-x-hover">
             <div className="flex h-full min-h-full w-max min-w-full gap-2">
-            {visibleKanbanColumns.map((tab) => {
+            {kanbanColumns.map((tab) => {
               const cards = columnRows[tab.id] ?? [];
               const count = tabCounts[tab.id] ?? cards.length;
               const columnLabel = aviacaoLogisticsActive

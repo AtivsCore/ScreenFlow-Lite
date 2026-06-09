@@ -22,6 +22,7 @@ import {
   resolveMroCombustivelOptions,
   AVIACAO_FIELD_ANEXOS,
   AVIACAO_FIELD_COMBUSTIVEL,
+  AVIACAO_FIELD_DEVICE_TYPE,
   AVIACAO_FIELD_HOBBS,
   AVIACAO_FIELD_SERVICOS,
   AVIACAO_STORAGE_BUCKET,
@@ -43,6 +44,7 @@ import {
   resolveAviacaoServicosSolicitadosOptions,
   resolveMroRegisterFormLabels,
   resolveMroRegistryExtras,
+  resolveMroProfile,
   serializeAviacaoServicosSolicitados,
   validateAviacaoRequiredFormValues,
   type AviacaoAnexo,
@@ -95,6 +97,7 @@ export function RegistryPatientModal({
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
   const mroRegistryExtras = resolveMroRegistryExtras(tenantConfig.segmentoAplicado);
+  const mroProfile = resolveMroProfile(tenantConfig.segmentoAplicado);
   const enabledCategories = useMemo(
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
@@ -577,6 +580,25 @@ export function RegistryPatientModal({
           </label>
         ) : null}
 
+        {mroProfile.baseSelectorOptions?.length ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            {mroProfile.baseSelectorLabel}
+            <select
+              value={formValues[AVIACAO_FIELD_DEVICE_TYPE] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchAviacaoField(AVIACAO_FIELD_DEVICE_TYPE, e.target.value)}
+              className={REGISTRY_FIELD_CLASS}
+            >
+              <option value="">—</option>
+              {mroProfile.baseSelectorOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
         <label className={REGISTRY_LABEL_CLASS}>
           {mroFieldLabels.prefixo}
           {REGISTRY_REQUIRED_MARK}
@@ -660,7 +682,7 @@ export function RegistryPatientModal({
         {aviacaoFields.showHangar ? (
           <label className={REGISTRY_LABEL_CLASS}>
             {mroFieldLabels.hangar}
-            {REGISTRY_REQUIRED_MARK}
+            {mroRegistryExtras.requireHangar ? REGISTRY_REQUIRED_MARK : null}
             <select
               value={formValues[AVIACAO_HANGAR_CATEGORY_ID] ?? ""}
               disabled={busy}

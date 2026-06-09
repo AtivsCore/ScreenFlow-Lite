@@ -1,14 +1,29 @@
-import { formatHoraMarcada, normalizeQueueStatusLabel, type AtendimentoLite } from "@/lib/atendimentos-lite";
+import { formatHoraMarcada, type AtendimentoLite } from "@/lib/atendimentos-lite";
 import type { CadastroLookups } from "@/lib/cadastro-valores";
 import {
+  AVIACAO_FIELD_SERVICOS,
   AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_MODELO_CATEGORY_ID,
   AVIACAO_PREFIXO_CATEGORY_ID,
+  formatAviacaoObservacaoForDisplay,
+  parseAviacaoCadastroFields,
+  parseAviacaoServicosSolicitados,
   resolveAviacaoCategoryDisplay,
   resolveAviacaoTabIdFromObservacao,
   getAviacaoStepLabel,
 } from "@/lib/aviacao-logistics";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
+
+function resolveServicosSolicitadosLabel(
+  row: AtendimentoLite,
+  lookups: CadastroLookups
+): string {
+  const inline = parseAviacaoCadastroFields(row.observacao);
+  const ids = parseAviacaoServicosSolicitados(inline[AVIACAO_FIELD_SERVICOS]);
+  if (ids.length === 0) return "—";
+  const names = ids.map((id) => lookups.servicos.get(id)?.trim() || id);
+  return names.join(", ");
+}
 
 export function buildAtendimentoShareSummary(
   row: AtendimentoLite,
@@ -29,6 +44,8 @@ export function buildAtendimentoShareSummary(
     servicoNome: row.servicoNome,
   };
 
+  const cliente = row.nome?.trim() || "—";
+
   const sn =
     resolveAviacaoCategoryDisplay(
       AVIACAO_PREFIXO_CATEGORY_ID,
@@ -37,7 +54,7 @@ export function buildAtendimentoShareSummary(
       options.cadastroLookups,
       categories,
       legacy
-    ) ?? row.nome?.trim() ?? "—";
+    ) ?? "—";
 
   const defeito =
     resolveAviacaoCategoryDisplay(
@@ -57,11 +74,10 @@ export function buildAtendimentoShareSummary(
       options.cadastroLookups,
       categories,
       legacy
-    ) ?? "—";
+    )?.trim() || null;
 
-  const cliente = row.nome?.trim() || "—";
   const previsao = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : "—";
-  const status = normalizeQueueStatusLabel(row.status);
+  const servicos = resolveServicosSolicitadosLabel(row, options.cadastroLookups);
 
   let etapa = "—";
   if (options.queueTabIds?.length) {
@@ -71,17 +87,26 @@ export function buildAtendimentoShareSummary(
     }
   }
 
-  return [
+  const observacoes = formatAviacaoObservacaoForDisplay(row.observacao) || "—";
+
+  const lines = [
     "📋 *Ordem de Serviço — ScreenFlow Lite*",
     "",
     `*Cliente:* ${cliente}`,
     `*S/N / OS:* ${sn}`,
     `*Defeito:* ${defeito}`,
-    `*Bancada:* ${bancada}`,
+  ];
+
+  if (bancada) lines.push(bancada);
+
+  lines.push(
     `*Previsão de retirada:* ${previsao}`,
-    `*Status:* ${status}`,
+    `*Serviços Solicitados:* ${servicos}`,
     `*Etapa:* ${etapa}`,
-  ].join("\n");
+    `*Observações:* ${observacoes}`
+  );
+
+  return lines.join("\n");
 }
 
 export async function copyAtendimentoShareSummary(text: string): Promise<boolean> {
