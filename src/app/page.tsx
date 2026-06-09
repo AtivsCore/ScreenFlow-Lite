@@ -51,6 +51,7 @@ import {
   aviacaoStepTvStatus,
   canCreateAviacaoBase,
   canShiftAviacaoTabQuick,
+  countActiveByMroQueueTab,
   filterAviacaoQueueRows,
   findAviacaoQueueTabById,
   getAviacaoActiveColumns,
@@ -102,6 +103,8 @@ export default function Home() {
   const [rows, setRows] = useState<AtendimentoLite[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [queueTabId, setQueueTabId] = useState<string>("tab-ordem");
+  const [queueSearchQuery, setQueueSearchQuery] = useState("");
+  const [cadastrosRevision, setCadastrosRevision] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
@@ -477,8 +480,11 @@ export default function Home() {
   ]);
 
   const tabCounts = useMemo(
-    () => countActiveByQueueTab(queueDisplayRows, visibleQueueTabs),
-    [queueDisplayRows, visibleQueueTabs]
+    () =>
+      aviacaoLogisticsActive
+        ? countActiveByMroQueueTab(queueDisplayRows, visibleQueueTabs, mroSegmentId)
+        : countActiveByQueueTab(queueDisplayRows, visibleQueueTabs),
+    [queueDisplayRows, visibleQueueTabs, aviacaoLogisticsActive, mroSegmentId]
   );
 
   const selected = useMemo(
@@ -514,7 +520,11 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, effectiveTenantId, tenantConfig.cadastroCategories]);
+  }, [supabase, effectiveTenantId, tenantConfig.cadastroCategories, cadastrosRevision]);
+
+  const refreshCadastroLookups = useCallback(() => {
+    setCadastrosRevision((n) => n + 1);
+  }, []);
 
   const openGeneralSettings = useCallback(() => {
     setSettingsInitialTab("geral");
@@ -523,9 +533,21 @@ export default function Home() {
 
   const applyLocalPatch = useCallback((id: string, patch: Record<string, unknown>) => {
     setRows((prev) =>
-      prev.map((r) => (r.id === id ? ({ ...r, ...patch } as AtendimentoLite) : r))
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const next = { ...r, ...patch } as AtendimentoLite;
+        if ("local_id" in patch) {
+          const lid = patch.local_id as string | null | undefined;
+          next.localNome = lid ? cadastroLookups.locais.get(lid) ?? null : null;
+        }
+        if ("profissional_id" in patch) {
+          const pid = patch.profissional_id as string | null | undefined;
+          next.profissionalNome = pid ? cadastroLookups.profissionais.get(pid) ?? null : null;
+        }
+        return next;
+      })
     );
-  }, []);
+  }, [cadastroLookups]);
 
   const refreshRows = useCallback(async () => {
     const applyNested = (
@@ -1249,6 +1271,7 @@ export default function Home() {
                 : undefined
             }
             aviacaoCurrentTabId={selectedAviacaoTabId}
+            cadastrosRevision={cadastrosRevision}
             onPatch={async (patch) => {
               await patchAtendimento(patch);
             }}
@@ -1351,6 +1374,8 @@ export default function Home() {
               onAviacaoQuickAddEquipe={
                 hardwareTiMode ? () => openAviacaoQuickCrud("equipe") : undefined
               }
+              queueSearchQuery={aviacaoLogisticsActive ? queueSearchQuery : undefined}
+              onQueueSearchQueryChange={aviacaoLogisticsActive ? setQueueSearchQuery : undefined}
             />
           )}
         </main>
@@ -1395,7 +1420,10 @@ export default function Home() {
           tenantId={effectiveTenantId}
           cadastroCategoryId={quickCrud.categoryId}
           onClose={() => setQuickCrud(null)}
-          onSaved={() => void refreshRows()}
+          onSaved={() => {
+            void refreshRows();
+            refreshCadastroLookups();
+          }}
         />
       )}
 

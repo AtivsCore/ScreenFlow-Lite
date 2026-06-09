@@ -167,7 +167,7 @@ const HARDWARE_TI = makePreset(
     showObservacao: true,
     showModelo: true,
     showUrgencia: true,
-    showServico: false,
+    showServico: true,
   }
 );
 

@@ -43,6 +43,7 @@ export type MroRegistryExtras = {
   showHobbsCombustivel: boolean;
   requireHobbs: boolean;
   requireCombustivel: boolean;
+  showServicosCheckboxes: boolean;
   requireServicosCheckboxes: boolean;
 };
 
@@ -50,6 +51,7 @@ const MRO_REGISTRY_EXTRAS_DEFAULT: MroRegistryExtras = {
   showHobbsCombustivel: true,
   requireHobbs: true,
   requireCombustivel: true,
+  showServicosCheckboxes: true,
   requireServicosCheckboxes: true,
 };
 
@@ -57,6 +59,7 @@ const MRO_REGISTRY_EXTRAS_HARDWARE_TI: MroRegistryExtras = {
   showHobbsCombustivel: false,
   requireHobbs: false,
   requireCombustivel: false,
+  showServicosCheckboxes: true,
   requireServicosCheckboxes: false,
 };
 

@@ -20,6 +20,7 @@ import {
   formatObservacaoForDisplay,
   parseFilaTabId,
   parseFilaPreset,
+  rowMatchesQueueTabEntry,
 } from "@/lib/fila-preset";
 import { STATUS_UPDATE, type QueueTabId } from "@/lib/atendimentos-lite";
 import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
@@ -32,6 +33,10 @@ import type {
 } from "@/lib/tenant-config";
 import { TODOS_QUEUE_TAB } from "@/lib/tenant-config";
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
+import {
+  compareQueueArrivalOrder,
+  isActiveQueueRow,
+} from "@/lib/atendimentos-lite";
 
 export {
   AVIACAO_SEGMENT_ID,
@@ -967,6 +972,87 @@ export function isAviacaoQueueTabIdInVisible(
 export function resolveAviacaoQueueTabClickId(tabId: string): string {
   if (tabId === TODOS_QUEUE_TAB.id) return tabId;
   return normalizeAviacaoTabId(tabId);
+}
+
+/** Filtro de aba MRO com normalização por segmento (inclui legado `of-t*`). */
+export function rowMatchesMroQueueTabEntry(
+  row: {
+    observacao: string | null;
+    hora_marcada: string | null;
+    classificacao_prioridade: string | null;
+    prioridade: boolean | null;
+  },
+  tab: Pick<QueueTabEntry, "id" | "preset">,
+  segmentoAplicado?: string | null
+): boolean {
+  if (tab.preset === "todos") return true;
+  const tabId = parseFilaTabId(row.observacao);
+  if (tabId) {
+    return (
+      normalizeAviacaoTabId(tabId, segmentoAplicado) ===
+      normalizeAviacaoTabId(tab.id, segmentoAplicado)
+    );
+  }
+  if (row.observacao?.includes("__sf_aviacao:")) {
+    return (
+      normalizeAviacaoTabId(tab.id, segmentoAplicado) ===
+      normalizeAviacaoTabId("triagem", segmentoAplicado)
+    );
+  }
+  return rowMatchesQueueTabEntry(row, tab);
+}
+
+/** Busca instantânea por S/N (av-c3) ou nome do cliente. */
+export function rowMatchesMroQueueSearch(
+  row: Pick<AtendimentoLite, "nome" | "observacao" | "cadastro_valores">,
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const nome = row.nome?.trim().toLowerCase() ?? "";
+  if (nome.includes(q)) return true;
+  const inline = parseAviacaoCadastroFields(row.observacao);
+  const sn =
+    inline[AVIACAO_PREFIXO_CATEGORY_ID]?.trim().toLowerCase() ??
+    row.cadastro_valores?.[AVIACAO_PREFIXO_CATEGORY_ID]?.trim().toLowerCase() ??
+    "";
+  return sn.includes(q);
+}
+
+/** Filtra e ordena fila MRO por aba/coluna (normaliza ids legados). */
+export function filterAndSortMroQueue(
+  rows: AtendimentoLite[],
+  tab: Pick<QueueTabEntry, "id" | "preset">,
+  segmentoAplicado?: string | null
+): AtendimentoLite[] {
+  const preset = tab.preset;
+  const active =
+    preset === "todos"
+      ? rows.filter(isActiveQueueRow)
+      : rows
+          .filter(isActiveQueueRow)
+          .filter((r) => rowMatchesMroQueueTabEntry(r, tab, segmentoAplicado));
+  return [...active].sort(compareQueueArrivalOrder);
+}
+
+/** Contagem de registros ativos por aba MRO. */
+export function countActiveByMroQueueTab(
+  rows: AtendimentoLite[],
+  tabs: Pick<QueueTabEntry, "id" | "preset">[],
+  segmentoAplicado?: string | null
+): Record<string, number> {
+  const active = rows.filter(isActiveQueueRow);
+  const counts: Record<string, number> = {};
+  for (const tab of tabs) {
+    if (tab.preset === "todos") {
+      counts[tab.id] = active.length;
+    } else {
+      counts[tab.id] = active.filter((r) =>
+        rowMatchesMroQueueTabEntry(r, tab, segmentoAplicado)
+      ).length;
+    }
+  }
+  return counts;
 }
 
 export function resolveAviacaoStepFromObservacao(

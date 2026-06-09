@@ -83,6 +83,8 @@ type ClientPanelProps = {
   onPrintSelected?: () => void;
   /** Estágio atual da aeronave selecionada (coluna Kanban/lista). */
   aviacaoCurrentTabId?: string | null;
+  /** Incrementar após CRUD rápido (+ Bancada / + Equipe / + Serviços) para recarregar selects. */
+  cadastrosRevision?: number;
 };
 
 function SelectField({
@@ -141,6 +143,7 @@ export const ClientPanel = memo(function ClientPanel({
   onRegistrarAvaria,
   onPrintSelected,
   aviacaoCurrentTabId,
+  cadastrosRevision = 0,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
@@ -330,7 +333,7 @@ export const ClientPanel = memo(function ClientPanel({
   useEffect(() => {
     optionsLoadedRef.current = null;
     void loadOptions();
-  }, [loadOptions]);
+  }, [loadOptions, cadastrosRevision]);
 
   useEffect(() => {
     return () => {

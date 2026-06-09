@@ -13,7 +13,11 @@ import {
   resolveMroProfile,
   resolveAviacaoKanbanMeta,
   resolveAviacaoQueueTabClickId,
+  filterAndSortMroQueue,
+  rowMatchesMroQueueSearch,
 } from "@/lib/aviacao-logistics";
+import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
+import { TODOS_QUEUE_TAB } from "@/lib/tenant-config";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
@@ -24,6 +28,7 @@ import { DocasStatusStepper } from "@/components/screenflow/docas-status-stepper
 import type { DocasQueueTabId } from "@/lib/docas-logistics";
 import {
   Columns3,
+  Copy,
   Eye,
   EyeOff,
   LayoutGrid,
@@ -32,6 +37,7 @@ import {
   Pencil,
   Plus,
   Printer,
+  Search,
   Trash2,
   UserPlus,
 } from "lucide-react";
@@ -184,6 +190,7 @@ type KanbanCardProps = {
   onSelectId: (id: string) => void;
   onEditRow: (row: AtendimentoLite) => void;
   onPrintRow: (row: AtendimentoLite) => void;
+  onCopyRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
 };
 
@@ -201,6 +208,7 @@ const KanbanCard = memo(function KanbanCard({
   onSelectId,
   onEditRow,
   onPrintRow,
+  onCopyRow,
   onDelete,
 }: KanbanCardProps) {
   const prioStyle = priorityLawEnabled
@@ -233,6 +241,15 @@ const KanbanCard = memo(function KanbanCard({
           </button>
         </Tooltip>
       ) : null}
+      <button
+        type="button"
+        title="Copiar resumo"
+        className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+        onClick={() => onCopyRow(row)}
+      >
+        <Copy className="size-3" strokeWidth={1.75} />
+        <span className="sr-only">Copiar resumo</span>
+      </button>
       <button
         type="button"
         title="Imprimir ficha"
@@ -432,6 +449,7 @@ type QueueRowProps = {
   onSelectId: (id: string) => void;
   onEditRow: (row: AtendimentoLite) => void;
   onPrintRow: (row: AtendimentoLite) => void;
+  onCopyRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
 };
 
@@ -448,6 +466,7 @@ const QueueRow = memo(function QueueRow({
   onSelectId,
   onEditRow,
   onPrintRow,
+  onCopyRow,
   onDelete,
 }: QueueRowProps) {
   const prioStyle = priorityLawEnabled
@@ -562,6 +581,15 @@ const QueueRow = memo(function QueueRow({
       <td className="w-[88px] px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
+          title="Copiar resumo"
+          className="inline-flex rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+          onClick={() => onCopyRow(row)}
+        >
+          <Copy className="size-3.5" strokeWidth={1.75} />
+          <span className="sr-only">Copiar resumo</span>
+        </button>
+        <button
+          type="button"
           title="Imprimir ficha"
           className="inline-flex rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
           onClick={() => onPrintRow(row)}
@@ -644,6 +672,8 @@ type QueueSectionProps = {
   onAviacaoQuickAddServicos?: () => void;
   onAviacaoQuickAddBase?: () => void;
   onAviacaoQuickAddEquipe?: () => void;
+  queueSearchQuery?: string;
+  onQueueSearchQueryChange?: (query: string) => void;
 };
 
 export function QueueSection({
@@ -697,8 +727,11 @@ export function QueueSection({
   onAviacaoQuickAddServicos,
   onAviacaoQuickAddBase,
   onAviacaoQuickAddEquipe,
+  queueSearchQuery = "",
+  onQueueSearchQueryChange,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [isCompactView, setIsCompactView] = useState(false);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
   const notesInline = observacoesVisibility === "always";
@@ -716,6 +749,36 @@ export function QueueSection({
     [aviacaoLogisticsActive, queueTabId, mroSegmentId]
   );
 
+  const searchedRows = useMemo(() => {
+    if (!aviacaoLogisticsActive || !queueSearchQuery.trim()) return rows;
+    return rows.filter((r) => rowMatchesMroQueueSearch(r, queueSearchQuery));
+  }, [rows, aviacaoLogisticsActive, queueSearchQuery]);
+
+  const filterRowsForTab = useCallback(
+    (tab: QueueTabEntry) => {
+      if (aviacaoLogisticsActive) {
+        return filterAndSortMroQueue(searchedRows, tab, mroSegmentId);
+      }
+      return filterAndSortQueue(searchedRows, tab, { priorityLawEnabled });
+    },
+    [aviacaoLogisticsActive, searchedRows, mroSegmentId, priorityLawEnabled]
+  );
+
+  const handleCopyRow = useCallback(
+    async (row: AtendimentoLite) => {
+      const text = buildAtendimentoShareSummary(row, {
+        cadastroCategories: enabledCategories,
+        cadastroLookups,
+        segmentoAplicado: mroSegmentId,
+        queueTabIds: queueTabs,
+      });
+      const ok = await copyAtendimentoShareSummary(text);
+      setCopyFeedback(ok ? "Resumo copiado!" : "Não foi possível copiar.");
+      window.setTimeout(() => setCopyFeedback(null), 1800);
+    },
+    [enabledCategories, cadastroLookups, mroSegmentId, queueTabs]
+  );
+
   const activeTab = useMemo(() => {
     const exact = queueTabs.find((t) => t.id === queueTabId);
     if (exact) return exact;
@@ -725,18 +788,24 @@ export function QueueSection({
 
   const listRows = useMemo(() => {
     const tab = activeTab ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" };
-    return filterAndSortQueue(rows, tab, { priorityLawEnabled });
-  }, [rows, activeTab, priorityLawEnabled]);
+    return filterRowsForTab(tab);
+  }, [activeTab, filterRowsForTab]);
 
   const kanbanColumns = flowTabs;
+
+  const visibleKanbanColumns = useMemo(() => {
+    if (!aviacaoLogisticsActive || queueTabId === TODOS_QUEUE_TAB.id) return kanbanColumns;
+    const active = kanbanColumns.find((t) => isTabActive(t.id));
+    return active ? [active] : kanbanColumns;
+  }, [aviacaoLogisticsActive, kanbanColumns, queueTabId, isTabActive]);
 
   const columnRows = useMemo(() => {
     const map: Record<string, AtendimentoLite[]> = {};
     for (const tab of kanbanColumns) {
-      map[tab.id] = filterAndSortQueue(rows, tab, { priorityLawEnabled });
+      map[tab.id] = filterRowsForTab(tab);
     }
     return map;
-  }, [rows, kanbanColumns, priorityLawEnabled]);
+  }, [kanbanColumns, filterRowsForTab]);
 
   async function handleDelete(row: AtendimentoLite) {
     if (!confirm(`Excluir registro de “${row.nome ?? "cliente"}”?`)) return;
@@ -816,6 +885,23 @@ export function QueueSection({
                   >
                     {mroProfile.equipeQuickAddButtonLabel}
                   </button>
+                ) : null}
+                {onQueueSearchQueryChange ? (
+                  <label className="relative flex min-w-[9rem] max-w-[12rem] flex-1 items-center">
+                    <Search
+                      className="pointer-events-none absolute left-1.5 size-3 text-zinc-400"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    <input
+                      type="search"
+                      value={queueSearchQuery}
+                      onChange={(e) => onQueueSearchQueryChange(e.target.value)}
+                      placeholder="S/N ou cliente…"
+                      aria-label="Buscar por S/N ou nome do cliente"
+                      className="w-full rounded-md border border-zinc-300 bg-white py-0.5 pl-6 pr-1.5 text-[10px] text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+                    />
+                  </label>
                 ) : null}
                 {onAviacaoQuickAddBase ? (
                   <button
@@ -934,7 +1020,13 @@ export function QueueSection({
           </div>
         </div>
 
-        {viewMode === "list" ? (
+        {copyFeedback ? (
+          <p className="mt-1 text-[10px] font-medium text-emerald-700 dark:text-emerald-400" role="status">
+            {copyFeedback}
+          </p>
+        ) : null}
+
+        {aviacaoLogisticsActive || viewMode === "list" ? (
           <div
             className="mt-2 flex gap-0.5 overflow-x-auto pb-0.5 sf-scroll-y-hidden"
             role="tablist"
@@ -1014,6 +1106,7 @@ export function QueueSection({
                       onSelectId={onSelectId}
                       onEditRow={onEditRow}
                       onPrintRow={onPrintRow}
+                      onCopyRow={(r) => void handleCopyRow(r)}
                       onDelete={(r) => void handleDelete(r)}
                     />
                   ))
@@ -1028,7 +1121,7 @@ export function QueueSection({
         ) : (
           <div className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-x-auto overflow-y-hidden pb-3 sf-scroll-x-hover">
             <div className="flex h-full min-h-full w-max min-w-full gap-2">
-            {kanbanColumns.map((tab) => {
+            {visibleKanbanColumns.map((tab) => {
               const cards = columnRows[tab.id] ?? [];
               const count = tabCounts[tab.id] ?? cards.length;
               const columnLabel = aviacaoLogisticsActive
@@ -1080,6 +1173,7 @@ export function QueueSection({
                             onSelectId={onSelectId}
                             onEditRow={onEditRow}
                             onPrintRow={onPrintRow}
+                            onCopyRow={(r) => void handleCopyRow(r)}
                             onDelete={(r) => void handleDelete(r)}
                           />
                         ))}

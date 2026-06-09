@@ -32,8 +32,26 @@ const AVIACAO_KANBAN_TAB_EQUIV: Record<string, string> = {
   em_execucao: "inspecao_qc",
 };
 
+/** Equivalência de ids de coluna Oficina / Hardware TI (estável ↔ legado `of-t*`). */
+const AUTOMOTIVO_KANBAN_TAB_EQUIV: Record<string, string> = {
+  "of-t1": "orcamento",
+  "of-t2": "aguardando_pecas",
+  "of-t3": "em_manutencao",
+  "of-t4": "lavagem_estetica",
+  "of-t5": "pronto_retirada",
+  inspecao_qc: "em_manutencao",
+  teste_voo: "em_manutencao",
+  estetica_lavagem: "lavagem_estetica",
+  liberado: "pronto_retirada",
+};
+
 function normalizeKanbanTabId(id: string): string {
-  return DOCAS_KANBAN_TAB_EQUIV[id] ?? AVIACAO_KANBAN_TAB_EQUIV[id] ?? id;
+  return (
+    DOCAS_KANBAN_TAB_EQUIV[id] ??
+    AVIACAO_KANBAN_TAB_EQUIV[id] ??
+    AUTOMOTIVO_KANBAN_TAB_EQUIV[id] ??
+    id
+  );
 }
 
 const MARKER_PARSE = /^__sf_fila:([a-z]+)__(?:\r?\n|$)/i;

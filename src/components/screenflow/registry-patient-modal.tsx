@@ -38,6 +38,7 @@ import {
   parseAviacaoServicosSolicitados,
   resolveAviacaoQueueTabs,
   resolveAviacaoRegisterFieldVisibility,
+  resolveAviacaoKanbanColumnLabel,
   resolveAviacaoSelectOptions,
   resolveAviacaoServicosSolicitadosOptions,
   resolveMroRegisterFormLabels,
@@ -55,7 +56,7 @@ import {
   isDocasSegment,
   isDocasTextField,
 } from "@/lib/docas-logistics";
-import { buildHoraMarcadaTodayIso } from "@/lib/hora-marcada";
+import { buildHoraMarcadaTodayIso, datetimeLocalToIso } from "@/lib/hora-marcada";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
 type OptRow = { id: string; nome: string | null };
@@ -231,6 +232,18 @@ export function RegistryPatientModal({
   const aviacaoServicosSelected = useMemo(
     () => parseAviacaoServicosSolicitados(formValues[AVIACAO_FIELD_SERVICOS]),
     [formValues]
+  );
+
+  const tecnicoSelectId = useMemo(() => {
+    const raw = formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? "";
+    if (profissionais.some((p) => p.id === raw)) return raw;
+    const match = profissionais.find((p) => formatProfissionalLabel(p) === raw);
+    return match?.id ?? "";
+  }, [formValues, profissionais]);
+
+  const flowDestinationTabs = useMemo(
+    () => queueTabs.filter((t) => t.preset !== "todos"),
+    [queueTabs]
   );
 
   function patchAviacaoField(fieldId: string, value: string) {
@@ -497,7 +510,9 @@ export function RegistryPatientModal({
         triagemTab?.preset === "hora" ||
         (!aviacaoMode && rf.showHoraMarcada);
       if (wantsHora && horaMarcada.trim()) {
-        payload.hora_marcada = buildHoraMarcadaTodayIso(horaMarcada);
+        payload.hora_marcada = aviacaoMode
+          ? datetimeLocalToIso(horaMarcada)
+          : buildHoraMarcadaTodayIso(horaMarcada);
       } else if (!docasMode && !aviacaoMode && triagemTab?.preset === "encaixe") {
         payload.hora_marcada = null;
       }
@@ -544,6 +559,24 @@ export function RegistryPatientModal({
     if (!aviacaoFields) return null;
     return (
       <>
+        {flowDestinationTabs.length > 0 ? (
+          <label className={REGISTRY_LABEL_CLASS}>
+            Coluna de destino
+            <select
+              value={triagemTabId}
+              disabled={busy}
+              onChange={(e) => setTriagemTabId(e.target.value)}
+              className={REGISTRY_FIELD_CLASS}
+            >
+              {flowDestinationTabs.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {resolveAviacaoKanbanColumnLabel(t, tenantConfig.segmentoAplicado)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
         <label className={REGISTRY_LABEL_CLASS}>
           {mroFieldLabels.prefixo}
           {REGISTRY_REQUIRED_MARK}
@@ -588,14 +621,25 @@ export function RegistryPatientModal({
         {aviacaoFields.showProfissional ? (
           <label className={REGISTRY_LABEL_CLASS}>
             {mroFieldLabels.responsavel}
-            <input
-              type="text"
-              value={formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? ""}
+            <select
+              value={tecnicoSelectId}
               disabled={busy}
-              onChange={(e) => patchAviacaoField(AVIACAO_RESPONSAVEL_CATEGORY_ID, e.target.value)}
+              onChange={(e) => {
+                const prof = profissionais.find((p) => p.id === e.target.value);
+                patchAviacaoField(
+                  AVIACAO_RESPONSAVEL_CATEGORY_ID,
+                  prof ? formatProfissionalLabel(prof) : ""
+                );
+              }}
               className={REGISTRY_FIELD_CLASS}
-              autoComplete="off"
-            />
+            >
+              <option value="">—</option>
+              {profissionais.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {formatProfissionalLabel(p)}
+                </option>
+              ))}
+            </select>
           </label>
         ) : null}
 
@@ -668,32 +712,35 @@ export function RegistryPatientModal({
           </>
         ) : null}
 
-        {aviacaoFields.showServicos && mroRegistryExtras.requireServicosCheckboxes ? (
+        {mroRegistryExtras.showServicosCheckboxes ? (
           <fieldset className={REGISTRY_LABEL_CLASS}>
             <legend className="mb-1">
-              Serviços Solicitados
-              {REGISTRY_REQUIRED_MARK}
+              Serviços cadastrados
+              {mroRegistryExtras.requireServicosCheckboxes ? REGISTRY_REQUIRED_MARK : null}
             </legend>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+            <div className="flex flex-wrap gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
               {aviacaoServicosOptions.length > 0 ? (
-                aviacaoServicosOptions.map((svc) => (
-                  <label
-                    key={svc.id}
-                    className="inline-flex cursor-pointer items-center gap-2 font-normal"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={aviacaoServicosSelected.includes(svc.id)}
+                aviacaoServicosOptions.map((svc) => {
+                  const active = aviacaoServicosSelected.includes(svc.id);
+                  return (
+                    <button
+                      key={svc.id}
+                      type="button"
                       disabled={busy}
-                      onChange={() => toggleAviacaoServico(svc.id)}
-                      className="size-3.5 rounded border-zinc-300"
-                    />
-                    {svc.nome ?? svc.id}
-                  </label>
-                ))
+                      onClick={() => toggleAviacaoServico(svc.id)}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                        active
+                          ? "border-orange-400 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950/40 dark:text-orange-100"
+                          : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-300"
+                      }`}
+                    >
+                      {svc.nome ?? svc.id}
+                    </button>
+                  );
+                })
               ) : (
                 <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
-                  Cadastre serviços na base ativa para habilitar esta seleção.
+                  Cadastre serviços com o botão + Serviços na fila.
                 </p>
               )}
             </div>
@@ -707,12 +754,15 @@ export function RegistryPatientModal({
               {mroRegisterLabels.showHoraMarcada}
             </span>
             <input
-              type="time"
+              type="datetime-local"
               value={horaMarcada}
               disabled={busy}
               onChange={(e) => setHoraMarcada(e.target.value)}
               className={REGISTRY_FIELD_CLASS}
             />
+            <span className="mt-0.5 block text-[10px] font-normal text-zinc-500 dark:text-zinc-400">
+              Apenas anotação operacional — não reserva agenda.
+            </span>
           </label>
         ) : null}
 

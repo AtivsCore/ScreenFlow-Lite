@@ -22,6 +22,16 @@ export function isoToTimeInputValue(iso: string | null | undefined): string {
   return m ? `${m[1]!.padStart(2, "0")}:${m[2]}` : "";
 }
 
+/** Extrai valor para input type="datetime-local" a partir de ISO. */
+export function isoToDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function isFutureHoraMarcada(horaMarcada: string | null | undefined): boolean {
   if (!horaMarcada) return false;
   const ms = Date.parse(horaMarcada);
