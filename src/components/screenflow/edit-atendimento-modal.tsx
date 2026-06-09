@@ -12,6 +12,7 @@ import {
   appendAviacaoTimelineEntry,
   buildAviacaoSavePayload,
   resolveMroCombustivelOptions,
+  AVIACAO_FIELD_DEVICE_TYPE,
   AVIACAO_FIELD_ANEXOS,
   AVIACAO_FIELD_COMBUSTIVEL,
   AVIACAO_FIELD_HOBBS,
@@ -27,6 +28,7 @@ import {
   hydrateAviacaoResponsavelValue,
   isMroLogisticsSegment,
   resolveMroFieldLabels,
+  resolveMroProfile,
   resolveMroRegisterFormLabels,
   resolveMroRegistryExtras,
   resolveMroTimelineSectionTitle,
@@ -127,6 +129,10 @@ function EditAtendimentoForm({
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
   const mroRegistryExtras = resolveMroRegistryExtras(tenantConfig.segmentoAplicado);
+  const mroProfile = useMemo(
+    () => resolveMroProfile(tenantConfig.segmentoAplicado),
+    [tenantConfig.segmentoAplicado]
+  );
   const queueTabs = useMemo(
     () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
     [aviacaoMode, tenantConfig]
@@ -165,6 +171,7 @@ function EditAtendimentoForm({
       if (inline[AVIACAO_FIELD_HOBBS]) out[AVIACAO_FIELD_HOBBS] = inline[AVIACAO_FIELD_HOBBS]!;
       if (inline[AVIACAO_FIELD_COMBUSTIVEL]) out[AVIACAO_FIELD_COMBUSTIVEL] = inline[AVIACAO_FIELD_COMBUSTIVEL]!;
       if (inline[AVIACAO_FIELD_SERVICOS]) out[AVIACAO_FIELD_SERVICOS] = inline[AVIACAO_FIELD_SERVICOS]!;
+      if (inline[AVIACAO_FIELD_DEVICE_TYPE]) out[AVIACAO_FIELD_DEVICE_TYPE] = inline[AVIACAO_FIELD_DEVICE_TYPE]!;
       return out;
     }
     if (docasMode) {
@@ -357,6 +364,25 @@ function EditAtendimentoForm({
     if (!aviacaoFields) return null;
     return (
       <>
+        {mroProfile.baseSelectorOptions?.length ? (
+          <label className={LABEL_CLASS}>
+            {mroProfile.baseSelectorLabel}
+            <select
+              value={formValues[AVIACAO_FIELD_DEVICE_TYPE] ?? ""}
+              disabled={busy}
+              onChange={(e) => patchField(AVIACAO_FIELD_DEVICE_TYPE, e.target.value)}
+              className={FIELD_CLASS}
+            >
+              <option value="">—</option>
+              {mroProfile.baseSelectorOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
         <label className={LABEL_CLASS}>
           {mroFieldLabels.prefixo}
           {REQUIRED_MARK}

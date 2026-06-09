@@ -5,6 +5,7 @@ import { fetchServicos } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
+  AVIACAO_FIELD_DEVICE_TYPE,
   AVIACAO_HANGAR_CATEGORY_ID,
   AVIACAO_PREFIXO_CATEGORY_ID,
   buildAviacaoCategoryPatch,
@@ -171,6 +172,13 @@ export const ClientPanel = memo(function ClientPanel({
   const aviacaoMode = isMroLogisticsSegment(segmentoAplicado);
   const mroFieldLabels = resolveMroFieldLabels(segmentoAplicado);
   const mroProfile = resolveMroProfile(segmentoAplicado);
+  const resolvedDeviceType = useMemo(() => {
+    if (!mroProfile.baseSelectorOptions?.length) return "";
+    const fromProp = baseSelectorValue.trim();
+    if (fromProp) return fromProp;
+    if (!selected?.observacao) return "";
+    return parseAviacaoCadastroFields(selected.observacao)[AVIACAO_FIELD_DEVICE_TYPE]?.trim() ?? "";
+  }, [mroProfile.baseSelectorOptions, baseSelectorValue, selected?.observacao]);
   const panelCategories = useMemo(() => {
     if (!aviacaoMode) return enabledCategories;
     const hidden = new Set<string>(AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS);
@@ -508,7 +516,7 @@ export const ClientPanel = memo(function ClientPanel({
               <label className={AVIACAO_PANEL_FIELD_CLASS}>
                 <span className="block h-4 truncate leading-4">{mroProfile.baseSelectorLabel}</span>
                 <select
-                  value={baseSelectorValue}
+                  value={resolvedDeviceType}
                   disabled={!canMutate}
                   onChange={(e) => onBaseSelectorChange?.(e.target.value)}
                   className={AVIACAO_PANEL_CONTROL_CLASS}

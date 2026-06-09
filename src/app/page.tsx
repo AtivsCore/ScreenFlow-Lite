@@ -68,6 +68,7 @@ import {
   resolveAviacaoQuickCrudConfig,
   resolveAviacaoQueueTabs,
   resolveAviacaoTabActionLabel,
+  resolveAviacaoQueueTabClickId,
   resolveAviacaoTabIdFromObservacao,
   shiftAviacaoTabQuick,
   type AviacaoQuickCrudKind,
@@ -504,7 +505,7 @@ export default function Home() {
     const deviceType =
       parseAviacaoCadastroFields(selected.observacao)[AVIACAO_FIELD_DEVICE_TYPE]?.trim() ?? "";
     setHardwareDeviceType(deviceType);
-  }, [selected, useStaticBaseSelector]);
+  }, [selected?.id, selected?.observacao, useStaticBaseSelector]);
 
   const handleQueueSearchMatch = useCallback((row: AtendimentoLite) => {
     setSearchDetailRow(row);
@@ -513,7 +514,7 @@ export default function Home() {
   const handleQueueTabId = useCallback(
     (id: string) => {
       setQueueTabId(
-        aviacaoLogisticsActive ? normalizeAviacaoTabId(id, mroSegmentId) : id
+        aviacaoLogisticsActive ? resolveAviacaoQueueTabClickId(id, mroSegmentId) : id
       );
     },
     [aviacaoLogisticsActive, mroSegmentId]

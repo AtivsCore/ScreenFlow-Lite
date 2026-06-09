@@ -937,6 +937,7 @@ export function normalizeAviacaoTabId(
   tabId: string | null | undefined,
   segmentoAplicado?: string | null
 ): string {
+  if (tabId === TODOS_QUEUE_TAB.id) return tabId;
   const profile = mroProfileFor(segmentoAplicado);
   if (!tabId) return profile.pipelineOrder[0] ?? AVIACAO_QUEUE_TAB.TRIAGEM;
   if ((profile.pipelineOrder as readonly string[]).includes(tabId)) return tabId;
