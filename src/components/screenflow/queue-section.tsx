@@ -1058,7 +1058,11 @@ export function QueueSection({
                   role="tab"
                   aria-selected={isTabActive(t.id)}
                   onClick={() =>
-                    onQueueTabId(aviacaoLogisticsActive ? resolveAviacaoQueueTabClickId(t.id) : t.id)
+                    onQueueTabId(
+                      aviacaoLogisticsActive
+                        ? resolveAviacaoQueueTabClickId(t.id, mroSegmentId)
+                        : t.id
+                    )
                   }
                   className={`shrink-0 whitespace-nowrap border-b-2 px-2 py-1 text-[10px] transition ${
                     isTabActive(t.id)

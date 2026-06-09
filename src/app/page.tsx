@@ -510,6 +510,15 @@ export default function Home() {
     setSearchDetailRow(row);
   }, []);
 
+  const handleQueueTabId = useCallback(
+    (id: string) => {
+      setQueueTabId(
+        aviacaoLogisticsActive ? normalizeAviacaoTabId(id, mroSegmentId) : id
+      );
+    },
+    [aviacaoLogisticsActive, mroSegmentId]
+  );
+
   const tenantIdForInsert = effectiveTenantId;
 
   const openFlowSettings = useCallback(() => {
@@ -1347,7 +1356,7 @@ export default function Home() {
               queueTabs={visibleQueueTabs}
               tabCounts={tabCounts}
               queueTabId={queueTabId}
-              onQueueTabId={setQueueTabId}
+              onQueueTabId={handleQueueTabId}
               priorityLawEnabled={tenantConfig.priorityLawEnabled}
               observacoesVisibility={tenantConfig.observacoesVisibility}
               cadastroCategories={tenantConfig.cadastroCategories}

@@ -975,9 +975,12 @@ export function isAviacaoQueueTabIdInVisible(
 }
 
 /** Id gravado ao clicar numa aba da Lista MRO (preserva `tab-todos`). */
-export function resolveAviacaoQueueTabClickId(tabId: string): string {
+export function resolveAviacaoQueueTabClickId(
+  tabId: string,
+  segmentoAplicado?: string | null
+): string {
   if (tabId === TODOS_QUEUE_TAB.id) return tabId;
-  return normalizeAviacaoTabId(tabId);
+  return normalizeAviacaoTabId(tabId, segmentoAplicado);
 }
 
 /** Filtro de aba MRO com normalização por segmento (inclui legado `of-t*`). */
