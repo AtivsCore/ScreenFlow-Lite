@@ -2,6 +2,7 @@ import { AVIACAO_QUEUE_TAB } from "@/lib/aviacao-logistics";
 import { AUTOMOTIVO_QUEUE_TAB } from "@/lib/mro-segment-profile";
 import { DOCAS_QUEUE_TAB } from "@/lib/docas-logistics";
 import {
+  buildCustomQueueTabId,
   DEFAULT_CADASTRO_CATEGORIES,
   DEFAULT_QUEUE_TABS,
   DEFAULT_REGISTER_FORM,
@@ -14,6 +15,8 @@ import {
   type RegisterFormConfig,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
+
+export { buildCustomQueueTabId };
 
 export type SegmentPresetId =
   | "clinicas_consultorios"

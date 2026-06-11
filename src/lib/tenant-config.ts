@@ -167,6 +167,27 @@ export function queueTabTypeLabel(tab: QueueTabEntry): string {
   return QUEUE_TAB_LABELS[tab.preset];
 }
 
+/** Id estável e exclusivo para coluna customizada (ex.: `col_vip`). */
+export function buildCustomQueueTabId(label: string, existingIds: readonly string[]): string {
+  const slug =
+    label
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 40) || "custom";
+  const taken = new Set(existingIds);
+  let candidate = `col_${slug}`;
+  let suffix = 2;
+  while (taken.has(candidate)) {
+    candidate = `col_${slug}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
 function parseRegisterForm(raw: unknown): Partial<RegisterFormConfig> | null {
   if (!isRecord(raw)) return null;
   const b = (k: keyof RegisterFormConfig): boolean | undefined =>

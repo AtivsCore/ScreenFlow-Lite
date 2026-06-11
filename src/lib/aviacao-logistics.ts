@@ -933,6 +933,17 @@ export function isAviacaoQueueTabId(
   return !!id && (profile.pipelineOrder as readonly string[]).includes(id);
 }
 
+/** Coluna nativa do pipeline MRO (não é aba customizada adicionada pelo usuário). */
+export function isMroCanonicalPipelineTabId(
+  tabId: string | null | undefined,
+  segmentoAplicado?: string | null
+): boolean {
+  if (!tabId || tabId === TODOS_QUEUE_TAB.id) return false;
+  const profile = mroProfileFor(segmentoAplicado);
+  if ((profile.pipelineOrder as readonly string[]).includes(tabId)) return true;
+  return Object.prototype.hasOwnProperty.call(profile.legacyTabAliases, tabId);
+}
+
 export function normalizeAviacaoTabId(
   tabId: string | null | undefined,
   segmentoAplicado?: string | null
@@ -941,7 +952,24 @@ export function normalizeAviacaoTabId(
   const profile = mroProfileFor(segmentoAplicado);
   if (!tabId) return profile.pipelineOrder[0] ?? AVIACAO_QUEUE_TAB.TRIAGEM;
   if ((profile.pipelineOrder as readonly string[]).includes(tabId)) return tabId;
-  return profile.legacyTabAliases[tabId] ?? profile.pipelineOrder[0] ?? AVIACAO_QUEUE_TAB.TRIAGEM;
+  const alias = profile.legacyTabAliases[tabId];
+  if (alias) return alias;
+  return tabId;
+}
+
+/** Comparação estrita entre colunas: customizadas exigem id idêntico; nativas aceitam alias legado. */
+export function mroQueueTabIdsMatch(
+  a: string,
+  b: string,
+  segmentoAplicado?: string | null
+): boolean {
+  if (a === b) return true;
+  const aCanonical = isMroCanonicalPipelineTabId(a, segmentoAplicado);
+  const bCanonical = isMroCanonicalPipelineTabId(b, segmentoAplicado);
+  if (!aCanonical || !bCanonical) return false;
+  return (
+    normalizeAviacaoTabId(a, segmentoAplicado) === normalizeAviacaoTabId(b, segmentoAplicado)
+  );
 }
 
 /** Seleção de aba na Lista MRO: "Todos" usa id próprio e não equivale a Triagem. */
@@ -953,10 +981,7 @@ export function isAviacaoQueueTabSelected(
   if (tabId === TODOS_QUEUE_TAB.id || queueTabId === TODOS_QUEUE_TAB.id) {
     return queueTabId === tabId;
   }
-  return (
-    normalizeAviacaoTabId(queueTabId, segmentoAplicado) ===
-    normalizeAviacaoTabId(tabId, segmentoAplicado)
-  );
+  return mroQueueTabIdsMatch(queueTabId, tabId, segmentoAplicado);
 }
 
 /** Valida se o `queueTabId` atual ainda existe nas abas visíveis (inclui legado `av-t*`). */
@@ -968,19 +993,17 @@ export function isAviacaoQueueTabIdInVisible(
   if (visibleTabIds.includes(queueTabId)) return true;
   if (queueTabId === TODOS_QUEUE_TAB.id) return false;
   return visibleTabIds.some(
-    (id) =>
-      id !== TODOS_QUEUE_TAB.id &&
-      normalizeAviacaoTabId(id, segmentoAplicado) ===
-        normalizeAviacaoTabId(queueTabId, segmentoAplicado)
+    (id) => id !== TODOS_QUEUE_TAB.id && mroQueueTabIdsMatch(id, queueTabId, segmentoAplicado)
   );
 }
 
-/** Id gravado ao clicar numa aba da Lista MRO (preserva `tab-todos`). */
+/** Id gravado ao clicar numa aba da Lista MRO (preserva `tab-todos` e colunas customizadas). */
 export function resolveAviacaoQueueTabClickId(
   tabId: string,
   segmentoAplicado?: string | null
 ): string {
   if (tabId === TODOS_QUEUE_TAB.id) return tabId;
+  if (!isMroCanonicalPipelineTabId(tabId, segmentoAplicado)) return tabId;
   return normalizeAviacaoTabId(tabId, segmentoAplicado);
 }
 
@@ -996,17 +1019,15 @@ export function rowMatchesMroQueueTabEntry(
   segmentoAplicado?: string | null
 ): boolean {
   if (tab.preset === "todos") return true;
-  const tabId = parseFilaTabId(row.observacao);
-  if (tabId) {
-    return (
-      normalizeAviacaoTabId(tabId, segmentoAplicado) ===
-      normalizeAviacaoTabId(tab.id, segmentoAplicado)
-    );
+  const rowTabId = parseFilaTabId(row.observacao);
+  if (rowTabId) {
+    return mroQueueTabIdsMatch(rowTabId, tab.id, segmentoAplicado);
   }
   if (row.observacao?.includes("__sf_aviacao:")) {
     return (
+      isMroCanonicalPipelineTabId(tab.id, segmentoAplicado) &&
       normalizeAviacaoTabId(tab.id, segmentoAplicado) ===
-      normalizeAviacaoTabId("triagem", segmentoAplicado)
+        normalizeAviacaoTabId("triagem", segmentoAplicado)
     );
   }
   return rowMatchesQueueTabEntry(row, tab);
@@ -1079,9 +1100,7 @@ export function findAviacaoQueueTabByStep(
 ): Pick<QueueTabEntry, "id" | "label"> | undefined {
   const direct = queueTabs.find((t) => t.id === step);
   if (direct) return direct;
-  return queueTabs.find(
-    (t) => normalizeAviacaoTabId(t.id, segmentoAplicado) === normalizeAviacaoTabId(step, segmentoAplicado)
-  );
+  return queueTabs.find((t) => mroQueueTabIdsMatch(t.id, step, segmentoAplicado));
 }
 
 export function getAviacaoStepIndex(step: AviacaoQueueTabId): number {
@@ -1101,8 +1120,9 @@ function findAviacaoActiveColumnIndex(
 ): number {
   const direct = activeColumns.findIndex((t) => t.id === tabId);
   if (direct >= 0) return direct;
+  if (!isMroCanonicalPipelineTabId(tabId)) return -1;
   const normalized = normalizeAviacaoTabId(tabId);
-  return activeColumns.findIndex((t) => normalizeAviacaoTabId(t.id) === normalized);
+  return activeColumns.findIndex((t) => mroQueueTabIdsMatch(t.id, normalized));
 }
 
 /** Índice dinâmico da coluna atual nas abas configuradas (0 … length-1). */
@@ -1202,6 +1222,7 @@ export function findAviacaoQueueTabById(
 ): Pick<QueueTabEntry, "id" | "label" | "preset"> | undefined {
   const direct = queueTabs.find((t) => t.id === tabId);
   if (direct) return direct;
+  if (!isMroCanonicalPipelineTabId(tabId)) return undefined;
   const fallback = findAviacaoQueueTabByStep(queueTabs, normalizeAviacaoTabId(tabId));
   if (!fallback) return undefined;
   return queueTabs.find((t) => t.id === fallback.id) ?? { ...fallback, preset: "outros" as const };

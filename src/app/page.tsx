@@ -454,7 +454,7 @@ export default function Home() {
           const row = rows.find((r) => r.id === id);
           if (row) {
             const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, aviacaoActiveColumns);
-            if (tabId) setQueueTabId(normalizeAviacaoTabId(tabId, mroSegmentId));
+            if (tabId) setQueueTabId(resolveAviacaoQueueTabClickId(tabId, mroSegmentId));
           }
         }
       });

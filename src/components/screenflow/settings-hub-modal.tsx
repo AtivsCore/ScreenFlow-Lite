@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { QUEUE_TAB_LABELS } from "@/lib/atendimentos-lite";
 import {
   cadastroCategoryCrudTable,
+  buildCustomQueueTabId,
   configuracoesForSupabase,
   MAX_CADASTRO_CATEGORIES,
   queueTabTypeLabel,
@@ -437,7 +438,10 @@ export function SettingsHubModal({
                         queueTabs: [
                           ...d.queueTabs,
                           {
-                            id: crypto.randomUUID(),
+                            id: buildCustomQueueTabId(
+                              custom,
+                              d.queueTabs.map((t) => t.id)
+                            ),
                             preset: "outros",
                             label: custom,
                             customTypeLabel: custom,
