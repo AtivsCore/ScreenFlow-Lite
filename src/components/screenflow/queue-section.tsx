@@ -208,6 +208,7 @@ type KanbanCardProps = {
   notesInline: boolean;
   aviacaoLogisticsActive: boolean;
   docasLogisticsActive: boolean;
+  salaoEsteticaActive: boolean;
   segmentoId: string | null | undefined;
   meta: ReturnType<typeof resolveKanbanMeta>;
   deleting: string | null;
@@ -226,6 +227,7 @@ const KanbanCard = memo(function KanbanCard({
   notesInline,
   aviacaoLogisticsActive,
   docasLogisticsActive,
+  salaoEsteticaActive,
   segmentoId,
   meta,
   deleting,
@@ -399,46 +401,85 @@ const KanbanCard = memo(function KanbanCard({
       </div>
 
       <div className="mt-0.5 min-w-0">
-        {meta.servico ? (
-          <p
-            className="truncate text-[9px] uppercase leading-tight tracking-wide text-zinc-500 dark:text-zinc-400"
-            title={meta.servico}
-          >
-            {meta.servico}
-          </p>
-        ) : null}
-        {meta.docaAlocada ? (
-          <p
-            className="truncate text-[9px] font-semibold uppercase leading-tight tracking-wide text-orange-700 dark:text-orange-400"
-            title={meta.docaAlocada}
-          >
-            {meta.docaAlocada}
-          </p>
-        ) : null}
-        {meta.hangarAlocado ? (
-          <p
-            className="truncate text-[9px] font-semibold uppercase leading-tight tracking-wide text-sky-700 dark:text-sky-400"
-            title={meta.hangarAlocado}
-          >
-            {meta.hangarAlocado}
-          </p>
-        ) : null}
-        {contextLine ? (
-          <p
-            className="truncate text-[11px] leading-tight text-zinc-500 dark:text-zinc-400"
-            title={contextLine}
-          >
-            {contextLine}
-          </p>
-        ) : null}
-        {notesInline && observacaoText ? (
-          <p
-            title={observacaoText}
-            className="line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400"
-          >
-            {observacaoText}
-          </p>
-        ) : null}
+        {salaoEsteticaActive ? (
+          <>
+            {meta.servico ? (
+              <p
+                className="truncate text-[9px] uppercase leading-tight tracking-wide text-zinc-500 dark:text-zinc-400"
+                title={meta.servico}
+              >
+                {meta.servico}
+              </p>
+            ) : null}
+            {meta.profissional ? (
+              <p
+                className="truncate text-[9px] uppercase leading-tight tracking-wide text-zinc-600 dark:text-zinc-300"
+                title={meta.profissional}
+              >
+                {meta.profissional}
+              </p>
+            ) : null}
+            {meta.local ? (
+              <p
+                className="truncate text-[9px] font-semibold uppercase leading-tight tracking-wide text-orange-700 dark:text-orange-400"
+                title={meta.local}
+              >
+                {meta.local}
+              </p>
+            ) : null}
+            {notesInline && observacaoText ? (
+              <p
+                title={observacaoText}
+                className="line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400"
+              >
+                {observacaoText}
+              </p>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {meta.servico ? (
+              <p
+                className="truncate text-[9px] uppercase leading-tight tracking-wide text-zinc-500 dark:text-zinc-400"
+                title={meta.servico}
+              >
+                {meta.servico}
+              </p>
+            ) : null}
+            {meta.docaAlocada ? (
+              <p
+                className="truncate text-[9px] font-semibold uppercase leading-tight tracking-wide text-orange-700 dark:text-orange-400"
+                title={meta.docaAlocada}
+              >
+                {meta.docaAlocada}
+              </p>
+            ) : null}
+            {meta.hangarAlocado ? (
+              <p
+                className="truncate text-[9px] font-semibold uppercase leading-tight tracking-wide text-sky-700 dark:text-sky-400"
+                title={meta.hangarAlocado}
+              >
+                {meta.hangarAlocado}
+              </p>
+            ) : null}
+            {contextLine ? (
+              <p
+                className="truncate text-[11px] leading-tight text-zinc-500 dark:text-zinc-400"
+                title={contextLine}
+              >
+                {contextLine}
+              </p>
+            ) : null}
+            {notesInline && observacaoText ? (
+              <p
+                title={observacaoText}
+                className="line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400"
+              >
+                {observacaoText}
+              </p>
+            ) : null}
+          </>
+        )}
       </div>
 
       <div className="mt-0.5 flex items-center justify-between gap-1">
@@ -710,6 +751,9 @@ type QueueSectionProps = {
   onAviacaoQuickAddServicos?: () => void;
   onAviacaoQuickAddBase?: () => void;
   onAviacaoQuickAddEquipe?: () => void;
+  onSalaoQuickAddProfissional?: () => void;
+  onSalaoQuickAddLocal?: () => void;
+  onSalaoQuickAddServicos?: () => void;
   queueSearchQuery?: string;
   onQueueSearchQueryChange?: (query: string) => void;
   onQueueSearchMatch?: (row: AtendimentoLite) => void;
@@ -767,6 +811,9 @@ export function QueueSection({
   onAviacaoQuickAddServicos,
   onAviacaoQuickAddBase,
   onAviacaoQuickAddEquipe,
+  onSalaoQuickAddProfissional,
+  onSalaoQuickAddLocal,
+  onSalaoQuickAddServicos,
   queueSearchQuery = "",
   onQueueSearchQueryChange,
   onQueueSearchMatch,
@@ -939,6 +986,41 @@ export function QueueSection({
                   className="w-full rounded-md border border-zinc-300 bg-white py-0.5 pl-6 pr-1.5 text-[10px] text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500"
                 />
               </label>
+            ) : null}
+            {salaoEsteticaActive &&
+            (onSalaoQuickAddProfissional || onSalaoQuickAddLocal || onSalaoQuickAddServicos) ? (
+              <div className="flex shrink-0 items-center gap-1">
+                {onSalaoQuickAddProfissional ? (
+                  <button
+                    type="button"
+                    title="Cadastrar profissional"
+                    onClick={onSalaoQuickAddProfissional}
+                    className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    + Profissional
+                  </button>
+                ) : null}
+                {onSalaoQuickAddLocal ? (
+                  <button
+                    type="button"
+                    title="Cadastrar cadeira ou sala de atendimento"
+                    onClick={onSalaoQuickAddLocal}
+                    className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    + Cadeira / Sala
+                  </button>
+                ) : null}
+                {onSalaoQuickAddServicos ? (
+                  <button
+                    type="button"
+                    title="Cadastrar serviços"
+                    onClick={onSalaoQuickAddServicos}
+                    className="rounded-md border border-zinc-300 px-1.5 py-0.5 text-[10px] font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    + Serviços
+                  </button>
+                ) : null}
+              </div>
             ) : null}
             {aviacaoLogisticsActive &&
             (onAviacaoQuickAddHangar ||
@@ -1254,6 +1336,7 @@ export function QueueSection({
                             notesInline={notesInline}
                             aviacaoLogisticsActive={aviacaoLogisticsActive}
                             docasLogisticsActive={docasLogisticsActive}
+                            salaoEsteticaActive={salaoEsteticaActive}
                             segmentoId={
                               salaoEsteticaActive ? SALAO_ESTETICA_SEGMENT_ID : mroSegmentId
                             }

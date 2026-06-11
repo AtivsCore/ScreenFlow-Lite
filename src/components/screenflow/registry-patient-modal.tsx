@@ -464,6 +464,10 @@ export function RegistryPatientModal({
         return;
       }
     }
+    if (salaoMode && rf.showClienteNome && !nomeCliente.trim()) {
+      setError("Informe o nome do cliente.");
+      return;
+    }
 
     setBusy(true);
     setError(null);
@@ -1017,9 +1021,11 @@ export function RegistryPatientModal({
             {rf.showClienteNome ? (
               <label className={REGISTRY_LABEL_CLASS}>
                 {salaoMode ? SALAO_REGISTER_FORM_LABELS.showClienteNome : "Nome do cliente"}
+                {salaoMode ? REGISTRY_REQUIRED_MARK : null}
                 <input
                   value={nomeCliente}
                   onChange={(e) => setNomeCliente(e.target.value)}
+                  required={salaoMode}
                   className={REGISTRY_FIELD_CLASS}
                 />
               </label>

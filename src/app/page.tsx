@@ -1574,6 +1574,22 @@ export default function Home() {
               onAviacaoQuickAddEquipe={
                 hardwareTiMode ? () => openAviacaoQuickCrud("equipe") : undefined
               }
+              onSalaoQuickAddProfissional={
+                salaoEsteticaActive
+                  ? () => setQuickCrud({ title: "Profissional Alocado", table: "profissionais" })
+                  : undefined
+              }
+              onSalaoQuickAddLocal={
+                salaoEsteticaActive
+                  ? () =>
+                      setQuickCrud({ title: "Cadeira / Sala de Atendimento", table: "locais" })
+                  : undefined
+              }
+              onSalaoQuickAddServicos={
+                salaoEsteticaActive
+                  ? () => setQuickCrud({ title: "Serviços", table: SERVICES_CRUD_TABLE })
+                  : undefined
+              }
               queueSearchQuery={
                 aviacaoLogisticsActive || salaoEsteticaActive ? queueSearchQuery : undefined
               }

@@ -365,6 +365,16 @@ export function buildSalaoCategoryPatch(
   return { ...cadastroPayload, observacao };
 }
 
+const SALAO_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function resolveSalaoServicoDisplayLabel(id: string, lookups: CadastroLookups): string | null {
+  const label = lookups.servicos.get(id)?.trim();
+  if (label) return label;
+  if (SALAO_UUID_RE.test(id.trim())) return null;
+  return id.trim() || null;
+}
+
 export function resolveSalaoCategoryDisplay(
   categoryId: string,
   observacao: string | null | undefined,
@@ -387,7 +397,10 @@ export function resolveSalaoCategoryDisplay(
         legacy
       );
     }
-    return ids.map((id) => lookups.servicos.get(id)?.trim() || id).join(", ");
+    const labels = ids
+      .map((id) => resolveSalaoServicoDisplayLabel(id, lookups))
+      .filter((label): label is string => Boolean(label?.trim()));
+    return labels.length > 0 ? labels.join(", ") : null;
   }
   return resolveCategoryDisplayLabel(
     categoryId,

@@ -477,9 +477,6 @@ export const ClientPanel = memo(function ClientPanel({
     [salaoMode, selected, aviacaoCurrentTabId, salaoLocalLabel]
   );
 
-  const salaoIconBtnClass =
-    "inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-700 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700";
-
   const primaryBtnClass =
     "min-h-9 min-w-[6.5rem] flex-1 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
   const secondaryBtnClass =
@@ -531,7 +528,30 @@ export const ClientPanel = memo(function ClientPanel({
                 {!observacoesAlwaysVisible && selected && hasObs ? (
                   <ObservacaoPopover observacao={selected.observacao} className="shrink-0" />
                 ) : null}
-                {priorityLawEnabled && prioStyle ? (
+                {salaoMode && onCopySelected && onPrintSelected ? (
+                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      title="Copiar resumo"
+                      aria-label="Copiar resumo"
+                      disabled={!canMutate || !selected}
+                      onClick={onCopySelected}
+                      className="inline-flex shrink-0 rounded-md border border-zinc-300 p-1 text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                    >
+                      <Copy className="size-3.5" strokeWidth={1.75} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      title="Imprimir comprovante"
+                      aria-label="Imprimir comprovante"
+                      disabled={!canMutate || !selected}
+                      onClick={onPrintSelected}
+                      className="inline-flex shrink-0 rounded-md border border-zinc-300 p-1 text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                    >
+                      <Printer className="size-3.5" strokeWidth={1.75} aria-hidden />
+                    </button>
+                  </div>
+                ) : priorityLawEnabled && prioStyle ? (
                   <span className={`ml-auto shrink-0 whitespace-nowrap px-2 py-0.5 text-[10px] ${prioStyle.badge}`}>
                     {prioStyle.label}
                   </span>
@@ -666,30 +686,7 @@ export const ClientPanel = memo(function ClientPanel({
             >
               {mroFieldLabels.avariaButton}
             </button>
-          ) : salaoMode ? (
-            <>
-              <button
-                type="button"
-                title="Copiar resumo"
-                aria-label="Copiar resumo"
-                disabled={!canMutate || !selected}
-                onClick={onCopySelected}
-                className={salaoIconBtnClass}
-              >
-                <Copy className="size-4" strokeWidth={1.75} aria-hidden />
-              </button>
-              <button
-                type="button"
-                title="Imprimir comprovante"
-                aria-label="Imprimir comprovante"
-                disabled={!canMutate || !selected}
-                onClick={onPrintSelected}
-                className={salaoIconBtnClass}
-              >
-                <Printer className="size-4" strokeWidth={1.75} aria-hidden />
-              </button>
-            </>
-          ) : (
+          ) : !salaoMode ? (
             <button
               type="button"
               disabled={!canMutate}
@@ -698,7 +695,7 @@ export const ClientPanel = memo(function ClientPanel({
             >
               Limpar dados
             </button>
-          )}
+          ) : null}
           <button
             type="button"
             disabled={!canMutate}
