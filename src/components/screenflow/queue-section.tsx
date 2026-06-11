@@ -16,6 +16,7 @@ import {
   filterAndSortMroQueue,
   rowMatchesMroQueueSearch,
 } from "@/lib/aviacao-logistics";
+import { rowMatchesSalaoQueueSearch } from "@/lib/salao-estetica-logistics";
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
@@ -809,14 +810,16 @@ export function QueueSection({
   );
 
   useEffect(() => {
-    if (!aviacaoLogisticsActive || !onQueueSearchMatch) return;
+    if ((!aviacaoLogisticsActive && !salaoEsteticaActive) || !onQueueSearchMatch) return;
     const q = queueSearchQuery.trim();
     if (!q) {
       lastSearchOpenRef.current = null;
       return;
     }
     const timer = window.setTimeout(() => {
-      const match = rows.find((r) => rowMatchesMroQueueSearch(r, q));
+      const match = rows.find((r) =>
+        salaoEsteticaActive ? rowMatchesSalaoQueueSearch(r, q) : rowMatchesMroQueueSearch(r, q)
+      );
       if (!match) return;
       const key = `${q.toLowerCase()}:${match.id}`;
       if (lastSearchOpenRef.current === key) return;
@@ -824,7 +827,13 @@ export function QueueSection({
       onQueueSearchMatch(match);
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [queueSearchQuery, rows, aviacaoLogisticsActive, onQueueSearchMatch]);
+  }, [
+    queueSearchQuery,
+    rows,
+    aviacaoLogisticsActive,
+    salaoEsteticaActive,
+    onQueueSearchMatch,
+  ]);
 
   const handleCopyRow = useCallback(
     async (row: AtendimentoLite) => {
@@ -913,6 +922,23 @@ export function QueueSection({
                 onSelectedHangarIdsChange={onAviacaoSelectedHangarIdsChange}
                 hangarOptions={aviacaoHangarFilterOptions}
               />
+            ) : null}
+            {salaoEsteticaActive && onQueueSearchQueryChange ? (
+              <label className="relative flex min-w-[9rem] max-w-[12rem] shrink-0 items-center">
+                <Search
+                  className="pointer-events-none absolute left-1.5 size-3 text-zinc-400"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <input
+                  type="search"
+                  value={queueSearchQuery}
+                  onChange={(e) => onQueueSearchQueryChange(e.target.value)}
+                  placeholder="Nome do cliente…"
+                  aria-label="Buscar por nome do cliente"
+                  className="w-full rounded-md border border-zinc-300 bg-white py-0.5 pl-6 pr-1.5 text-[10px] text-zinc-900 placeholder:text-zinc-400 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder:text-zinc-500"
+                />
+              </label>
             ) : null}
             {aviacaoLogisticsActive &&
             (onAviacaoQuickAddHangar ||

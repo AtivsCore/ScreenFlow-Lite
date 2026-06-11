@@ -39,6 +39,7 @@ import {
   parseSalaoCadastroFields,
   parseSalaoServicosSolicitados,
   resolveSalaoHeaderActionState,
+  resolveSalaoLocalLabel,
   SALAO_FIELD_SERVICOS,
 } from "@/lib/salao-estetica-logistics";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
@@ -49,7 +50,7 @@ import { ObservacaoPopover } from "@/components/screenflow/observacao-popover";
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 import { formatHoraMarcada } from "@/lib/atendimentos-lite";
 import { classificacaoBadgeStyle } from "@/lib/classificacao-prioridade";
-import { Printer } from "lucide-react";
+import { Copy, Printer } from "lucide-react";
 
 type Opt = { id: string; nome: string | null };
 type ProfOpt = ProfissionalRow;
@@ -90,6 +91,7 @@ type ClientPanelProps = {
   onBaseSelectorChange?: (value: string) => void;
   onRegistrarAvaria?: () => void;
   onPrintSelected?: () => void;
+  onCopySelected?: () => void;
   /** Estágio atual da aeronave selecionada (coluna Kanban/lista). */
   aviacaoCurrentTabId?: string | null;
   /** Incrementar após CRUD rápido (+ Bancada / + Equipe / + Serviços) para recarregar selects. */
@@ -151,6 +153,7 @@ export const ClientPanel = memo(function ClientPanel({
   onBaseSelectorChange,
   onRegistrarAvaria,
   onPrintSelected,
+  onCopySelected,
   aviacaoCurrentTabId,
   cadastrosRevision = 0,
 }: ClientPanelProps) {
@@ -461,11 +464,21 @@ export const ClientPanel = memo(function ClientPanel({
     [aviacaoMode, selected, aviacaoCurrentTabId, segmentoAplicado]
   );
 
+  const salaoLocalLabel = useMemo(() => {
+    if (!salaoMode || !selected) return null;
+    return resolveSalaoLocalLabel(selected, cadastroCategories, cadastroLookups);
+  }, [salaoMode, selected, cadastroCategories, cadastroLookups]);
+
   const salaoHeaderActions = useMemo(
     () =>
-      salaoMode && selected ? resolveSalaoHeaderActionState(aviacaoCurrentTabId) : null,
-    [salaoMode, selected, aviacaoCurrentTabId]
+      salaoMode && selected
+        ? resolveSalaoHeaderActionState(aviacaoCurrentTabId, salaoLocalLabel)
+        : null,
+    [salaoMode, selected, aviacaoCurrentTabId, salaoLocalLabel]
   );
+
+  const salaoIconBtnClass =
+    "inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-300 bg-white text-zinc-700 shadow-sm transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700";
 
   const primaryBtnClass =
     "min-h-9 min-w-[6.5rem] flex-1 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
@@ -495,7 +508,7 @@ export const ClientPanel = memo(function ClientPanel({
                     Retirada {previsaoRetiradaLabel}
                   </span>
                 ) : null}
-                {onPrintSelected ? (
+                {onPrintSelected && !salaoMode ? (
                   <button
                     type="button"
                     title="Imprimir comprovante de entrada"
@@ -653,6 +666,29 @@ export const ClientPanel = memo(function ClientPanel({
             >
               {mroFieldLabels.avariaButton}
             </button>
+          ) : salaoMode ? (
+            <>
+              <button
+                type="button"
+                title="Copiar resumo"
+                aria-label="Copiar resumo"
+                disabled={!canMutate || !selected}
+                onClick={onCopySelected}
+                className={salaoIconBtnClass}
+              >
+                <Copy className="size-4" strokeWidth={1.75} aria-hidden />
+              </button>
+              <button
+                type="button"
+                title="Imprimir comprovante"
+                aria-label="Imprimir comprovante"
+                disabled={!canMutate || !selected}
+                onClick={onPrintSelected}
+                className={salaoIconBtnClass}
+              >
+                <Printer className="size-4" strokeWidth={1.75} aria-hidden />
+              </button>
+            </>
           ) : (
             <button
               type="button"

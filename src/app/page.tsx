@@ -23,6 +23,10 @@ import { SegmentConfigModal } from "@/components/screenflow/segment-config-modal
 import { EditAtendimentoModal } from "@/components/screenflow/edit-atendimento-modal";
 import { printAtendimentoCard } from "@/lib/print-atendimento-card";
 import {
+  buildAtendimentoShareSummary,
+  copyAtendimentoShareSummary,
+} from "@/lib/atendimento-share-summary";
+import {
   type AtendimentoLite,
   type AtendimentoLiteNested,
   STATUS_UPDATE,
@@ -557,6 +561,17 @@ export default function Home() {
   const handleQueueSearchMatch = useCallback((row: AtendimentoLite) => {
     setSearchDetailRow(row);
   }, []);
+
+  const handleCopySelected = useCallback(async () => {
+    if (!selected) return;
+    const text = buildAtendimentoShareSummary(selected, {
+      cadastroCategories: tenantConfig.cadastroCategories.filter((c) => c.enabled),
+      cadastroLookups,
+      segmentoAplicado: tenantConfig.segmentoAplicado,
+      queueTabIds: visibleQueueTabs,
+    });
+    await copyAtendimentoShareSummary(text);
+  }, [selected, tenantConfig.cadastroCategories, cadastroLookups, tenantConfig.segmentoAplicado, visibleQueueTabs]);
 
   const handleQueueTabId = useCallback(
     (id: string) => {
@@ -1441,7 +1456,7 @@ export default function Home() {
             onLimpar={() => setSelectedId(null)}
             onRegistrarAvaria={() => void registerAviacaoAvaria()}
             onPrintSelected={
-              aviacaoLogisticsActive && selected
+              selected && (aviacaoLogisticsActive || salaoEsteticaActive)
                 ? () =>
                     printAtendimentoCard({
                       row: selected,
@@ -1450,6 +1465,9 @@ export default function Home() {
                       baseOptions: aviacaoLogisticsActive ? aviacaoTenantOptions : undefined,
                     })
                 : undefined
+            }
+            onCopySelected={
+              salaoEsteticaActive && selected ? () => void handleCopySelected() : undefined
             }
             aviacaoCurrentTabId={salaoEsteticaActive ? selectedSalaoTabId : selectedAviacaoTabId}
             cadastrosRevision={cadastrosRevision}
@@ -1556,9 +1574,15 @@ export default function Home() {
               onAviacaoQuickAddEquipe={
                 hardwareTiMode ? () => openAviacaoQuickCrud("equipe") : undefined
               }
-              queueSearchQuery={aviacaoLogisticsActive ? queueSearchQuery : undefined}
-              onQueueSearchQueryChange={aviacaoLogisticsActive ? setQueueSearchQuery : undefined}
-              onQueueSearchMatch={aviacaoLogisticsActive ? handleQueueSearchMatch : undefined}
+              queueSearchQuery={
+                aviacaoLogisticsActive || salaoEsteticaActive ? queueSearchQuery : undefined
+              }
+              onQueueSearchQueryChange={
+                aviacaoLogisticsActive || salaoEsteticaActive ? setQueueSearchQuery : undefined
+              }
+              onQueueSearchMatch={
+                aviacaoLogisticsActive || salaoEsteticaActive ? handleQueueSearchMatch : undefined
+              }
             />
           )}
         </main>
@@ -1572,7 +1596,7 @@ export default function Home() {
         onClose={() => setSearchDetailRow(null)}
         cadastroCategories={tenantConfig.cadastroCategories}
         cadastroLookups={cadastroLookups}
-        segmentoAplicado={mroSegmentId}
+        segmentoAplicado={tenantConfig.segmentoAplicado}
         queueTabs={visibleQueueTabs}
         onEdit={(row) => {
           setEditFromAgenda(false);

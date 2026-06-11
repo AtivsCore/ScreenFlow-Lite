@@ -61,7 +61,6 @@ import {
   SALAO_FIELD_SERVICOS,
   SALAO_REGISTER_FORM_LABELS,
   buildSalaoSavePayload,
-  canUseSalaoAgendaFeatures,
   isSalaoEsteticaSegment,
   mergeSalaoObservacao,
   parseSalaoCadastroFields,
@@ -139,7 +138,6 @@ function EditAtendimentoForm({
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
   const salaoMode = isSalaoEsteticaSegment(tenantConfig.segmentoAplicado);
-  const salaoAgendaEnabled = canUseSalaoAgendaFeatures(tenantConfig.planTier);
   const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
@@ -378,7 +376,7 @@ function EditAtendimentoForm({
 
   const showDocasHoraAgendada = docasMode;
   const showAviacaoHoraAgendada = aviacaoMode && rf.showHoraMarcada;
-  const showSalaoHoraAgendada = salaoMode && rf.showHoraMarcada && salaoAgendaEnabled;
+  const showSalaoHoraAgendada = salaoMode && rf.showHoraMarcada;
 
   const FIELD_CLASS =
     "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50";

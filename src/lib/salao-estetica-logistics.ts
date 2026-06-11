@@ -656,23 +656,34 @@ export function salaoStepTvStatus(step: SalaoQueueTabId): string | undefined {
   return undefined;
 }
 
+/** Rótulo do botão de chamada conforme o posto alocado (cadeira vs sala). */
+export function resolveSalaoChamarLabel(localNome: string | null | undefined): string {
+  const n = (localNome ?? "").trim().toLowerCase();
+  if (n.includes("estética") || n.includes("estetica") || n.includes("sala")) {
+    return "Chamar para Sala";
+  }
+  return "Chamar para Cadeira";
+}
+
 export function resolveSalaoHeaderActionState(
-  tabId: string | null | undefined
+  tabId: string | null | undefined,
+  localNome?: string | null
 ): SalaoHeaderActionState {
   const step = normalizeSalaoTabId(tabId);
+  const chamarLabel = resolveSalaoChamarLabel(localNome);
 
   if (step === SALAO_QUEUE_TAB.FINALIZADO) {
     return {
-      chamarLabel: "Chamar p/ Cadeira/Sala",
+      chamarLabel,
       iniciarLabel: "Iniciar Atendimento",
-      finalizarLabel: "Encerrar / Caixa",
+      finalizarLabel: "Finalizar / Caixa",
       primaryAction: "finalizar",
     };
   }
 
   if (step === SALAO_QUEUE_TAB.FILA_ESPERA) {
     return {
-      chamarLabel: "Chamar p/ Cadeira/Sala",
+      chamarLabel,
       iniciarLabel: "Iniciar Atendimento",
       finalizarLabel: "Finalizar / Caixa",
       primaryAction: "chamar",
@@ -680,16 +691,27 @@ export function resolveSalaoHeaderActionState(
   }
 
   return {
-    chamarLabel: "Chamar p/ Cadeira/Sala",
-    iniciarLabel: "Rechamar",
+    chamarLabel,
+    iniciarLabel: "Iniciar Atendimento",
     finalizarLabel: "Finalizar / Caixa",
     primaryAction: "iniciar",
   };
 }
 
-/** Plano PRO: permite agendamento com data/hora no formulário e na aba Agenda. */
+/** Plano PRO: desbloqueia a aba consolidada de Agenda futura (não o campo no balcão). */
 export function canUseSalaoAgendaFeatures(planTier: PlanTier): boolean {
   return isProPlan(planTier);
+}
+
+/** Busca instantânea por nome do cliente (salão/estética). */
+export function rowMatchesSalaoQueueSearch(
+  row: Pick<AtendimentoLite, "nome" | "observacao" | "cadastro_valores">,
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const nome = row.nome?.trim().toLowerCase() ?? "";
+  return nome.includes(q);
 }
 
 export function formatSalaoObservacaoForDisplay(
