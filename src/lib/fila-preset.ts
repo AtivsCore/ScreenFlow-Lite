@@ -38,12 +38,15 @@ const AVIACAO_KANBAN_TAB_EQUIV: Record<string, string> = {
 /** Equivalência de ids de coluna Salão/Estética (estável ↔ legado `sal-t*`). */
 const SALAO_KANBAN_TAB_EQUIV: Record<string, string> = {
   "sal-t1": "fila_espera",
-  "sal-t2": "cadeira_01",
-  "sal-t3": "cadeira_02",
-  "sal-t4": "sala_estetica_01",
+  "sal-t2": "em_atendimento",
+  "sal-t3": "em_atendimento",
+  "sal-t4": "em_atendimento",
   "sal-t5": "finalizado_caixa",
   check_in: "fila_espera",
-  em_atendimento: "cadeira_01",
+  cadeira_01: "em_atendimento",
+  cadeira_02: "em_atendimento",
+  sala_estetica_01: "em_atendimento",
+  em_atendimento: "em_atendimento",
 };
 
 /** Equivalência de ids de coluna Oficina / Hardware TI (estável ↔ legado `of-t*`). */

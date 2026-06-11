@@ -52,8 +52,24 @@ export function minFutureDatetimeLocal(): string {
 export function datetimeLocalToIso(value: string): string | null {
   if (!value.trim()) return null;
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value.trim();
+  if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+/** Garante ISO completo para `timestamptz` — aceita datetime-local ou HH:MM. */
+export function resolveHoraMarcadaIsoForSave(
+  value: string,
+  originalIso?: string | null
+): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes("T")) {
+    const fromDatetime = datetimeLocalToIso(trimmed);
+    if (fromDatetime) return fromDatetime;
+  }
+  const fromTime = mergeHoraMarcadaPreserveDate(originalIso ?? null, trimmed);
+  if (fromTime) return fromTime;
+  return buildHoraMarcadaTodayIso(trimmed);
 }
 
 /** Aplica HH:MM preservando o dia (e mês/ano) já gravados em `originalIso`. */

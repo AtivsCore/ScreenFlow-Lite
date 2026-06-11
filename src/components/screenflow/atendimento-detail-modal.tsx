@@ -21,6 +21,19 @@ import {
   buildAtendimentoShareSummary,
   copyAtendimentoShareSummary,
 } from "@/lib/atendimento-share-summary";
+import {
+  SALAO_FIELD_SERVICOS,
+  SALAO_LOCAL_CATEGORY_ID,
+  SALAO_PROFISSIONAL_CATEGORY_ID,
+  SALAO_REGISTER_FORM_LABELS,
+  formatSalaoObservacaoForDisplay,
+  getSalaoStepLabel,
+  isSalaoEsteticaSegment,
+  parseSalaoCadastroFields,
+  parseSalaoServicosSolicitados,
+  resolveSalaoCategoryDisplay,
+  resolveSalaoTabIdFromObservacao,
+} from "@/lib/salao-estetica-logistics";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
 import { Modal } from "@/components/ui/modal";
 import { Copy, Pencil } from "lucide-react";
@@ -61,6 +74,8 @@ export function AtendimentoDetailModal({
   onSelect,
 }: AtendimentoDetailModalProps) {
   const [copyOk, setCopyOk] = useState(false);
+  const salaoMode = isSalaoEsteticaSegment(segmentoAplicado);
+  const flowTabs = useMemo(() => queueTabs.filter((t) => t.preset !== "todos"), [queueTabs]);
 
   const fields = useMemo(() => {
     if (!row) return null;
@@ -73,6 +88,56 @@ export function AtendimentoDetailModal({
       localNome: row.localNome,
       servicoNome: row.servicoNome,
     };
+
+    if (salaoMode) {
+      const inline = parseSalaoCadastroFields(row.observacao);
+      const servicosFromTag = parseSalaoServicosSolicitados(inline[SALAO_FIELD_SERVICOS]);
+      const servicos =
+        servicosFromTag.length > 0
+          ? servicosFromTag
+              .map((id) => cadastroLookups.servicos.get(id)?.trim())
+              .filter((label): label is string => Boolean(label?.trim()))
+              .join(", ")
+          : resolveSalaoCategoryDisplay(
+              "sal-c3",
+              row.observacao,
+              row.cadastro_valores ?? {},
+              cadastroLookups,
+              categories,
+              legacy
+            ) ?? "—";
+
+      const tabId = resolveSalaoTabIdFromObservacao(row.observacao, flowTabs);
+
+      return {
+        kind: "salao" as const,
+        cliente: row.nome?.trim() || "—",
+        profissional:
+          resolveSalaoCategoryDisplay(
+            SALAO_PROFISSIONAL_CATEGORY_ID,
+            row.observacao,
+            row.cadastro_valores ?? {},
+            cadastroLookups,
+            categories,
+            legacy
+          ) ?? "—",
+        local:
+          resolveSalaoCategoryDisplay(
+            SALAO_LOCAL_CATEGORY_ID,
+            row.observacao,
+            row.cadastro_valores ?? {},
+            cadastroLookups,
+            categories,
+            legacy
+          ) ?? "—",
+        servicos: servicos || "—",
+        horario: row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : "—",
+        etapa: tabId ? getSalaoStepLabel(tabId, queueTabs) : "—",
+        status: normalizeQueueStatusLabel(row.status),
+        observacoes: formatSalaoObservacaoForDisplay(row.observacao) || "—",
+      };
+    }
+
     const inline = parseAviacaoCadastroFields(row.observacao);
     const servicoIds = parseAviacaoServicosSolicitados(inline[AVIACAO_FIELD_SERVICOS]);
     const servicos =
@@ -80,12 +145,10 @@ export function AtendimentoDetailModal({
         ? servicoIds.map((id) => cadastroLookups.servicos.get(id)?.trim() || id).join(", ")
         : "—";
 
-    const tabId = resolveAviacaoTabIdFromObservacao(
-      row.observacao,
-      queueTabs.filter((t) => t.preset !== "todos")
-    );
+    const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, flowTabs);
 
     return {
+      kind: "mro" as const,
       cliente: row.nome?.trim() || "—",
       sn:
         resolveAviacaoCategoryDisplay(
@@ -130,7 +193,7 @@ export function AtendimentoDetailModal({
       status: normalizeQueueStatusLabel(row.status),
       observacoes: formatAviacaoObservacaoForDisplay(row.observacao) || "—",
     };
-  }, [row, cadastroCategories, cadastroLookups, segmentoAplicado, queueTabs]);
+  }, [row, cadastroCategories, cadastroLookups, segmentoAplicado, queueTabs, salaoMode, flowTabs]);
 
   async function handleCopy() {
     if (!row) return;
@@ -145,7 +208,14 @@ export function AtendimentoDetailModal({
     window.setTimeout(() => setCopyOk(false), 1800);
   }
 
-  const title = fields?.sn && fields.sn !== "—" ? `OS ${fields.sn}` : "Ordem de Serviço";
+  const title =
+    fields?.kind === "salao"
+      ? fields.cliente !== "—"
+        ? fields.cliente
+        : "Detalhes do atendimento"
+      : fields?.sn && fields.sn !== "—"
+        ? `OS ${fields.sn}`
+        : "Ordem de Serviço";
 
   return (
     <Modal
@@ -183,21 +253,36 @@ export function AtendimentoDetailModal({
       }
     >
       {row && fields ? (
-        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <DetailField label="Cliente" value={fields.cliente} />
-          <DetailField label="S/N / OS" value={fields.sn} />
-          <DetailField label="Tipo de Defeito" value={fields.defeito} />
-          <DetailField label="Tipo de Dispositivo" value={fields.dispositivo} />
-          <DetailField label="Bancada" value={fields.bancada} />
-          <DetailField label="Técnico" value={fields.tecnico} />
-          <DetailField label="Previsão de retirada" value={fields.previsao} />
-          <DetailField label="Serviços solicitados" value={fields.servicos} />
-          <DetailField label="Etapa" value={fields.etapa} />
-          <DetailField label="Status" value={fields.status} />
-          <div className="sm:col-span-2">
-            <DetailField label="Observações" value={fields.observacoes} />
-          </div>
-        </dl>
+        fields.kind === "salao" ? (
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <DetailField label="Cliente" value={fields.cliente} />
+            <DetailField label={SALAO_REGISTER_FORM_LABELS.showProfissional} value={fields.profissional} />
+            <DetailField label={SALAO_REGISTER_FORM_LABELS.showLocal} value={fields.local} />
+            <DetailField label={SALAO_REGISTER_FORM_LABELS.showServico} value={fields.servicos} />
+            <DetailField label={SALAO_REGISTER_FORM_LABELS.showHoraMarcada} value={fields.horario} />
+            <DetailField label="Etapa" value={fields.etapa} />
+            <DetailField label="Status" value={fields.status} />
+            <div className="sm:col-span-2">
+              <DetailField label={SALAO_REGISTER_FORM_LABELS.showObservacao} value={fields.observacoes} />
+            </div>
+          </dl>
+        ) : (
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <DetailField label="Cliente" value={fields.cliente} />
+            <DetailField label="S/N / OS" value={fields.sn} />
+            <DetailField label="Tipo de Defeito" value={fields.defeito} />
+            <DetailField label="Tipo de Dispositivo" value={fields.dispositivo} />
+            <DetailField label="Bancada" value={fields.bancada} />
+            <DetailField label="Técnico" value={fields.tecnico} />
+            <DetailField label="Previsão de retirada" value={fields.previsao} />
+            <DetailField label="Serviços solicitados" value={fields.servicos} />
+            <DetailField label="Etapa" value={fields.etapa} />
+            <DetailField label="Status" value={fields.status} />
+            <div className="sm:col-span-2">
+              <DetailField label="Observações" value={fields.observacoes} />
+            </div>
+          </dl>
+        )
       ) : null}
       {row && onSelect ? (
         <button

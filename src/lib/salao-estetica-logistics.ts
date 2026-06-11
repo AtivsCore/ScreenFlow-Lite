@@ -25,12 +25,10 @@ import { TODOS_QUEUE_TAB, type CadastroCategoryEntry, type QueueTabEntry } from 
 /** Slug canônico do segmento licenciado (`segmento_definido` / `segmentoAplicado`). */
 export const SALAO_ESTETICA_SEGMENT_ID = "salao_estetica" as const;
 
-/** IDs estáveis das colunas de ocupação (marcador `__sf_fila:tab:…__`). */
+/** IDs estáveis das colunas de fluxo (marcador `__sf_fila:tab:…__`). */
 export const SALAO_QUEUE_TAB = {
   FILA_ESPERA: "fila_espera",
-  CADEIRA_01: "cadeira_01",
-  CADEIRA_02: "cadeira_02",
-  SALA_ESTETICA_01: "sala_estetica_01",
+  EM_ATENDIMENTO: "em_atendimento",
   FINALIZADO: "finalizado_caixa",
 } as const;
 
@@ -38,19 +36,22 @@ export type SalaoQueueTabId = (typeof SALAO_QUEUE_TAB)[keyof typeof SALAO_QUEUE_
 
 export const SALAO_PIPELINE_ORDER: readonly SalaoQueueTabId[] = [
   SALAO_QUEUE_TAB.FILA_ESPERA,
-  SALAO_QUEUE_TAB.CADEIRA_01,
-  SALAO_QUEUE_TAB.CADEIRA_02,
-  SALAO_QUEUE_TAB.SALA_ESTETICA_01,
+  SALAO_QUEUE_TAB.EM_ATENDIMENTO,
   SALAO_QUEUE_TAB.FINALIZADO,
 ];
 
 export const SALAO_STEP_LABELS: Record<SalaoQueueTabId, string> = {
   [SALAO_QUEUE_TAB.FILA_ESPERA]: "FILA DE ESPERA (GERAL)",
-  [SALAO_QUEUE_TAB.CADEIRA_01]: "CADEIRA / BANCADA 01",
-  [SALAO_QUEUE_TAB.CADEIRA_02]: "CADEIRA / BANCADA 02",
-  [SALAO_QUEUE_TAB.SALA_ESTETICA_01]: "SALA DE ESTÉTICA 01",
+  [SALAO_QUEUE_TAB.EM_ATENDIMENTO]: "EM ATENDIMENTO",
   [SALAO_QUEUE_TAB.FINALIZADO]: "FINALIZADO / CAIXA",
 };
+
+/** Colunas físicas legadas — mapeadas para `em_atendimento` na normalização. */
+const SALAO_LEGACY_WORK_TAB_IDS = [
+  "cadeira_01",
+  "cadeira_02",
+  "sala_estetica_01",
+] as const;
 
 /** Profissional alocado — categoria `sal-c1`. */
 export const SALAO_PROFISSIONAL_CATEGORY_ID = "sal-c1" as const;
@@ -67,12 +68,14 @@ const SALAO_DATA_PARSE = /__sf_salao:([\s\S]*?)__/i;
 
 const LEGACY_TAB_ALIASES: Record<string, SalaoQueueTabId> = {
   "sal-t1": SALAO_QUEUE_TAB.FILA_ESPERA,
-  "sal-t2": SALAO_QUEUE_TAB.CADEIRA_01,
-  "sal-t3": SALAO_QUEUE_TAB.CADEIRA_02,
-  "sal-t4": SALAO_QUEUE_TAB.SALA_ESTETICA_01,
+  "sal-t2": SALAO_QUEUE_TAB.EM_ATENDIMENTO,
+  "sal-t3": SALAO_QUEUE_TAB.EM_ATENDIMENTO,
+  "sal-t4": SALAO_QUEUE_TAB.EM_ATENDIMENTO,
   "sal-t5": SALAO_QUEUE_TAB.FINALIZADO,
   check_in: SALAO_QUEUE_TAB.FILA_ESPERA,
-  em_atendimento: SALAO_QUEUE_TAB.CADEIRA_01,
+  cadeira_01: SALAO_QUEUE_TAB.EM_ATENDIMENTO,
+  cadeira_02: SALAO_QUEUE_TAB.EM_ATENDIMENTO,
+  sala_estetica_01: SALAO_QUEUE_TAB.EM_ATENDIMENTO,
 };
 
 export type SalaoCadastroFields = Partial<Record<string, string>>;
@@ -103,9 +106,16 @@ export function isSalaoQueueTabId(id: string | null | undefined): id is SalaoQue
   return !!id && (SALAO_PIPELINE_ORDER as readonly string[]).includes(id);
 }
 
+function isSalaoLegacyWorkTabId(id: string): boolean {
+  return (SALAO_LEGACY_WORK_TAB_IDS as readonly string[]).includes(
+    id as (typeof SALAO_LEGACY_WORK_TAB_IDS)[number]
+  );
+}
+
 export function isSalaoCanonicalPipelineTabId(tabId: string | null | undefined): boolean {
   if (!tabId || tabId === TODOS_QUEUE_TAB.id) return false;
   if (isSalaoQueueTabId(tabId)) return true;
+  if (isSalaoLegacyWorkTabId(tabId)) return true;
   return Object.prototype.hasOwnProperty.call(LEGACY_TAB_ALIASES, tabId);
 }
 
@@ -155,8 +165,7 @@ export function resolveSalaoQueueTabs(config: {
   queueTabs: QueueTabEntry[];
   showTodosTab?: boolean;
 }): QueueTabEntry[] {
-  const stored = config.queueTabs.filter((t) => t.preset !== "todos");
-  const flowTabs = stored.length > 0 ? stored : buildSalaoCanonicalQueueTabs();
+  const flowTabs = buildSalaoCanonicalQueueTabs();
   return config.showTodosTab ? [TODOS_QUEUE_TAB, ...flowTabs] : flowTabs;
 }
 
@@ -326,6 +335,8 @@ export function buildSalaoSavePayload(
 
   if (servicosIds.length > 0) {
     salaoFields[SALAO_FIELD_SERVICOS] = serializeSalaoServicosSolicitados(servicosIds);
+  } else {
+    delete salaoFields[SALAO_FIELD_SERVICOS];
   }
 
   return {
@@ -425,33 +436,12 @@ export function resolveSalaoTabIdFromObservacao(
   return activeColumns[0]?.id ?? null;
 }
 
+/** Coluna de trabalho genérica — cadeira/sala ficam nos metadados do card. */
 export function resolveSalaoTabFromLocalNome(
-  localNome: string | null | undefined,
-  queueTabs: Pick<QueueTabEntry, "id" | "label">[]
+  _localNome?: string | null,
+  _queueTabs?: Pick<QueueTabEntry, "id" | "label">[]
 ): SalaoQueueTabId {
-  const n = (localNome ?? "").trim().toLowerCase();
-  if (!n) return SALAO_QUEUE_TAB.CADEIRA_01;
-
-  const workTabs = queueTabs.filter(
-    (t) =>
-      normalizeSalaoTabId(t.id) !== SALAO_QUEUE_TAB.FILA_ESPERA &&
-      normalizeSalaoTabId(t.id) !== SALAO_QUEUE_TAB.FINALIZADO
-  );
-
-  for (const tab of workTabs) {
-    const label = tab.label.trim().toLowerCase();
-    if (n.includes("estética") || n.includes("estetica")) {
-      if (label.includes("estética") || label.includes("estetica")) {
-        return normalizeSalaoTabId(tab.id);
-      }
-    }
-    if (n.includes("02") && label.includes("02")) return normalizeSalaoTabId(tab.id);
-    if (n.includes("01") && label.includes("01")) return normalizeSalaoTabId(tab.id);
-  }
-
-  if (n.includes("estética") || n.includes("estetica")) return SALAO_QUEUE_TAB.SALA_ESTETICA_01;
-  if (n.includes("02")) return SALAO_QUEUE_TAB.CADEIRA_02;
-  return SALAO_QUEUE_TAB.CADEIRA_01;
+  return SALAO_QUEUE_TAB.EM_ATENDIMENTO;
 }
 
 export function resolveSalaoLocalLabel(
@@ -659,13 +649,7 @@ export function canShiftSalaoTab(
 
 export function salaoStepTvStatus(step: SalaoQueueTabId): string | undefined {
   if (step === SALAO_QUEUE_TAB.FILA_ESPERA) return STATUS_UPDATE.chamar;
-  if (
-    step === SALAO_QUEUE_TAB.CADEIRA_01 ||
-    step === SALAO_QUEUE_TAB.CADEIRA_02 ||
-    step === SALAO_QUEUE_TAB.SALA_ESTETICA_01
-  ) {
-    return STATUS_UPDATE.rechamar;
-  }
+  if (step === SALAO_QUEUE_TAB.EM_ATENDIMENTO) return STATUS_UPDATE.rechamar;
   return undefined;
 }
 

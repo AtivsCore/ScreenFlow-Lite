@@ -99,10 +99,8 @@ import {
   isSalaoQueueTabIdInVisible,
   mergeSalaoObservacao,
   normalizeSalaoTabId,
-  resolveSalaoLocalLabel,
   resolveSalaoQueueTabClickId,
   resolveSalaoQueueTabs,
-  resolveSalaoTabFromLocalNome,
   resolveSalaoTabIdFromObservacao,
   salaoStepTvStatus,
   shiftSalaoTab,
@@ -1146,21 +1144,8 @@ export default function Home() {
 
   const iniciarSalaoAtendimento = useCallback(async () => {
     if (!selected || !salaoEsteticaActive) return;
-    const localLabel = resolveSalaoLocalLabel(
-      selected,
-      tenantConfig.cadastroCategories,
-      cadastroLookups
-    );
-    const targetTabId = resolveSalaoTabFromLocalNome(localLabel, visibleQueueTabs);
-    await advanceSalaoLogistics(targetTabId, STATUS_UPDATE.rechamar);
-  }, [
-    selected,
-    salaoEsteticaActive,
-    tenantConfig.cadastroCategories,
-    cadastroLookups,
-    visibleQueueTabs,
-    advanceSalaoLogistics,
-  ]);
+    await advanceSalaoLogistics(SALAO_QUEUE_TAB.EM_ATENDIMENTO, STATUS_UPDATE.rechamar);
+  }, [selected, salaoEsteticaActive, advanceSalaoLogistics]);
 
   useEffect(() => {
     if (!sessionReady || envMissing || appView !== "fila" || !docasLogisticsActive) return;

@@ -58,7 +58,7 @@ import {
   isDocasSegment,
   isDocasTextField,
 } from "@/lib/docas-logistics";
-import { buildHoraMarcadaTodayIso, datetimeLocalToIso } from "@/lib/hora-marcada";
+import { buildHoraMarcadaTodayIso, resolveHoraMarcadaIsoForSave } from "@/lib/hora-marcada";
 import {
   SALAO_FIELD_SERVICOS,
   SALAO_QUEUE_TAB,
@@ -578,7 +578,7 @@ export function RegistryPatientModal({
       if (wantsHora && horaMarcada.trim()) {
         payload.hora_marcada =
           aviacaoMode || salaoMode
-            ? datetimeLocalToIso(horaMarcada)
+            ? resolveHoraMarcadaIsoForSave(horaMarcada)
             : buildHoraMarcadaTodayIso(horaMarcada);
       } else if (!docasMode && !aviacaoMode && !salaoMode && triagemTab?.preset === "encaixe") {
         payload.hora_marcada = null;

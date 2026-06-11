@@ -60,7 +60,7 @@ import {
 import {
   SALAO_FIELD_SERVICOS,
   SALAO_REGISTER_FORM_LABELS,
-  buildSalaoSavePayload,
+  buildSalaoCategoryPatch,
   isSalaoEsteticaSegment,
   mergeSalaoObservacao,
   parseSalaoCadastroFields,
@@ -77,9 +77,10 @@ import {
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import { fetchServicos } from "@/lib/fetch-servicos";
 import {
-  datetimeLocalToIso,
+  isoToDatetimeLocalValue,
   isoToTimeInputValue,
   mergeHoraMarcadaPreserveDate,
+  resolveHoraMarcadaIsoForSave,
 } from "@/lib/hora-marcada";
 import type { CadastroCategoryEntry, ResolvedTenantConfig } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -116,13 +117,6 @@ type FormProps = {
   onSaved: () => void;
 };
 
-function toDatetimeLocal(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 function EditAtendimentoForm({
   row,
@@ -241,9 +235,10 @@ function EditAtendimentoForm({
   const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
   const [nomeCliente, setNomeCliente] = useState(row.nome ?? "");
   const [formValues, setFormValues] = useState<Record<string, string>>(initialFormValues);
-  const [horaMarcada, setHoraMarcada] = useState(() =>
-    allowFullDatetime ? toDatetimeLocal(row.hora_marcada) : isoToTimeInputValue(row.hora_marcada)
-  );
+  const [horaMarcada, setHoraMarcada] = useState(() => {
+    if (salaoMode || allowFullDatetime) return isoToDatetimeLocalValue(row.hora_marcada);
+    return isoToTimeInputValue(row.hora_marcada);
+  });
   const [classificacao, setClassificacao] = useState<ClassificacaoPrioridade>(() =>
     resolveClassificacaoPrioridade(row.classificacao_prioridade, row.prioridade)
   );
@@ -679,21 +674,21 @@ function EditAtendimentoForm({
       atendimentoPatch = { ...cadastroPayload, observacao };
     } else if (salaoMode) {
       const servicosIds = parseSalaoServicosSolicitados(
-        formValues[SALAO_FIELD_SERVICOS] ??
-          parseSalaoCadastroFields(row.observacao)[SALAO_FIELD_SERVICOS]
+        formValues[SALAO_FIELD_SERVICOS] ?? ""
       );
-      const { cadastroPayload, salaoFields } = buildSalaoSavePayload(
+      const categoryPatch = buildSalaoCategoryPatch(
         formValues,
         tenantConfig.cadastroCategories,
+        row.observacao,
         servicosIds
       );
       const observacao = mergeSalaoObservacao({
-        current: row.observacao,
+        current: categoryPatch.observacao,
         tab: triagemTab,
-        salaoFields,
         preserveTabWhenUnset: true,
         userObservacaoText: observacaoBase.trim() || null,
       });
+      const { observacao: _obs, ...cadastroPayload } = categoryPatch;
       atendimentoPatch = { ...cadastroPayload, observacao };
     } else if (aviacaoMode) {
       const { cadastroPayload, aviacaoFields } = buildAviacaoSavePayload(
@@ -745,8 +740,11 @@ function EditAtendimentoForm({
       triagemTab?.preset === "hora" ||
       (!salaoMode && rf.showHoraMarcada);
     if (wantsHora && horaMarcada.trim()) {
-      if ((allowFullDatetime && !docasMode && !aviacaoMode) || salaoMode) {
-        atendimentoPatch.hora_marcada = datetimeLocalToIso(horaMarcada) ?? horaMarcada.trim();
+      if (salaoMode || (allowFullDatetime && !docasMode && !aviacaoMode)) {
+        atendimentoPatch.hora_marcada = resolveHoraMarcadaIsoForSave(
+          horaMarcada,
+          row.hora_marcada
+        );
       } else {
         atendimentoPatch.hora_marcada = mergeHoraMarcadaPreserveDate(row.hora_marcada, horaMarcada);
       }
@@ -942,11 +940,7 @@ function EditAtendimentoForm({
             "Horário marcado (somente hora)"
           )}
           <input
-            type={
-              showDocasHoraAgendada || showAviacaoHoraAgendada || (!allowFullDatetime && !salaoMode)
-                ? "time"
-                : "datetime-local"
-            }
+            type={salaoMode || allowFullDatetime ? "datetime-local" : "time"}
             value={horaMarcada}
             onChange={(e) => setHoraMarcada(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"

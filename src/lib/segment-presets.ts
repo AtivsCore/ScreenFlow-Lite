@@ -278,7 +278,7 @@ const SALAO_ESTETICA = makePreset(
   "💅",
   "Salões de Beleza, Spas e Estética",
   "Cliente, Serviço Solicitado, Profissional Alocado, Cadeira/Sala, Classificação de Prioridade",
-  "Fila de Espera → Cadeiras/Bancadas → Sala de Estética → Finalizado/Caixa",
+  "Fila de Espera → Em Atendimento → Finalizado/Caixa",
   [
     cat("sal-c1", "Profissional Alocado", "profissionais"),
     cat("sal-c2", "Cadeira / Sala de Atendimento", "locais"),
@@ -286,9 +286,7 @@ const SALAO_ESTETICA = makePreset(
   ],
   [
     salaoTab(SALAO_QUEUE_TAB.FILA_ESPERA, "FILA DE ESPERA (GERAL)"),
-    salaoTab(SALAO_QUEUE_TAB.CADEIRA_01, "CADEIRA / BANCADA 01"),
-    salaoTab(SALAO_QUEUE_TAB.CADEIRA_02, "CADEIRA / BANCADA 02"),
-    salaoTab(SALAO_QUEUE_TAB.SALA_ESTETICA_01, "SALA DE ESTÉTICA 01"),
+    salaoTab(SALAO_QUEUE_TAB.EM_ATENDIMENTO, "EM ATENDIMENTO"),
     salaoTab(SALAO_QUEUE_TAB.FINALIZADO, "FINALIZADO / CAIXA"),
   ],
   {
