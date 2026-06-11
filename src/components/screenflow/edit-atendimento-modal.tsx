@@ -58,6 +58,19 @@ import {
   parseDocasCadastroFields,
 } from "@/lib/docas-logistics";
 import {
+  SALAO_FIELD_SERVICOS,
+  SALAO_REGISTER_FORM_LABELS,
+  buildSalaoSavePayload,
+  canUseSalaoAgendaFeatures,
+  isSalaoEsteticaSegment,
+  mergeSalaoObservacao,
+  parseSalaoCadastroFields,
+  parseSalaoServicosSolicitados,
+  resolveSalaoKanbanColumnLabel,
+  resolveSalaoQueueTabs,
+  serializeSalaoServicosSolicitados,
+} from "@/lib/salao-estetica-logistics";
+import {
   embedObservacaoForQueueTab,
   formatObservacaoForDisplay,
   resolveRowQueueTabId,
@@ -125,6 +138,8 @@ function EditAtendimentoForm({
   const law = tenantConfig.priorityLawEnabled;
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
+  const salaoMode = isSalaoEsteticaSegment(tenantConfig.segmentoAplicado);
+  const salaoAgendaEnabled = canUseSalaoAgendaFeatures(tenantConfig.planTier);
   const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
@@ -134,8 +149,13 @@ function EditAtendimentoForm({
     [tenantConfig.segmentoAplicado]
   );
   const queueTabs = useMemo(
-    () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
-    [aviacaoMode, tenantConfig]
+    () =>
+      aviacaoMode
+        ? resolveAviacaoQueueTabs(tenantConfig)
+        : salaoMode
+          ? resolveSalaoQueueTabs(tenantConfig)
+          : tenantConfig.queueTabs,
+    [aviacaoMode, salaoMode, tenantConfig]
   );
   const aviacaoFields = useMemo(
     () =>
@@ -193,6 +213,21 @@ function EditAtendimentoForm({
       }
       return out;
     }
+    if (salaoMode) {
+      const inline = parseSalaoCadastroFields(row.observacao);
+      const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
+        profissional_id: row.profissional_id,
+        local_id: row.local_id,
+        especialidade_id: row.especialidade_id,
+      });
+      const out: Record<string, string> = {};
+      for (const cat of enabledCategories) {
+        const v = hydrated[cat.id];
+        if (v) out[cat.id] = v;
+      }
+      if (inline[SALAO_FIELD_SERVICOS]) out[SALAO_FIELD_SERVICOS] = inline[SALAO_FIELD_SERVICOS]!;
+      return out;
+    }
     const hydrated = hydrateCadastroValores(row.cadastro_valores, tenantConfig.cadastroCategories, {
       profissional_id: row.profissional_id,
       local_id: row.local_id,
@@ -203,7 +238,7 @@ function EditAtendimentoForm({
       if (v) out[k] = v;
     }
     return out;
-  }, [row, tenantConfig.cadastroCategories, docasMode, aviacaoMode, enabledCategories]);
+  }, [row, tenantConfig.cadastroCategories, docasMode, aviacaoMode, salaoMode, enabledCategories]);
 
   const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
   const [nomeCliente, setNomeCliente] = useState(row.nome ?? "");
@@ -343,6 +378,7 @@ function EditAtendimentoForm({
 
   const showDocasHoraAgendada = docasMode;
   const showAviacaoHoraAgendada = aviacaoMode && rf.showHoraMarcada;
+  const showSalaoHoraAgendada = salaoMode && rf.showHoraMarcada && salaoAgendaEnabled;
 
   const FIELD_CLASS =
     "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50";
@@ -643,6 +679,24 @@ function EditAtendimentoForm({
         userObservacaoText: observacaoBase.trim() || null,
       });
       atendimentoPatch = { ...cadastroPayload, observacao };
+    } else if (salaoMode) {
+      const servicosIds = parseSalaoServicosSolicitados(
+        formValues[SALAO_FIELD_SERVICOS] ??
+          parseSalaoCadastroFields(row.observacao)[SALAO_FIELD_SERVICOS]
+      );
+      const { cadastroPayload, salaoFields } = buildSalaoSavePayload(
+        formValues,
+        tenantConfig.cadastroCategories,
+        servicosIds
+      );
+      const observacao = mergeSalaoObservacao({
+        current: row.observacao,
+        tab: triagemTab,
+        salaoFields,
+        preserveTabWhenUnset: true,
+        userObservacaoText: observacaoBase.trim() || null,
+      });
+      atendimentoPatch = { ...cadastroPayload, observacao };
     } else if (aviacaoMode) {
       const { cadastroPayload, aviacaoFields } = buildAviacaoSavePayload(
         formValues,
@@ -687,14 +741,18 @@ function EditAtendimentoForm({
     }
 
     const wantsHora =
-      docasMode || aviacaoMode || triagemTab?.preset === "hora" || rf.showHoraMarcada;
+      docasMode ||
+      aviacaoMode ||
+      showSalaoHoraAgendada ||
+      triagemTab?.preset === "hora" ||
+      (!salaoMode && rf.showHoraMarcada);
     if (wantsHora && horaMarcada.trim()) {
-      if (allowFullDatetime && !docasMode && !aviacaoMode) {
+      if ((allowFullDatetime && !docasMode && !aviacaoMode) || salaoMode) {
         atendimentoPatch.hora_marcada = datetimeLocalToIso(horaMarcada) ?? horaMarcada.trim();
       } else {
         atendimentoPatch.hora_marcada = mergeHoraMarcadaPreserveDate(row.hora_marcada, horaMarcada);
       }
-    } else if (!docasMode && !aviacaoMode && triagemTab?.preset === "encaixe") {
+    } else if (!docasMode && !aviacaoMode && !salaoMode && triagemTab?.preset === "encaixe") {
       atendimentoPatch.hora_marcada = null;
     }
 
@@ -736,7 +794,7 @@ function EditAtendimentoForm({
 
       {queueTabs.length > 0 && !aviacaoMode ? (
         <label className={LABEL_CLASS}>
-          {triagemLabel}
+          {salaoMode ? "Coluna de destino" : triagemLabel}
           <select
             value={triagemTabId}
             onChange={(e) => handleTriagemChange(e.target.value)}
@@ -746,7 +804,7 @@ function EditAtendimentoForm({
               .filter((t) => t.preset !== "todos")
               .map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.label}
+                  {salaoMode ? resolveSalaoKanbanColumnLabel(t) : t.label}
                 </option>
               ))}
           </select>
@@ -777,7 +835,7 @@ function EditAtendimentoForm({
         <>
           {rf.showClienteNome ? (
             <label className={LABEL_CLASS}>
-              Nome do cliente
+              {salaoMode ? SALAO_REGISTER_FORM_LABELS.showClienteNome : "Nome do cliente"}
               <input
                 type="text"
                 value={nomeCliente}
@@ -788,16 +846,97 @@ function EditAtendimentoForm({
               />
             </label>
           ) : null}
-          {enabledCategories.map((cat) => renderCategoryField(cat))}
+          {enabledCategories
+            .filter((cat) => !(salaoMode && cat.id === "sal-c3"))
+            .map((cat) => {
+              const label =
+                salaoMode && cat.id === "sal-c1"
+                  ? SALAO_REGISTER_FORM_LABELS.showProfissional
+                  : salaoMode && cat.id === "sal-c2"
+                    ? SALAO_REGISTER_FORM_LABELS.showLocal
+                    : cat.label;
+              if (salaoMode) {
+                const options =
+                  cat.tableKey === "profissionais"
+                    ? profissionais.map((m) => ({ id: m.id, label: formatProfissionalLabel(m) }))
+                    : cat.tableKey === "locais"
+                      ? locais.map((m) => ({ id: m.id, label: m.nome ?? m.id }))
+                      : servicos.map((m) => ({ id: m.id, label: m.nome ?? m.id }));
+                return (
+                  <label key={cat.id} className={LABEL_CLASS}>
+                    {label}
+                    <select
+                      value={formValues[cat.id] ?? ""}
+                      onChange={(e) =>
+                        setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))
+                      }
+                      className={FIELD_CLASS}
+                    >
+                      <option value="">—</option>
+                      {options.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              }
+              return renderCategoryField(cat);
+            })}
+          {salaoMode && rf.showServico ? (
+            <fieldset className={LABEL_CLASS}>
+              <legend className="mb-1">{SALAO_REGISTER_FORM_LABELS.showServico}</legend>
+              <div className="flex flex-wrap gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+                {servicos.map((svc) => {
+                  const selectedIds = parseSalaoServicosSolicitados(
+                    formValues[SALAO_FIELD_SERVICOS]
+                  );
+                  const active = selectedIds.includes(svc.id);
+                  return (
+                    <button
+                      key={svc.id}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        const next = active
+                          ? selectedIds.filter((x) => x !== svc.id)
+                          : [...selectedIds, svc.id];
+                        setFormValues((prev) => ({
+                          ...prev,
+                          [SALAO_FIELD_SERVICOS]: serializeSalaoServicosSolicitados(next),
+                        }));
+                      }}
+                      className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                        active
+                          ? "border-orange-400 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950/40 dark:text-orange-100"
+                          : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-300"
+                      }`}
+                    >
+                      {svc.nome ?? svc.id}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
         </>
       )}
 
-      {(showDocasHoraAgendada || showAviacaoHoraAgendada || rf.showHoraMarcada || triagemTab?.preset === "hora") ? (
+      {(showDocasHoraAgendada ||
+        showAviacaoHoraAgendada ||
+        showSalaoHoraAgendada ||
+        (!salaoMode && rf.showHoraMarcada) ||
+        triagemTab?.preset === "hora") ? (
         <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400">
           {showDocasHoraAgendada || showAviacaoHoraAgendada ? (
             <span className="flex items-center gap-1.5">
               <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
-              {showAviacaoHoraAgendada ? mroRegisterLabels.showHoraMarcada : "Horário agendado"}
+              {showAviacaoHoraAgendada
+                ? mroRegisterLabels.showHoraMarcada
+                : showSalaoHoraAgendada
+                  ? SALAO_REGISTER_FORM_LABELS.showHoraMarcada
+                  : "Horário agendado"}
             </span>
           ) : allowFullDatetime ? (
             "Data e hora do agendamento"
@@ -805,7 +944,11 @@ function EditAtendimentoForm({
             "Horário marcado (somente hora)"
           )}
           <input
-            type={showDocasHoraAgendada || showAviacaoHoraAgendada || !allowFullDatetime ? "time" : "datetime-local"}
+            type={
+              showDocasHoraAgendada || showAviacaoHoraAgendada || (!allowFullDatetime && !salaoMode)
+                ? "time"
+                : "datetime-local"
+            }
             value={horaMarcada}
             onChange={(e) => setHoraMarcada(e.target.value)}
             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"

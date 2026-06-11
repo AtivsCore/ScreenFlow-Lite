@@ -19,6 +19,14 @@ import {
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
+import {
+  filterAndSortSalaoQueue,
+  isSalaoQueueTabSelected,
+  resolveSalaoCategoryDisplay,
+  resolveSalaoKanbanColumnLabel,
+  resolveSalaoKanbanMeta,
+  resolveSalaoQueueTabClickId,
+} from "@/lib/salao-estetica-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AviacaoHangarStepper } from "@/components/screenflow/aviacao-hangar-stepper";
@@ -57,7 +65,8 @@ function resolveKanbanMeta(
   cadastroCategories: CadastroCategoryEntry[],
   cadastroLookups: CadastroLookups,
   docasLogisticsActive: boolean,
-  aviacaoLogisticsActive: boolean
+  aviacaoLogisticsActive: boolean,
+  salaoEsteticaActive: boolean
 ): {
   title: string;
   profissional: string | null;
@@ -77,6 +86,16 @@ function resolveKanbanMeta(
       local: meta.local,
       servico: meta.servico,
       hangarAlocado: meta.hangarLabel,
+    };
+  }
+  if (salaoEsteticaActive) {
+    const meta = resolveSalaoKanbanMeta(row, cadastroCategories, cadastroLookups);
+    return {
+      title: meta.title,
+      profissional: meta.profissional,
+      local: meta.local,
+      servico: meta.servico,
+      hangarAlocado: meta.cadeiraLabel,
     };
   }
   const legacyCtx = {
@@ -121,6 +140,7 @@ function formatKanbanContextLine(meta: { profissional: string | null; local: str
 }
 
 const CLINICAS_SEGMENT_ID = "clinicas_consultorios";
+const SALAO_ESTETICA_SEGMENT_ID = "salao_estetica";
 
 type CompactKanbanLine = {
   primary: string;
@@ -143,11 +163,15 @@ function resolveCompactKanbanLine(
       primaryMono: true,
     };
   }
-  if (segmentoId === CLINICAS_SEGMENT_ID || !segmentoId?.trim()) {
+  if (
+    segmentoId === CLINICAS_SEGMENT_ID ||
+    segmentoId === SALAO_ESTETICA_SEGMENT_ID ||
+    !segmentoId?.trim()
+  ) {
     return {
       primary: meta.title,
       secondary: meta.servico,
-      allocated: meta.local,
+      allocated: meta.local ?? meta.hangarAlocado ?? null,
       primaryMono: false,
     };
   }
@@ -442,6 +466,7 @@ type QueueRowProps = {
   notesInline: boolean;
   docasLogisticsActive: boolean;
   aviacaoLogisticsActive: boolean;
+  salaoEsteticaActive: boolean;
   cadastroCategories: CadastroCategoryEntry[];
   cadastroLookups: CadastroLookups;
   deleting: string | null;
@@ -459,6 +484,7 @@ const QueueRow = memo(function QueueRow({
   notesInline,
   docasLogisticsActive,
   aviacaoLogisticsActive,
+  salaoEsteticaActive,
   cadastroCategories,
   cadastroLookups,
   deleting,
@@ -554,7 +580,16 @@ const QueueRow = memo(function QueueRow({
                 cadastroCategories,
                 legacyCtx
               )
-            : resolveCategoryDisplayLabel(
+            : salaoEsteticaActive
+              ? resolveSalaoCategoryDisplay(
+                  cat.id,
+                  row.observacao,
+                  row.cadastro_valores ?? {},
+                  cadastroLookups,
+                  cadastroCategories,
+                  legacyCtx
+                )
+              : resolveCategoryDisplayLabel(
               cat.id,
               row.cadastro_valores ?? {},
               cadastroLookups,
@@ -655,6 +690,7 @@ type QueueSectionProps = {
   onDocasStepPrev?: () => void;
   onDocasStepNext?: () => void;
   aviacaoLogisticsActive?: boolean;
+  salaoEsteticaActive?: boolean;
   mroSegmentId?: string | null;
   aviacaoHangarLabel?: string | null;
   aviacaoCanGoPrev?: boolean;
@@ -711,6 +747,7 @@ export function QueueSection({
   onDocasStepPrev,
   onDocasStepNext,
   aviacaoLogisticsActive = false,
+  salaoEsteticaActive = false,
   mroSegmentId = null,
   aviacaoHangarLabel = null,
   aviacaoCanGoPrev = false,
@@ -746,11 +783,16 @@ export function QueueSection({
   const mroProfile = useMemo(() => resolveMroProfile(mroSegmentId), [mroSegmentId]);
 
   const isTabActive = useCallback(
-    (tabId: string) =>
-      aviacaoLogisticsActive
-        ? isAviacaoQueueTabSelected(queueTabId, tabId, mroSegmentId)
-        : queueTabId === tabId,
-    [aviacaoLogisticsActive, queueTabId, mroSegmentId]
+    (tabId: string) => {
+      if (aviacaoLogisticsActive) {
+        return isAviacaoQueueTabSelected(queueTabId, tabId, mroSegmentId);
+      }
+      if (salaoEsteticaActive) {
+        return isSalaoQueueTabSelected(queueTabId, tabId);
+      }
+      return queueTabId === tabId;
+    },
+    [aviacaoLogisticsActive, salaoEsteticaActive, queueTabId, mroSegmentId]
   );
 
   const filterRowsForTab = useCallback(
@@ -758,9 +800,12 @@ export function QueueSection({
       if (aviacaoLogisticsActive) {
         return filterAndSortMroQueue(rows, tab, mroSegmentId);
       }
+      if (salaoEsteticaActive) {
+        return filterAndSortSalaoQueue(rows, tab);
+      }
       return filterAndSortQueue(rows, tab, { priorityLawEnabled });
     },
-    [aviacaoLogisticsActive, rows, mroSegmentId, priorityLawEnabled]
+    [aviacaoLogisticsActive, salaoEsteticaActive, rows, mroSegmentId, priorityLawEnabled]
   );
 
   useEffect(() => {
@@ -786,7 +831,7 @@ export function QueueSection({
       const text = buildAtendimentoShareSummary(row, {
         cadastroCategories: enabledCategories,
         cadastroLookups,
-        segmentoAplicado: mroSegmentId,
+        segmentoAplicado: salaoEsteticaActive ? SALAO_ESTETICA_SEGMENT_ID : mroSegmentId,
         queueTabIds: queueTabs,
       });
       const ok = await copyAtendimentoShareSummary(text);
@@ -1049,7 +1094,9 @@ export function QueueSection({
               const count = tabCounts[t.id];
               const tabLabel = aviacaoLogisticsActive
                 ? resolveAviacaoKanbanColumnLabel(t, mroSegmentId)
-                : t.label;
+                : salaoEsteticaActive
+                  ? resolveSalaoKanbanColumnLabel(t)
+                  : t.label;
               const label = typeof count === "number" ? `${tabLabel} (${count})` : tabLabel;
               return (
                 <button
@@ -1061,7 +1108,9 @@ export function QueueSection({
                     onQueueTabId(
                       aviacaoLogisticsActive
                         ? resolveAviacaoQueueTabClickId(t.id, mroSegmentId)
-                        : t.id
+                        : salaoEsteticaActive
+                          ? resolveSalaoQueueTabClickId(t.id)
+                          : t.id
                     )
                   }
                   className={`shrink-0 whitespace-nowrap border-b-2 px-2 py-1 text-[10px] transition ${
@@ -1117,6 +1166,7 @@ export function QueueSection({
                       notesInline={notesInline}
                       docasLogisticsActive={docasLogisticsActive}
                       aviacaoLogisticsActive={aviacaoLogisticsActive}
+                      salaoEsteticaActive={salaoEsteticaActive}
                       cadastroCategories={enabledCategories}
                       cadastroLookups={cadastroLookups}
                       deleting={deleting}
@@ -1178,13 +1228,16 @@ export function QueueSection({
                             notesInline={notesInline}
                             aviacaoLogisticsActive={aviacaoLogisticsActive}
                             docasLogisticsActive={docasLogisticsActive}
-                            segmentoId={mroSegmentId}
+                            segmentoId={
+                              salaoEsteticaActive ? SALAO_ESTETICA_SEGMENT_ID : mroSegmentId
+                            }
                             meta={resolveKanbanMeta(
                               row,
                               enabledCategories,
                               cadastroLookups,
                               docasLogisticsActive,
-                              aviacaoLogisticsActive
+                              aviacaoLogisticsActive,
+                              salaoEsteticaActive
                             )}
                             deleting={deleting}
                             onSelectId={onSelectId}

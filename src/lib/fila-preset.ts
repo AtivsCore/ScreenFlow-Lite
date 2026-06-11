@@ -11,6 +11,9 @@ const DOCAS_DATA_TAG_GLOBAL = /__sf_docas:[\s\S]*?__/gi;
 /** Marcador de cadastro Aviação em observação (ver aviacao-logistics). */
 const AVIACAO_DATA_TAG_GLOBAL = /__sf_aviacao:[\s\S]*?__/gi;
 
+/** Marcador de cadastro Salão/Estética em observação (ver salao-estetica-logistics). */
+const SALAO_DATA_TAG_GLOBAL = /__sf_salao:[\s\S]*?__/gi;
+
 /** Equivalência de ids de coluna Docas (estável ↔ legado `doc-t*`). */
 const DOCAS_KANBAN_TAB_EQUIV: Record<string, string> = {
   em_operacao: "descarregando",
@@ -32,6 +35,17 @@ const AVIACAO_KANBAN_TAB_EQUIV: Record<string, string> = {
   em_execucao: "inspecao_qc",
 };
 
+/** Equivalência de ids de coluna Salão/Estética (estável ↔ legado `sal-t*`). */
+const SALAO_KANBAN_TAB_EQUIV: Record<string, string> = {
+  "sal-t1": "fila_espera",
+  "sal-t2": "cadeira_01",
+  "sal-t3": "cadeira_02",
+  "sal-t4": "sala_estetica_01",
+  "sal-t5": "finalizado_caixa",
+  check_in: "fila_espera",
+  em_atendimento: "cadeira_01",
+};
+
 /** Equivalência de ids de coluna Oficina / Hardware TI (estável ↔ legado `of-t*`). */
 const AUTOMOTIVO_KANBAN_TAB_EQUIV: Record<string, string> = {
   "of-t1": "orcamento",
@@ -49,6 +63,7 @@ function normalizeKanbanTabId(id: string): string {
   return (
     DOCAS_KANBAN_TAB_EQUIV[id] ??
     AVIACAO_KANBAN_TAB_EQUIV[id] ??
+    SALAO_KANBAN_TAB_EQUIV[id] ??
     AUTOMOTIVO_KANBAN_TAB_EQUIV[id] ??
     id
   );
@@ -74,6 +89,7 @@ export function formatObservacaoForDisplay(observacao: string | null | undefined
     .replace(FILA_TAG_GLOBAL, "")
     .replace(DOCAS_DATA_TAG_GLOBAL, "")
     .replace(AVIACAO_DATA_TAG_GLOBAL, "")
+    .replace(SALAO_DATA_TAG_GLOBAL, "")
     .replace(/^[ \t]*\r?\n+/gm, "")
     .replace(/\r?\n{3,}/g, "\n\n")
     .trim();
@@ -186,6 +202,9 @@ export function rowMatchesQueueTabEntry(row: RowForPreset, tab: Pick<QueueTabEnt
     return true;
   }
   if (row.observacao?.includes("__sf_aviacao:") && normalizeKanbanTabId(tab.id) === "triagem") {
+    return true;
+  }
+  if (row.observacao?.includes("__sf_salao:") && normalizeKanbanTabId(tab.id) === "fila_espera") {
     return true;
   }
   return rowMatchesQueueTab(row, tab.preset);

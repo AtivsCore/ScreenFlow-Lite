@@ -85,6 +85,24 @@ import {
   shiftDocasStep,
   type DocasQueueTabId,
 } from "@/lib/docas-logistics";
+import {
+  SALAO_QUEUE_TAB,
+  countActiveBySalaoQueueTab,
+  findSalaoQueueTabById,
+  getSalaoActiveColumns,
+  getSalaoStepLabel,
+  isSalaoEsteticaSegment,
+  isSalaoQueueTabIdInVisible,
+  mergeSalaoObservacao,
+  normalizeSalaoTabId,
+  resolveSalaoLocalLabel,
+  resolveSalaoQueueTabClickId,
+  resolveSalaoQueueTabs,
+  resolveSalaoTabFromLocalNome,
+  resolveSalaoTabIdFromObservacao,
+  salaoStepTvStatus,
+  shiftSalaoTab,
+} from "@/lib/salao-estetica-logistics";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import {
@@ -202,6 +220,7 @@ export default function Home() {
 
   const docasLogisticsActive = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoLogisticsActive = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
+  const salaoEsteticaActive = isSalaoEsteticaSegment(tenantConfig.segmentoAplicado);
   const mroSegmentId = tenantConfig.segmentoAplicado;
   const mroProfile = useMemo(() => resolveMroProfile(mroSegmentId), [mroSegmentId]);
   const useStaticBaseSelector = Boolean(mroProfile.baseSelectorOptions?.length);
@@ -424,26 +443,37 @@ export default function Home() {
   useEffect(() => {
     const visible = aviacaoLogisticsActive
       ? resolveAviacaoQueueTabs(tenantConfig)
-      : resolveVisibleQueueTabs(tenantConfig);
+      : salaoEsteticaActive
+        ? resolveSalaoQueueTabs(tenantConfig)
+        : resolveVisibleQueueTabs(tenantConfig);
     const ids = visible.map((t) => t.id);
     if (!ids.length) return;
     const matches = aviacaoLogisticsActive
       ? isAviacaoQueueTabIdInVisible(queueTabId, ids, mroSegmentId)
-      : ids.includes(queueTabId);
+      : salaoEsteticaActive
+        ? isSalaoQueueTabIdInVisible(queueTabId, ids)
+        : ids.includes(queueTabId);
     if (!matches) setQueueTabId(ids[0]!);
-  }, [tenantConfig, queueTabId, aviacaoLogisticsActive, mroSegmentId]);
+  }, [tenantConfig, queueTabId, aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId]);
 
   const visibleQueueTabs = useMemo(
     () =>
       aviacaoLogisticsActive
         ? resolveAviacaoQueueTabs(tenantConfig)
-        : resolveVisibleQueueTabs(tenantConfig),
-    [aviacaoLogisticsActive, tenantConfig]
+        : salaoEsteticaActive
+          ? resolveSalaoQueueTabs(tenantConfig)
+          : resolveVisibleQueueTabs(tenantConfig),
+    [aviacaoLogisticsActive, salaoEsteticaActive, tenantConfig]
   );
 
   const aviacaoActiveColumns = useMemo(
     () => (aviacaoLogisticsActive ? getAviacaoActiveColumns(visibleQueueTabs) : []),
     [aviacaoLogisticsActive, visibleQueueTabs]
+  );
+
+  const salaoActiveColumns = useMemo(
+    () => (salaoEsteticaActive ? getSalaoActiveColumns(visibleQueueTabs) : []),
+    [salaoEsteticaActive, visibleQueueTabs]
   );
 
   const handleSelectId = useCallback(
@@ -457,9 +487,24 @@ export default function Home() {
             if (tabId) setQueueTabId(resolveAviacaoQueueTabClickId(tabId, mroSegmentId));
           }
         }
+        if (salaoEsteticaActive && salaoActiveColumns.length > 0) {
+          const row = rows.find((r) => r.id === id);
+          if (row) {
+            const tabId = resolveSalaoTabIdFromObservacao(row.observacao, salaoActiveColumns);
+            if (tabId) setQueueTabId(resolveSalaoQueueTabClickId(tabId));
+          }
+        }
       });
     },
-    [startTransition, aviacaoLogisticsActive, aviacaoActiveColumns, rows, mroSegmentId]
+    [
+      startTransition,
+      aviacaoLogisticsActive,
+      salaoEsteticaActive,
+      aviacaoActiveColumns,
+      salaoActiveColumns,
+      rows,
+      mroSegmentId,
+    ]
   );
 
   const queueDisplayRows = useMemo(() => {
@@ -487,8 +532,10 @@ export default function Home() {
     () =>
       aviacaoLogisticsActive
         ? countActiveByMroQueueTab(queueDisplayRows, visibleQueueTabs, mroSegmentId)
-        : countActiveByQueueTab(queueDisplayRows, visibleQueueTabs),
-    [queueDisplayRows, visibleQueueTabs, aviacaoLogisticsActive, mroSegmentId]
+        : salaoEsteticaActive
+          ? countActiveBySalaoQueueTab(queueDisplayRows, visibleQueueTabs)
+          : countActiveByQueueTab(queueDisplayRows, visibleQueueTabs),
+    [queueDisplayRows, visibleQueueTabs, aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId]
   );
 
   const selected = useMemo(
@@ -514,10 +561,14 @@ export default function Home() {
   const handleQueueTabId = useCallback(
     (id: string) => {
       setQueueTabId(
-        aviacaoLogisticsActive ? resolveAviacaoQueueTabClickId(id, mroSegmentId) : id
+        aviacaoLogisticsActive
+          ? resolveAviacaoQueueTabClickId(id, mroSegmentId)
+          : salaoEsteticaActive
+            ? resolveSalaoQueueTabClickId(id)
+            : id
       );
     },
-    [aviacaoLogisticsActive, mroSegmentId]
+    [aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId]
   );
 
   const tenantIdForInsert = effectiveTenantId;
@@ -921,6 +972,16 @@ export default function Home() {
     return getAviacaoHangarLabel(selected, tenantConfig.cadastroCategories, cadastroLookups);
   }, [aviacaoLogisticsActive, selected, tenantConfig.cadastroCategories, cadastroLookups]);
 
+  const selectedSalaoTabId = useMemo(() => {
+    if (!salaoEsteticaActive || !selected || salaoActiveColumns.length === 0) return null;
+    return resolveSalaoTabIdFromObservacao(selected.observacao, salaoActiveColumns);
+  }, [salaoEsteticaActive, selected, salaoActiveColumns]);
+
+  const selectedSalaoStepLabel = useMemo(() => {
+    if (!selectedSalaoTabId) return null;
+    return getSalaoStepLabel(selectedSalaoTabId, tenantConfig.queueTabs);
+  }, [selectedSalaoTabId, tenantConfig.queueTabs]);
+
   const advanceDocasLogistics = useCallback(
     async (targetTabId: DocasQueueTabId, status?: string) => {
       if (!selectedId || !selected) return;
@@ -1036,6 +1097,56 @@ export default function Home() {
     [selectedAviacaoTabId, aviacaoActiveColumns, advanceAviacaoLogistics, mroSegmentId]
   );
 
+  const advanceSalaoLogistics = useCallback(
+    async (targetTabId: string, status?: string) => {
+      if (!selectedId || !selected) return;
+      const tab = findSalaoQueueTabById(visibleQueueTabs, targetTabId);
+      if (!tab) return;
+      const observacao = mergeSalaoObservacao({
+        current: selected.observacao,
+        tab,
+      });
+      const patch: {
+        observacao: string | null;
+        status?: string;
+      } = { observacao };
+      if (status) patch.status = status;
+      await patchAtendimento(patch);
+    },
+    [selectedId, selected, visibleQueueTabs, patchAtendimento]
+  );
+
+  const shiftSelectedSalaoStep = useCallback(
+    (delta: -1 | 1) => {
+      if (!selectedSalaoTabId || salaoActiveColumns.length === 0) return;
+      const target = shiftSalaoTab(selectedSalaoTabId, delta, salaoActiveColumns);
+      if (!target) return;
+      void advanceSalaoLogistics(
+        target,
+        salaoStepTvStatus(normalizeSalaoTabId(target))
+      );
+    },
+    [selectedSalaoTabId, salaoActiveColumns, advanceSalaoLogistics]
+  );
+
+  const iniciarSalaoAtendimento = useCallback(async () => {
+    if (!selected || !salaoEsteticaActive) return;
+    const localLabel = resolveSalaoLocalLabel(
+      selected,
+      tenantConfig.cadastroCategories,
+      cadastroLookups
+    );
+    const targetTabId = resolveSalaoTabFromLocalNome(localLabel, visibleQueueTabs);
+    await advanceSalaoLogistics(targetTabId, STATUS_UPDATE.rechamar);
+  }, [
+    selected,
+    salaoEsteticaActive,
+    tenantConfig.cadastroCategories,
+    cadastroLookups,
+    visibleQueueTabs,
+    advanceSalaoLogistics,
+  ]);
+
   useEffect(() => {
     if (!sessionReady || envMissing || appView !== "fila" || !docasLogisticsActive) return;
 
@@ -1068,6 +1179,40 @@ export default function Home() {
     selectedId,
     pending,
     shiftSelectedDocasStep,
+  ]);
+
+  useEffect(() => {
+    if (!sessionReady || envMissing || appView !== "fila" || !salaoEsteticaActive) return;
+
+    function isTypingTarget(target: EventTarget | null): boolean {
+      if (!target || !(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
+    }
+
+    function onArrowKey(e: KeyboardEvent) {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (!selectedId || pending) return;
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        shiftSelectedSalaoStep(1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        shiftSelectedSalaoStep(-1);
+      }
+    }
+
+    window.addEventListener("keydown", onArrowKey, { capture: true });
+    return () => window.removeEventListener("keydown", onArrowKey, { capture: true });
+  }, [
+    sessionReady,
+    envMissing,
+    appView,
+    salaoEsteticaActive,
+    selectedId,
+    pending,
+    shiftSelectedSalaoStep,
   ]);
 
   useEffect(() => {
@@ -1135,6 +1280,8 @@ export default function Home() {
           void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
         } else if (aviacaoLogisticsActive) {
           void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.TRIAGEM, STATUS_UPDATE.chamar);
+        } else if (salaoEsteticaActive) {
+          void updateStatus(STATUS_UPDATE.chamar);
         } else {
           void updateStatus(STATUS_UPDATE.chamar);
         }
@@ -1145,6 +1292,12 @@ export default function Home() {
           void advanceDocasLogistics(DOCAS_QUEUE_TAB.DESCARREGANDO, STATUS_UPDATE.rechamar);
         } else if (aviacaoLogisticsActive) {
           void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_MANUTENCAO, STATUS_UPDATE.rechamar);
+        } else if (salaoEsteticaActive) {
+          if (normalizeSalaoTabId(selectedSalaoTabId) === SALAO_QUEUE_TAB.FILA_ESPERA) {
+            void iniciarSalaoAtendimento();
+          } else {
+            void updateStatus(STATUS_UPDATE.rechamar);
+          }
         } else {
           void updateStatus(STATUS_UPDATE.rechamar);
         }
@@ -1159,6 +1312,12 @@ export default function Home() {
             void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
           } else {
             void advanceAviacaoLogistics(liberadoTabId, "Aguardando");
+          }
+        } else if (salaoEsteticaActive) {
+          if (normalizeSalaoTabId(selectedSalaoTabId) === SALAO_QUEUE_TAB.FINALIZADO) {
+            void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
+          } else {
+            void advanceSalaoLogistics(SALAO_QUEUE_TAB.FINALIZADO, "Aguardando");
           }
         } else {
           setFinalizeOpen(true);
@@ -1188,8 +1347,11 @@ export default function Home() {
       selectedAviacaoTabId,
       docasLogisticsActive,
       aviacaoLogisticsActive,
+      salaoEsteticaActive,
+      selectedSalaoTabId,
       advanceDocasLogistics,
       advanceAviacaoLogistics,
+      iniciarSalaoAtendimento,
       updateStatus,
       openGeneralSettings,
       openAviacaoQuickCrud,
@@ -1273,38 +1435,9 @@ export default function Home() {
             onBaseSelectorChange={
               useStaticBaseSelector ? handleHardwareDeviceTypeChange : undefined
             }
-            onChamar={() => {
-              if (docasLogisticsActive) {
-                void advanceDocasLogistics(DOCAS_QUEUE_TAB.CHAMADO, STATUS_UPDATE.chamar);
-              } else if (aviacaoLogisticsActive) {
-                void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.TRIAGEM, STATUS_UPDATE.chamar);
-              } else {
-                void updateStatus(STATUS_UPDATE.chamar);
-              }
-            }}
-            onRechamar={() => {
-              if (docasLogisticsActive) {
-                void advanceDocasLogistics(DOCAS_QUEUE_TAB.DESCARREGANDO, STATUS_UPDATE.rechamar);
-              } else if (aviacaoLogisticsActive) {
-                void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_MANUTENCAO, STATUS_UPDATE.rechamar);
-              } else {
-                void updateStatus(STATUS_UPDATE.rechamar);
-              }
-            }}
-            onFinalizar={() => {
-              if (docasLogisticsActive) {
-                void advanceDocasLogistics(DOCAS_QUEUE_TAB.LIBERADO, "Aguardando");
-              } else if (aviacaoLogisticsActive) {
-                const liberadoTabId = resolveMroProfile(mroSegmentId).liberadoTabId;
-                if (normalizeAviacaoTabId(selectedAviacaoTabId, mroSegmentId) === liberadoTabId) {
-                  void updateStatus(STATUS_UPDATE.finalizar, { clearSelection: true });
-                } else {
-                  void advanceAviacaoLogistics(liberadoTabId, "Aguardando");
-                }
-              } else {
-                setFinalizeOpen(true);
-              }
-            }}
+            onChamar={() => shortcutHandlers.onChamar()}
+            onRechamar={() => shortcutHandlers.onRechamar()}
+            onFinalizar={() => shortcutHandlers.onFinalizar()}
             onLimpar={() => setSelectedId(null)}
             onRegistrarAvaria={() => void registerAviacaoAvaria()}
             onPrintSelected={
@@ -1318,7 +1451,7 @@ export default function Home() {
                     })
                 : undefined
             }
-            aviacaoCurrentTabId={selectedAviacaoTabId}
+            aviacaoCurrentTabId={salaoEsteticaActive ? selectedSalaoTabId : selectedAviacaoTabId}
             cadastrosRevision={cadastrosRevision}
             onPatch={async (patch) => {
               await patchAtendimento(patch);
@@ -1394,6 +1527,7 @@ export default function Home() {
               onDocasStepPrev={() => shiftSelectedDocasStep(-1)}
               onDocasStepNext={() => shiftSelectedDocasStep(1)}
               aviacaoLogisticsActive={aviacaoLogisticsActive}
+              salaoEsteticaActive={salaoEsteticaActive}
               mroSegmentId={mroSegmentId}
               aviacaoHangarLabel={selectedAviacaoHangarLabel}
               aviacaoCanGoPrev={canShiftAviacaoTabQuick(selectedAviacaoTabId, -1, aviacaoActiveColumns)}
@@ -1560,13 +1694,20 @@ export default function Home() {
         onConfigUpdated={(c) => {
           setTenantConfig(c);
           const mro = isMroLogisticsSegment(c.segmentoAplicado);
-          const visible = mro ? resolveAviacaoQueueTabs(c) : resolveVisibleQueueTabs(c);
+          const salao = isSalaoEsteticaSegment(c.segmentoAplicado);
+          const visible = mro
+            ? resolveAviacaoQueueTabs(c)
+            : salao
+              ? resolveSalaoQueueTabs(c)
+              : resolveVisibleQueueTabs(c);
           const ids = visible.map((t) => t.id);
           if (ids.length) {
             setQueueTabId((current) => {
               const matches = mro
                 ? isAviacaoQueueTabIdInVisible(current, ids, c.segmentoAplicado)
-                : ids.includes(current);
+                : salao
+                  ? isSalaoQueueTabIdInVisible(current, ids)
+                  : ids.includes(current);
               return matches ? current : ids[0]!;
             });
           }

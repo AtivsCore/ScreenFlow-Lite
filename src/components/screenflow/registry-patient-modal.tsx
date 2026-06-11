@@ -59,6 +59,20 @@ import {
   isDocasTextField,
 } from "@/lib/docas-logistics";
 import { buildHoraMarcadaTodayIso, datetimeLocalToIso } from "@/lib/hora-marcada";
+import { isProPlan } from "@/lib/plan-tier";
+import {
+  SALAO_FIELD_SERVICOS,
+  SALAO_QUEUE_TAB,
+  SALAO_REGISTER_FORM_LABELS,
+  buildSalaoRegistryObservacao,
+  buildSalaoSavePayload,
+  canUseSalaoAgendaFeatures,
+  isSalaoEsteticaSegment,
+  parseSalaoServicosSolicitados,
+  resolveSalaoKanbanColumnLabel,
+  resolveSalaoQueueTabs,
+  serializeSalaoServicosSolicitados,
+} from "@/lib/salao-estetica-logistics";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
 type OptRow = { id: string; nome: string | null };
@@ -93,6 +107,9 @@ export function RegistryPatientModal({
   const law = tenantConfig.priorityLawEnabled;
   const docasMode = isDocasSegment(tenantConfig.segmentoAplicado);
   const aviacaoMode = isMroLogisticsSegment(tenantConfig.segmentoAplicado);
+  const salaoMode = isSalaoEsteticaSegment(tenantConfig.segmentoAplicado);
+  const salaoAgendaEnabled = canUseSalaoAgendaFeatures(tenantConfig.planTier);
+  const proActive = isProPlan(tenantConfig.planTier);
   const mroFieldLabels = resolveMroFieldLabels(tenantConfig.segmentoAplicado);
   const mroRegisterLabels = resolveMroRegisterFormLabels(tenantConfig.segmentoAplicado);
   const mroCombustivelOptions = resolveMroCombustivelOptions(tenantConfig.segmentoAplicado);
@@ -102,10 +119,11 @@ export function RegistryPatientModal({
     () => tenantConfig.cadastroCategories.filter((c) => c.enabled),
     [tenantConfig.cadastroCategories]
   );
-  const queueTabs = useMemo(
-    () => (aviacaoMode ? resolveAviacaoQueueTabs(tenantConfig) : tenantConfig.queueTabs),
-    [aviacaoMode, tenantConfig]
-  );
+  const queueTabs = useMemo(() => {
+    if (aviacaoMode) return resolveAviacaoQueueTabs(tenantConfig);
+    if (salaoMode) return resolveSalaoQueueTabs(tenantConfig);
+    return tenantConfig.queueTabs;
+  }, [aviacaoMode, salaoMode, tenantConfig]);
   const aviacaoFields = useMemo(
     () =>
       aviacaoMode
@@ -194,8 +212,13 @@ export function RegistryPatientModal({
     if (aviacaoMode) {
       return queueTabs.find((t) => t.id === AVIACAO_QUEUE_TAB.TRIAGEM)?.id ?? queueTabs[0]?.id ?? "";
     }
+    if (salaoMode) {
+      return (
+        queueTabs.find((t) => t.id === SALAO_QUEUE_TAB.FILA_ESPERA)?.id ?? queueTabs[0]?.id ?? ""
+      );
+    }
     return queueTabs[0]?.id ?? "";
-  }, [docasMode, aviacaoMode, queueTabs]);
+  }, [docasMode, aviacaoMode, salaoMode, queueTabs]);
 
   const [nomeCliente, setNomeCliente] = useState("");
   const [triagemTabId, setTriagemTabId] = useState(initialTriagemTabId);
@@ -237,6 +260,11 @@ export function RegistryPatientModal({
     [formValues]
   );
 
+  const salaoServicosSelected = useMemo(
+    () => parseSalaoServicosSolicitados(formValues[SALAO_FIELD_SERVICOS]),
+    [formValues]
+  );
+
   const tecnicoSelectId = useMemo(() => {
     const raw = formValues[AVIACAO_RESPONSAVEL_CATEGORY_ID] ?? "";
     if (profissionais.some((p) => p.id === raw)) return raw;
@@ -260,6 +288,16 @@ export function RegistryPatientModal({
     setFormValues((prev) => ({
       ...prev,
       [AVIACAO_FIELD_SERVICOS]: serializeAviacaoServicosSolicitados(next),
+    }));
+  }
+
+  function toggleSalaoServico(id: string) {
+    const next = salaoServicosSelected.includes(id)
+      ? salaoServicosSelected.filter((x) => x !== id)
+      : [...salaoServicosSelected, id];
+    setFormValues((prev) => ({
+      ...prev,
+      [SALAO_FIELD_SERVICOS]: serializeSalaoServicosSolicitados(next),
     }));
   }
 
@@ -376,7 +414,9 @@ export function RegistryPatientModal({
   }
 
   const showDocasHoraAgendada = docasMode;
-  const showHoraHoje = !docasMode && !aviacaoMode && triagemTab?.preset === "hora";
+  const showSalaoHoraAgendada = salaoMode && rf.showHoraMarcada && salaoAgendaEnabled;
+  const showHoraHoje =
+    !docasMode && !aviacaoMode && !salaoMode && triagemTab?.preset === "hora";
 
   async function submitViaApi(
     pacienteNome: string,
@@ -491,13 +531,33 @@ export function RegistryPatientModal({
               const { docasFields } = buildDocasSavePayload(formValues, tenantConfig.cadastroCategories);
               return buildDocasRegistryObservacao(userObs || null, filaPreset, triagemTab?.id, docasFields);
             })()
-          : embedFilaPreset(userObs || null, filaPreset, triagemTab?.id);
+          : salaoMode
+            ? (() => {
+                const { salaoFields } = buildSalaoSavePayload(
+                  formValues,
+                  tenantConfig.cadastroCategories,
+                  salaoServicosSelected
+                );
+                return buildSalaoRegistryObservacao(
+                  userObs || null,
+                  filaPreset,
+                  triagemTab?.id,
+                  salaoFields
+                );
+              })()
+            : embedFilaPreset(userObs || null, filaPreset, triagemTab?.id);
 
       const cadastroPayload = aviacaoMode
         ? buildAviacaoSavePayload(formValues, tenantConfig.cadastroCategories).cadastroPayload
         : docasMode
           ? buildDocasSavePayload(formValues, tenantConfig.cadastroCategories).cadastroPayload
-          : buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
+          : salaoMode
+            ? buildSalaoSavePayload(
+                formValues,
+                tenantConfig.cadastroCategories,
+                salaoServicosSelected
+              ).cadastroPayload
+            : buildCadastroPayload(formValues, tenantConfig.cadastroCategories);
 
       const payload: Record<string, unknown> = {
         paciente_id: pacienteIdValue,
@@ -512,13 +572,15 @@ export function RegistryPatientModal({
       const wantsHora =
         docasMode ||
         (aviacaoMode && rf.showHoraMarcada) ||
+        (salaoMode && showSalaoHoraAgendada) ||
         triagemTab?.preset === "hora" ||
-        (!aviacaoMode && rf.showHoraMarcada);
+        (!aviacaoMode && !salaoMode && rf.showHoraMarcada);
       if (wantsHora && horaMarcada.trim()) {
-        payload.hora_marcada = aviacaoMode
-          ? datetimeLocalToIso(horaMarcada)
-          : buildHoraMarcadaTodayIso(horaMarcada);
-      } else if (!docasMode && !aviacaoMode && triagemTab?.preset === "encaixe") {
+        payload.hora_marcada =
+          aviacaoMode || salaoMode
+            ? datetimeLocalToIso(horaMarcada)
+            : buildHoraMarcadaTodayIso(horaMarcada);
+      } else if (!docasMode && !aviacaoMode && !salaoMode && triagemTab?.preset === "encaixe") {
         payload.hora_marcada = null;
       }
 
@@ -907,7 +969,25 @@ export function RegistryPatientModal({
           renderAviacaoRegistryForm()
         ) : (
           <>
-            {queueTabs.length > 0 ? (
+            {salaoMode && flowDestinationTabs.length > 0 ? (
+              <label className={REGISTRY_LABEL_CLASS}>
+                Coluna de destino
+                <select
+                  value={triagemTabId}
+                  disabled={busy}
+                  onChange={(e) => setTriagemTabId(e.target.value)}
+                  className={REGISTRY_FIELD_CLASS}
+                >
+                  {flowDestinationTabs.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {resolveSalaoKanbanColumnLabel(t)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            {!salaoMode && queueTabs.length > 0 ? (
               <>
                 <label className={REGISTRY_LABEL_CLASS}>
                   {triagemLabel}
@@ -940,7 +1020,7 @@ export function RegistryPatientModal({
 
             {rf.showClienteNome ? (
               <label className={REGISTRY_LABEL_CLASS}>
-                Nome do cliente
+                {salaoMode ? SALAO_REGISTER_FORM_LABELS.showClienteNome : "Nome do cliente"}
                 <input
                   value={nomeCliente}
                   onChange={(e) => setNomeCliente(e.target.value)}
@@ -949,7 +1029,77 @@ export function RegistryPatientModal({
               </label>
             ) : null}
 
-            {enabledCategories.map((cat) => renderCategoryField(cat))}
+            {salaoMode && rf.showServico ? (
+              <fieldset className={REGISTRY_LABEL_CLASS}>
+                <legend className="mb-1">{SALAO_REGISTER_FORM_LABELS.showServico}</legend>
+                <div className="flex flex-wrap gap-1.5 rounded-lg border border-zinc-200 p-2 dark:border-zinc-700">
+                  {servicos.length > 0 ? (
+                    servicos.map((svc) => {
+                      const active = salaoServicosSelected.includes(svc.id);
+                      return (
+                        <button
+                          key={svc.id}
+                          type="button"
+                          disabled={busy}
+                          onClick={() => toggleSalaoServico(svc.id)}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition ${
+                            active
+                              ? "border-orange-400 bg-orange-50 text-orange-900 dark:border-orange-700 dark:bg-orange-950/40 dark:text-orange-100"
+                              : "border-zinc-300 bg-zinc-50 text-zinc-700 hover:border-zinc-400 dark:border-zinc-600 dark:bg-zinc-900/50 dark:text-zinc-300"
+                          }`}
+                        >
+                          {svc.nome ?? svc.id}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="text-[11px] font-normal text-zinc-500 dark:text-zinc-400">
+                      Cadastre serviços em Configurações → Cadastros.
+                    </p>
+                  )}
+                </div>
+              </fieldset>
+            ) : null}
+
+            {enabledCategories
+              .filter((cat) => !(salaoMode && cat.id === "sal-c3"))
+              .map((cat) => {
+                const label =
+                  salaoMode && cat.id === "sal-c1"
+                    ? SALAO_REGISTER_FORM_LABELS.showProfissional
+                    : salaoMode && cat.id === "sal-c2"
+                      ? SALAO_REGISTER_FORM_LABELS.showLocal
+                      : cat.label;
+                return (
+                  <label key={cat.id} className={REGISTRY_LABEL_CLASS}>
+                    {label}
+                    <select
+                      value={formValues[cat.id] ?? ""}
+                      onChange={(e) =>
+                        setFormValues((prev) => ({ ...prev, [cat.id]: e.target.value }))
+                      }
+                      className={REGISTRY_FIELD_CLASS}
+                    >
+                      <option value="">—</option>
+                      {(cat.tableKey === "profissionais"
+                        ? profissionais.map((m) => ({
+                            id: m.id,
+                            label: formatProfissionalLabel(m),
+                          }))
+                        : cat.tableKey === "locais"
+                          ? locais.map((m) => ({ id: m.id, label: m.nome ?? m.id }))
+                          : servicos.map((m) => ({ id: m.id, label: m.nome ?? m.id }))
+                      ).map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+
+            {!salaoMode ? enabledCategories.map((cat) => renderCategoryField(cat)) : null}
 
             {showDocasHoraAgendada ? (
               <label className={REGISTRY_LABEL_CLASS}>
@@ -964,6 +1114,31 @@ export function RegistryPatientModal({
                   className={REGISTRY_FIELD_CLASS}
                 />
               </label>
+            ) : null}
+
+            {showSalaoHoraAgendada ? (
+              <label className={REGISTRY_LABEL_CLASS}>
+                <span className="flex items-center gap-1.5">
+                  <Clock className="size-3.5 shrink-0 text-zinc-500 dark:text-zinc-400" strokeWidth={2} aria-hidden />
+                  {SALAO_REGISTER_FORM_LABELS.showHoraMarcada}
+                </span>
+                <input
+                  type="datetime-local"
+                  value={horaMarcada}
+                  disabled={busy}
+                  onChange={(e) => setHoraMarcada(e.target.value)}
+                  className={REGISTRY_FIELD_CLASS}
+                />
+                <span className="mt-0.5 block text-[10px] font-normal text-zinc-500 dark:text-zinc-400">
+                  Recurso disponível no Plano PRO.
+                </span>
+              </label>
+            ) : null}
+
+            {salaoMode && rf.showHoraMarcada && !proActive ? (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                Agendamento com data e hora está disponível no Plano PRO. Ative o PRO para marcar horários.
+              </p>
             ) : null}
 
             {law ? (

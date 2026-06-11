@@ -33,6 +33,14 @@ import {
   mergeDocasObservacao,
   parseDocasCadastroFields,
 } from "@/lib/docas-logistics";
+import {
+  buildSalaoCategoryPatch,
+  isSalaoEsteticaSegment,
+  parseSalaoCadastroFields,
+  parseSalaoServicosSolicitados,
+  resolveSalaoHeaderActionState,
+  SALAO_FIELD_SERVICOS,
+} from "@/lib/salao-estetica-logistics";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import type { CadastroCategoryEntry, ObservacoesVisibility } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -170,6 +178,7 @@ export const ClientPanel = memo(function ClientPanel({
   );
   const docasMode = isDocasSegment(segmentoAplicado);
   const aviacaoMode = isMroLogisticsSegment(segmentoAplicado);
+  const salaoMode = isSalaoEsteticaSegment(segmentoAplicado);
   const mroFieldLabels = resolveMroFieldLabels(segmentoAplicado);
   const mroProfile = resolveMroProfile(segmentoAplicado);
   const resolvedDeviceType = useMemo(() => {
@@ -213,6 +222,19 @@ export const ClientPanel = memo(function ClientPanel({
     }
     if (aviacaoMode) {
       const payload = buildAviacaoCategoryPatch(next, cadastroCategories, selected.observacao);
+      void onPatch(payload);
+      return;
+    }
+    if (salaoMode) {
+      const servicosIds = parseSalaoServicosSolicitados(
+        parseSalaoCadastroFields(selected.observacao)[SALAO_FIELD_SERVICOS]
+      );
+      const payload = buildSalaoCategoryPatch(
+        next,
+        cadastroCategories,
+        selected.observacao,
+        servicosIds
+      );
       void onPatch(payload);
       return;
     }
@@ -439,6 +461,12 @@ export const ClientPanel = memo(function ClientPanel({
     [aviacaoMode, selected, aviacaoCurrentTabId, segmentoAplicado]
   );
 
+  const salaoHeaderActions = useMemo(
+    () =>
+      salaoMode && selected ? resolveSalaoHeaderActionState(aviacaoCurrentTabId) : null,
+    [salaoMode, selected, aviacaoCurrentTabId]
+  );
+
   const primaryBtnClass =
     "min-h-9 min-w-[6.5rem] flex-1 rounded-lg bg-zinc-900 px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200";
   const secondaryBtnClass =
@@ -586,24 +614,35 @@ export const ClientPanel = memo(function ClientPanel({
             disabled={!canMutate}
             onClick={onChamar}
             className={
-              aviacaoHeaderActions?.primaryAction === "chamar" ? primaryBtnClass : secondaryBtnClass
+              aviacaoHeaderActions?.primaryAction === "chamar" ||
+              salaoHeaderActions?.primaryAction === "chamar"
+                ? primaryBtnClass
+                : secondaryBtnClass
             }
           >
             {docasMode
               ? "Chamar p/ Doca"
-              : aviacaoHeaderActions?.chamarLabel ?? (aviacaoMode ? mroProfile.headerChamarLabel : "Chamar")}
+              : salaoHeaderActions?.chamarLabel ??
+                (aviacaoHeaderActions?.chamarLabel ??
+                  (aviacaoMode ? mroProfile.headerChamarLabel : "Chamar"))}
           </button>
           <button
             type="button"
             disabled={!canMutate}
             onClick={onRechamar}
             className={
-              aviacaoHeaderActions?.primaryAction === "iniciar" ? primaryBtnClass : secondaryBtnClass
+              aviacaoHeaderActions?.primaryAction === "iniciar" ||
+              salaoHeaderActions?.primaryAction === "iniciar"
+                ? primaryBtnClass
+                : secondaryBtnClass
             }
           >
-            {docasMode || aviacaoMode
-              ? (aviacaoHeaderActions?.iniciarLabel ?? "Iniciar Operação")
-              : "Rechamar"}
+            {docasMode
+              ? "Iniciar Operação"
+              : salaoHeaderActions?.iniciarLabel ??
+                (aviacaoMode
+                  ? (aviacaoHeaderActions?.iniciarLabel ?? "Iniciar Operação")
+                  : "Rechamar")}
           </button>
           {aviacaoMode ? (
             <button
@@ -629,17 +668,19 @@ export const ClientPanel = memo(function ClientPanel({
             disabled={!canMutate}
             onClick={onFinalizar}
             className={
-              aviacaoHeaderActions?.primaryAction === "finalizar"
+              aviacaoHeaderActions?.primaryAction === "finalizar" ||
+              salaoHeaderActions?.primaryAction === "finalizar"
                 ? primaryBtnClass
-                : docasMode || aviacaoMode
+                : docasMode || aviacaoMode || salaoMode
                   ? finalizarBtnClass
                   : primaryBtnClass
             }
           >
             {docasMode
               ? "Liberar"
-              : aviacaoHeaderActions?.finalizarLabel ??
-                (aviacaoMode ? mroProfile.headerFinalizarLabel : "Finalizar")}
+              : salaoHeaderActions?.finalizarLabel ??
+                (aviacaoHeaderActions?.finalizarLabel ??
+                  (aviacaoMode ? mroProfile.headerFinalizarLabel : "Finalizar"))}
           </button>
         </div>
       </section>

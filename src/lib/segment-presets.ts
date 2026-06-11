@@ -1,6 +1,7 @@
 import { AVIACAO_QUEUE_TAB } from "@/lib/aviacao-logistics";
 import { AUTOMOTIVO_QUEUE_TAB } from "@/lib/mro-segment-profile";
 import { DOCAS_QUEUE_TAB } from "@/lib/docas-logistics";
+import { SALAO_QUEUE_TAB } from "@/lib/salao-estetica-logistics";
 import {
   buildCustomQueueTabId,
   DEFAULT_CADASTRO_CATEGORIES,
@@ -27,7 +28,7 @@ export type SegmentPresetId =
   | "aviacao_mro"
   | "automotivo_mro"
   | "advocacia"
-  | "saloes_beleza"
+  | "salao_estetica"
   | "cartorios"
   | "coworkings"
   | "blank";
@@ -60,6 +61,10 @@ function aviacaoTab(id: string, label: string): QueueTabEntry {
 }
 
 function automotivoTab(id: string, label: string): QueueTabEntry {
+  return { id, preset: "outros", label, customTypeLabel: label };
+}
+
+function salaoTab(id: string, label: string): QueueTabEntry {
   return { id, preset: "outros", label, customTypeLabel: label };
 }
 
@@ -268,26 +273,32 @@ const ADVOCACIA = makePreset(
   { showClienteNome: true }
 );
 
-const SALOES = makePreset(
-  "saloes_beleza",
+const SALAO_ESTETICA = makePreset(
+  "salao_estetica",
   "💅",
   "Salões de Beleza, Spas e Estética",
-  "Cliente, Profissional, Cadeira/Mesa/Sala, Procedimento, Linha de Produtos",
-  "Check-in → Em Atendimento → Processamento (Química) → Lavatório → Checkout",
+  "Cliente, Serviço Solicitado, Profissional Alocado, Cadeira/Sala, Classificação de Prioridade",
+  "Fila de Espera → Cadeiras/Bancadas → Sala de Estética → Finalizado/Caixa",
   [
-    cat("sal-c1", "Profissional", "profissionais"),
-    cat("sal-c2", "Cadeira/Mesa/Sala", "locais"),
-    cat("sal-c3", "Procedimento", "servicos"),
-    cat("sal-c4", "Linha de Produtos", "servicos"),
+    cat("sal-c1", "Profissional Alocado", "profissionais"),
+    cat("sal-c2", "Cadeira / Sala de Atendimento", "locais"),
+    cat("sal-c3", "Serviço Solicitado", "servicos"),
   ],
   [
-    flowTab("sal-t1", "Check-in"),
-    flowTab("sal-t2", "Em Atendimento"),
-    flowTab("sal-t3", "Processamento (Química)"),
-    flowTab("sal-t4", "Lavatório"),
-    flowTab("sal-t5", "Checkout"),
+    salaoTab(SALAO_QUEUE_TAB.FILA_ESPERA, "FILA DE ESPERA (GERAL)"),
+    salaoTab(SALAO_QUEUE_TAB.CADEIRA_01, "CADEIRA / BANCADA 01"),
+    salaoTab(SALAO_QUEUE_TAB.CADEIRA_02, "CADEIRA / BANCADA 02"),
+    salaoTab(SALAO_QUEUE_TAB.SALA_ESTETICA_01, "SALA DE ESTÉTICA 01"),
+    salaoTab(SALAO_QUEUE_TAB.FINALIZADO, "FINALIZADO / CAIXA"),
   ],
-  { showClienteNome: true }
+  {
+    showClienteNome: true,
+    showProfissional: true,
+    showServico: true,
+    showLocal: true,
+    showHoraMarcada: true,
+    showObservacao: true,
+  }
 );
 
 const CARTORIOS = makePreset(
@@ -360,7 +371,7 @@ export const SEGMENT_PRESETS: SegmentPresetMeta[] = [
   AVIACAO,
   AUTOMOTIVO,
   ADVOCACIA,
-  SALOES,
+  SALAO_ESTETICA,
   CARTORIOS,
   COWORKINGS,
   BLANK,
@@ -387,7 +398,9 @@ const ALIAS_TO_ID: Record<string, SegmentPresetId> = {
   oficinas: "automotivo_mro",
   "oficinas mecanicas e estetica automotiva": "automotivo_mro",
   advocacia: "advocacia",
-  saloes_beleza: "saloes_beleza",
+  salao_estetica: "salao_estetica",
+  saloes_beleza: "salao_estetica",
+  "saloes de beleza spas e estetica": "salao_estetica",
   cartorios: "cartorios",
   coworkings: "coworkings",
   blank: "blank",
