@@ -20,7 +20,8 @@ import {
   resolveSalaoLocalLabel,
   resolveSalaoProfissionalLabel,
   resolveSalaoTabIdFromObservacao,
-  getSalaoStepLabel,
+  resolveSalaoQueueTabLabel,
+  normalizeSalaoStatusLabel,
   formatSalaoObservacaoForDisplay,
 } from "@/lib/salao-estetica-logistics";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
@@ -90,7 +91,7 @@ function buildSalaoShareSummary(
   if (options.queueTabIds?.length) {
     const tabId = resolveSalaoTabIdFromObservacao(row.observacao, options.queueTabIds);
     if (tabId) {
-      etapa = getSalaoStepLabel(tabId);
+      etapa = resolveSalaoQueueTabLabel(tabId, options.queueTabIds);
     }
   }
 

@@ -36,9 +36,10 @@ import {
 import {
   buildSalaoCategoryPatch,
   isSalaoEsteticaSegment,
+  isSalaoWaitingStatus,
   parseSalaoCadastroFields,
   parseSalaoServicosSolicitados,
-  resolveSalaoHeaderActionState,
+  resolveSalaoChamarLabel,
   resolveSalaoLocalLabel,
   SALAO_FIELD_SERVICOS,
 } from "@/lib/salao-estetica-logistics";
@@ -92,6 +93,8 @@ type ClientPanelProps = {
   onRegistrarAvaria?: () => void;
   onPrintSelected?: () => void;
   onCopySelected?: () => void;
+  /** Salão: marca o cliente selecionado como próximo na fila. */
+  onDefinirProximo?: () => void;
   /** Estágio atual da aeronave selecionada (coluna Kanban/lista). */
   aviacaoCurrentTabId?: string | null;
   /** Incrementar após CRUD rápido (+ Bancada / + Equipe / + Serviços) para recarregar selects. */
@@ -154,6 +157,7 @@ export const ClientPanel = memo(function ClientPanel({
   onRegistrarAvaria,
   onPrintSelected,
   onCopySelected,
+  onDefinirProximo,
   aviacaoCurrentTabId,
   cadastrosRevision = 0,
 }: ClientPanelProps) {
@@ -469,12 +473,9 @@ export const ClientPanel = memo(function ClientPanel({
     return resolveSalaoLocalLabel(selected, cadastroCategories, cadastroLookups);
   }, [salaoMode, selected, cadastroCategories, cadastroLookups]);
 
-  const salaoHeaderActions = useMemo(
-    () =>
-      salaoMode && selected
-        ? resolveSalaoHeaderActionState(aviacaoCurrentTabId, salaoLocalLabel)
-        : null,
-    [salaoMode, selected, aviacaoCurrentTabId, salaoLocalLabel]
+  const salaoChamarLabel = useMemo(
+    () => (salaoMode ? resolveSalaoChamarLabel(salaoLocalLabel) : "Chamar"),
+    [salaoMode, salaoLocalLabel]
   );
 
   const primaryBtnClass =
@@ -642,79 +643,110 @@ export const ClientPanel = memo(function ClientPanel({
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            disabled={!canMutate}
-            onClick={onChamar}
-            className={
-              aviacaoHeaderActions?.primaryAction === "chamar" ||
-              salaoHeaderActions?.primaryAction === "chamar"
-                ? primaryBtnClass
-                : secondaryBtnClass
-            }
-          >
-            {docasMode
-              ? "Chamar p/ Doca"
-              : salaoHeaderActions?.chamarLabel ??
-                (aviacaoHeaderActions?.chamarLabel ??
-                  (aviacaoMode ? mroProfile.headerChamarLabel : "Chamar"))}
-          </button>
-          <button
-            type="button"
-            disabled={!canMutate}
-            onClick={onRechamar}
-            className={
-              aviacaoHeaderActions?.primaryAction === "iniciar" ||
-              salaoHeaderActions?.primaryAction === "iniciar"
-                ? primaryBtnClass
-                : secondaryBtnClass
-            }
-          >
-            {docasMode
-              ? "Iniciar Operação"
-              : salaoHeaderActions?.iniciarLabel ??
-                (aviacaoMode
-                  ? (aviacaoHeaderActions?.iniciarLabel ?? "Iniciar Operação")
-                  : "Rechamar")}
-          </button>
-          {aviacaoMode ? (
-            <button
-              type="button"
-              disabled={!canMutate || !selected}
-              onClick={onRegistrarAvaria}
-              className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-amber-500 bg-amber-50 px-3 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/60"
-            >
-              {mroFieldLabels.avariaButton}
-            </button>
-          ) : !salaoMode ? (
-            <button
-              type="button"
-              disabled={!canMutate}
-              onClick={onLimpar}
-              className={secondaryBtnClass}
-            >
-              Limpar dados
-            </button>
-          ) : null}
-          <button
-            type="button"
-            disabled={!canMutate}
-            onClick={onFinalizar}
-            className={
-              aviacaoHeaderActions?.primaryAction === "finalizar" ||
-              salaoHeaderActions?.primaryAction === "finalizar"
-                ? primaryBtnClass
-                : docasMode || aviacaoMode || salaoMode
-                  ? finalizarBtnClass
-                  : primaryBtnClass
-            }
-          >
-            {docasMode
-              ? "Liberar"
-              : salaoHeaderActions?.finalizarLabel ??
-                (aviacaoHeaderActions?.finalizarLabel ??
-                  (aviacaoMode ? mroProfile.headerFinalizarLabel : "Finalizar"))}
-          </button>
+          {salaoMode ? (
+            <>
+              {onDefinirProximo && selected && isSalaoWaitingStatus(selected.status) ? (
+                <button
+                  type="button"
+                  disabled={!canMutate}
+                  onClick={onDefinirProximo}
+                  className={secondaryBtnClass}
+                >
+                  Definir como Próximo
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={!canMutate}
+                onClick={onChamar}
+                className={primaryBtnClass}
+              >
+                {salaoChamarLabel}
+              </button>
+              <button
+                type="button"
+                disabled={!canMutate}
+                onClick={onRechamar}
+                className={secondaryBtnClass}
+              >
+                Iniciar Atendimento
+              </button>
+              <button
+                type="button"
+                disabled={!canMutate}
+                onClick={onFinalizar}
+                className={finalizarBtnClass}
+              >
+                Finalizar / Caixa
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                disabled={!canMutate}
+                onClick={onChamar}
+                className={
+                  aviacaoHeaderActions?.primaryAction === "chamar" ? primaryBtnClass : secondaryBtnClass
+                }
+              >
+                {docasMode
+                  ? "Chamar p/ Doca"
+                  : aviacaoHeaderActions?.chamarLabel ??
+                    (aviacaoMode ? mroProfile.headerChamarLabel : "Chamar")}
+              </button>
+              <button
+                type="button"
+                disabled={!canMutate}
+                onClick={onRechamar}
+                className={
+                  aviacaoHeaderActions?.primaryAction === "iniciar" ? primaryBtnClass : secondaryBtnClass
+                }
+              >
+                {docasMode
+                  ? "Iniciar Operação"
+                  : aviacaoMode
+                    ? (aviacaoHeaderActions?.iniciarLabel ?? "Iniciar Operação")
+                    : "Rechamar"}
+              </button>
+              {aviacaoMode ? (
+                <button
+                  type="button"
+                  disabled={!canMutate || !selected}
+                  onClick={onRegistrarAvaria}
+                  className="min-h-9 min-w-[6.5rem] flex-1 rounded-lg border border-amber-500 bg-amber-50 px-3 text-xs font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/60"
+                >
+                  {mroFieldLabels.avariaButton}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!canMutate}
+                  onClick={onLimpar}
+                  className={secondaryBtnClass}
+                >
+                  Limpar dados
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!canMutate}
+                onClick={onFinalizar}
+                className={
+                  aviacaoHeaderActions?.primaryAction === "finalizar"
+                    ? primaryBtnClass
+                    : docasMode || aviacaoMode
+                      ? finalizarBtnClass
+                      : primaryBtnClass
+                }
+              >
+                {docasMode
+                  ? "Liberar"
+                  : aviacaoHeaderActions?.finalizarLabel ??
+                    (aviacaoMode ? mroProfile.headerFinalizarLabel : "Finalizar")}
+              </button>
+            </>
+          )}
         </div>
       </section>
 

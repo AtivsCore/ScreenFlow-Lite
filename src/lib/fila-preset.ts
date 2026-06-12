@@ -82,6 +82,7 @@ const VALID_PRESETS = new Set<QueueTabId>([
   "encaixe",
   "prioridade",
   "urgente",
+  "reagendar",
   "outros",
 ]);
 
@@ -207,8 +208,9 @@ export function rowMatchesQueueTabEntry(row: RowForPreset, tab: Pick<QueueTabEnt
   if (row.observacao?.includes("__sf_aviacao:") && normalizeKanbanTabId(tab.id) === "triagem") {
     return true;
   }
-  if (row.observacao?.includes("__sf_salao:") && normalizeKanbanTabId(tab.id) === "fila_espera") {
-    return true;
+  if (row.observacao?.includes("__sf_salao:") && !parseFilaTabId(row.observacao) && !parseFilaPreset(row.observacao)) {
+    const preset = row.hora_marcada ? "hora" : "ordem";
+    return tab.preset === preset;
   }
   return rowMatchesQueueTab(row, tab.preset);
 }

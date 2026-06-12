@@ -1,7 +1,7 @@
 import { AVIACAO_QUEUE_TAB } from "@/lib/aviacao-logistics";
 import { AUTOMOTIVO_QUEUE_TAB } from "@/lib/mro-segment-profile";
 import { DOCAS_QUEUE_TAB } from "@/lib/docas-logistics";
-import { SALAO_QUEUE_TAB } from "@/lib/salao-estetica-logistics";
+import { buildSalaoDefaultQueueTabs } from "@/lib/salao-estetica-logistics";
 import {
   buildCustomQueueTabId,
   DEFAULT_CADASTRO_CATEGORIES,
@@ -61,10 +61,6 @@ function aviacaoTab(id: string, label: string): QueueTabEntry {
 }
 
 function automotivoTab(id: string, label: string): QueueTabEntry {
-  return { id, preset: "outros", label, customTypeLabel: label };
-}
-
-function salaoTab(id: string, label: string): QueueTabEntry {
   return { id, preset: "outros", label, customTypeLabel: label };
 }
 
@@ -278,17 +274,13 @@ const SALAO_ESTETICA = makePreset(
   "💅",
   "Salões de Beleza, Spas e Estética",
   "Cliente, Serviço Solicitado, Profissional Alocado, Cadeira/Sala, Classificação de Prioridade",
-  "Fila de Espera → Em Atendimento → Finalizado/Caixa",
+  "Hora Marcada, Ordem de Chegada, Encaixe, Urgente, Reagendar",
   [
     cat("sal-c1", "Profissional Alocado", "profissionais"),
     cat("sal-c2", "Cadeira / Sala de Atendimento", "locais"),
     cat("sal-c3", "Serviço Solicitado", "servicos"),
   ],
-  [
-    salaoTab(SALAO_QUEUE_TAB.FILA_ESPERA, "FILA DE ESPERA (GERAL)"),
-    salaoTab(SALAO_QUEUE_TAB.EM_ATENDIMENTO, "EM ATENDIMENTO"),
-    salaoTab(SALAO_QUEUE_TAB.FINALIZADO, "FINALIZADO / CAIXA"),
-  ],
+  buildSalaoDefaultQueueTabs(),
   {
     showClienteNome: true,
     showProfissional: true,

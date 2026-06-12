@@ -61,13 +61,14 @@ import {
 import { buildHoraMarcadaTodayIso, resolveHoraMarcadaIsoForSave } from "@/lib/hora-marcada";
 import {
   SALAO_FIELD_SERVICOS,
-  SALAO_QUEUE_TAB,
   SALAO_REGISTER_FORM_LABELS,
+  SALAO_STATUS,
+  SALAO_TAB,
   buildSalaoRegistryObservacao,
   buildSalaoSavePayload,
   isSalaoEsteticaSegment,
   parseSalaoServicosSolicitados,
-  resolveSalaoKanbanColumnLabel,
+  resolveSalaoQueueTabLabel,
   resolveSalaoQueueTabs,
   serializeSalaoServicosSolicitados,
 } from "@/lib/salao-estetica-logistics";
@@ -209,9 +210,7 @@ export function RegistryPatientModal({
       return queueTabs.find((t) => t.id === AVIACAO_QUEUE_TAB.TRIAGEM)?.id ?? queueTabs[0]?.id ?? "";
     }
     if (salaoMode) {
-      return (
-        queueTabs.find((t) => t.id === SALAO_QUEUE_TAB.FILA_ESPERA)?.id ?? queueTabs[0]?.id ?? ""
-      );
+      return queueTabs.find((t) => t.id === SALAO_TAB.HORA)?.id ?? queueTabs[0]?.id ?? "";
     }
     return queueTabs[0]?.id ?? "";
   }, [docasMode, aviacaoMode, salaoMode, queueTabs]);
@@ -565,7 +564,7 @@ export function RegistryPatientModal({
         prioridade: law ? prioridadeBooleanFromClassificacao(classificacao) : false,
         classificacao_prioridade: law ? classificacao : "normal",
         observacao,
-        status: defaultStatus,
+        status: salaoMode ? SALAO_STATUS.waiting : defaultStatus,
         ...cadastroPayload,
       };
 
@@ -971,7 +970,7 @@ export function RegistryPatientModal({
           <>
             {salaoMode && flowDestinationTabs.length > 0 ? (
               <label className={REGISTRY_LABEL_CLASS}>
-                Coluna de destino
+                Classificação da fila
                 <select
                   value={triagemTabId}
                   disabled={busy}
@@ -980,7 +979,7 @@ export function RegistryPatientModal({
                 >
                   {flowDestinationTabs.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {resolveSalaoKanbanColumnLabel(t)}
+                      {resolveSalaoQueueTabLabel(t.id, flowDestinationTabs)}
                     </option>
                   ))}
                 </select>

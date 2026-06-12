@@ -65,7 +65,6 @@ import {
   mergeSalaoObservacao,
   parseSalaoCadastroFields,
   parseSalaoServicosSolicitados,
-  resolveSalaoKanbanColumnLabel,
   resolveSalaoQueueTabs,
   serializeSalaoServicosSolicitados,
 } from "@/lib/salao-estetica-logistics";
@@ -790,7 +789,7 @@ function EditAtendimentoForm({
 
       {queueTabs.length > 0 && !aviacaoMode ? (
         <label className={LABEL_CLASS}>
-          {salaoMode ? "Coluna de destino" : triagemLabel}
+          {salaoMode ? "Classificação da fila" : triagemLabel}
           <select
             value={triagemTabId}
             onChange={(e) => handleTriagemChange(e.target.value)}
@@ -800,7 +799,7 @@ function EditAtendimentoForm({
               .filter((t) => t.preset !== "todos")
               .map((t) => (
                 <option key={t.id} value={t.id}>
-                  {salaoMode ? resolveSalaoKanbanColumnLabel(t) : t.label}
+                  {t.label}
                 </option>
               ))}
           </select>

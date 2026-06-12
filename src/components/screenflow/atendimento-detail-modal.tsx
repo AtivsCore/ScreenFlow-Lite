@@ -27,7 +27,8 @@ import {
   SALAO_PROFISSIONAL_CATEGORY_ID,
   SALAO_REGISTER_FORM_LABELS,
   formatSalaoObservacaoForDisplay,
-  getSalaoStepLabel,
+  normalizeSalaoStatusLabel,
+  resolveSalaoQueueTabLabel,
   isSalaoEsteticaSegment,
   parseSalaoCadastroFields,
   parseSalaoServicosSolicitados,
@@ -132,8 +133,8 @@ export function AtendimentoDetailModal({
           ) ?? "—",
         servicos: servicos || "—",
         horario: row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : "—",
-        etapa: tabId ? getSalaoStepLabel(tabId, queueTabs) : "—",
-        status: normalizeQueueStatusLabel(row.status),
+        etapa: tabId ? resolveSalaoQueueTabLabel(tabId, queueTabs) : "—",
+        status: normalizeSalaoStatusLabel(row.status),
         observacoes: formatSalaoObservacaoForDisplay(row.observacao) || "—",
       };
     }

@@ -10,12 +10,14 @@ import {
   formatObservacaoForDisplay,
   parseFilaTabId,
   parseFilaPreset,
+  resolveRowQueueTabId,
   rowMatchesQueueTabEntry,
 } from "@/lib/fila-preset";
 import {
   compareQueueArrivalOrder,
+  horaComparable,
   isActiveQueueRow,
-  STATUS_UPDATE,
+  timeMs,
   type AtendimentoLite,
   type QueueTabId,
 } from "@/lib/atendimentos-lite";
@@ -25,33 +27,43 @@ import { TODOS_QUEUE_TAB, type CadastroCategoryEntry, type QueueTabEntry } from 
 /** Slug canônico do segmento licenciado (`segmento_definido` / `segmentoAplicado`). */
 export const SALAO_ESTETICA_SEGMENT_ID = "salao_estetica" as const;
 
-/** IDs estáveis das colunas de fluxo (marcador `__sf_fila:tab:…__`). */
-export const SALAO_QUEUE_TAB = {
-  FILA_ESPERA: "fila_espera",
-  EM_ATENDIMENTO: "em_atendimento",
-  FINALIZADO: "finalizado_caixa",
+/** Abas de classificação da fila (fila estática — sem pipeline de estágios). */
+export const SALAO_TAB = {
+  HORA: "tab-hora",
+  ORDEM: "tab-ordem",
+  ENCAIXE: "tab-encaixe",
+  URGENTE: "tab-urgente",
+  REAGENDAR: "tab-reagendar",
 } as const;
 
-export type SalaoQueueTabId = (typeof SALAO_QUEUE_TAB)[keyof typeof SALAO_QUEUE_TAB];
+export type SalaoTabId = (typeof SALAO_TAB)[keyof typeof SALAO_TAB];
 
-export const SALAO_PIPELINE_ORDER: readonly SalaoQueueTabId[] = [
-  SALAO_QUEUE_TAB.FILA_ESPERA,
-  SALAO_QUEUE_TAB.EM_ATENDIMENTO,
-  SALAO_QUEUE_TAB.FINALIZADO,
+export const SALAO_QUEUE_TAB_ORDER: readonly SalaoTabId[] = [
+  SALAO_TAB.HORA,
+  SALAO_TAB.ORDEM,
+  SALAO_TAB.ENCAIXE,
+  SALAO_TAB.URGENTE,
+  SALAO_TAB.REAGENDAR,
 ];
 
-export const SALAO_STEP_LABELS: Record<SalaoQueueTabId, string> = {
-  [SALAO_QUEUE_TAB.FILA_ESPERA]: "FILA DE ESPERA (GERAL)",
-  [SALAO_QUEUE_TAB.EM_ATENDIMENTO]: "EM ATENDIMENTO",
-  [SALAO_QUEUE_TAB.FINALIZADO]: "FINALIZADO / CAIXA",
+export const SALAO_QUEUE_TAB_LABELS: Record<SalaoTabId, string> = {
+  [SALAO_TAB.HORA]: "HORA MARCADA",
+  [SALAO_TAB.ORDEM]: "ORDEM DE CHEGADA",
+  [SALAO_TAB.ENCAIXE]: "ENCAIXE",
+  [SALAO_TAB.URGENTE]: "URGENTE",
+  [SALAO_TAB.REAGENDAR]: "REAGENDAR",
 };
 
-/** Colunas físicas legadas — mapeadas para `em_atendimento` na normalização. */
-const SALAO_LEGACY_WORK_TAB_IDS = [
-  "cadeira_01",
-  "cadeira_02",
-  "sala_estetica_01",
-] as const;
+/** Ciclo de vida operacional do atendimento no salão. */
+export const SALAO_STATUS = {
+  waiting: "waiting",
+  next: "next",
+  called: "called",
+  processing: "processing",
+  completed: "completed",
+} as const;
+
+export type SalaoStatus = (typeof SALAO_STATUS)[keyof typeof SALAO_STATUS];
 
 /** Profissional alocado — categoria `sal-c1`. */
 export const SALAO_PROFISSIONAL_CATEGORY_ID = "sal-c1" as const;
@@ -62,32 +74,30 @@ export const SALAO_LOCAL_CATEGORY_ID = "sal-c2" as const;
 /** Serviços solicitados (múltiplos) — campo inline `sal-svc` na tag `__sf_salao:`. */
 export const SALAO_FIELD_SERVICOS = "sal-svc" as const;
 
+/** Timestamp ISO gravado ao marcar como próximo (`__sf_salao:`). */
+export const SALAO_FIELD_MARKED_NEXT_AT = "marked_next_at" as const;
+
 export const SALAO_DATA_TAG_RE = /__sf_salao:[\s\S]*?__/gi;
 
 const SALAO_DATA_PARSE = /__sf_salao:([\s\S]*?)__/i;
 
-const LEGACY_TAB_ALIASES: Record<string, SalaoQueueTabId> = {
-  "sal-t1": SALAO_QUEUE_TAB.FILA_ESPERA,
-  "sal-t2": SALAO_QUEUE_TAB.EM_ATENDIMENTO,
-  "sal-t3": SALAO_QUEUE_TAB.EM_ATENDIMENTO,
-  "sal-t4": SALAO_QUEUE_TAB.EM_ATENDIMENTO,
-  "sal-t5": SALAO_QUEUE_TAB.FINALIZADO,
-  check_in: SALAO_QUEUE_TAB.FILA_ESPERA,
-  cadeira_01: SALAO_QUEUE_TAB.EM_ATENDIMENTO,
-  cadeira_02: SALAO_QUEUE_TAB.EM_ATENDIMENTO,
-  sala_estetica_01: SALAO_QUEUE_TAB.EM_ATENDIMENTO,
+/** Ids legados do pipeline físico (migração). */
+const LEGACY_PIPELINE_TAB_TO_SALAO_TAB: Record<string, SalaoTabId> = {
+  fila_espera: SALAO_TAB.ORDEM,
+  check_in: SALAO_TAB.ORDEM,
+  em_atendimento: SALAO_TAB.ORDEM,
+  finalizado_caixa: SALAO_TAB.ORDEM,
+  "sal-t1": SALAO_TAB.ORDEM,
+  "sal-t2": SALAO_TAB.ORDEM,
+  "sal-t3": SALAO_TAB.ORDEM,
+  "sal-t4": SALAO_TAB.ORDEM,
+  "sal-t5": SALAO_TAB.ORDEM,
+  cadeira_01: SALAO_TAB.ORDEM,
+  cadeira_02: SALAO_TAB.ORDEM,
+  sala_estetica_01: SALAO_TAB.ORDEM,
 };
 
 export type SalaoCadastroFields = Partial<Record<string, string>>;
-
-export type SalaoHeaderPrimaryAction = "chamar" | "iniciar" | "finalizar";
-
-export type SalaoHeaderActionState = {
-  chamarLabel: string;
-  iniciarLabel: string;
-  finalizarLabel: string;
-  primaryAction: SalaoHeaderPrimaryAction;
-};
 
 export const SALAO_REGISTER_FORM_LABELS = {
   showClienteNome: "Cliente (Nome)",
@@ -102,118 +112,93 @@ export function isSalaoEsteticaSegment(segmentoAplicado: string | null | undefin
   return segmentoAplicado === SALAO_ESTETICA_SEGMENT_ID;
 }
 
-export function isSalaoQueueTabId(id: string | null | undefined): id is SalaoQueueTabId {
-  return !!id && (SALAO_PIPELINE_ORDER as readonly string[]).includes(id);
-}
-
-function isSalaoLegacyWorkTabId(id: string): boolean {
-  return (SALAO_LEGACY_WORK_TAB_IDS as readonly string[]).includes(
-    id as (typeof SALAO_LEGACY_WORK_TAB_IDS)[number]
-  );
-}
-
-export function isSalaoCanonicalPipelineTabId(tabId: string | null | undefined): boolean {
-  if (!tabId || tabId === TODOS_QUEUE_TAB.id) return false;
-  if (isSalaoQueueTabId(tabId)) return true;
-  if (isSalaoLegacyWorkTabId(tabId)) return true;
-  return Object.prototype.hasOwnProperty.call(LEGACY_TAB_ALIASES, tabId);
-}
-
-export function normalizeSalaoTabId(tabId: string | null | undefined): SalaoQueueTabId {
-  if (!tabId) return SALAO_QUEUE_TAB.FILA_ESPERA;
-  if (isSalaoQueueTabId(tabId)) return tabId;
-  return LEGACY_TAB_ALIASES[tabId] ?? SALAO_QUEUE_TAB.FILA_ESPERA;
-}
-
-export function salaoQueueTabIdsMatch(a: string, b: string): boolean {
-  if (a === b) return true;
-  if (!isSalaoCanonicalPipelineTabId(a) || !isSalaoCanonicalPipelineTabId(b)) return false;
-  return normalizeSalaoTabId(a) === normalizeSalaoTabId(b);
-}
-
-export function isSalaoQueueTabSelected(queueTabId: string, tabId: string): boolean {
-  if (tabId === TODOS_QUEUE_TAB.id || queueTabId === TODOS_QUEUE_TAB.id) {
-    return queueTabId === tabId;
-  }
-  return salaoQueueTabIdsMatch(queueTabId, tabId);
-}
-
-export function isSalaoQueueTabIdInVisible(queueTabId: string, visibleTabIds: string[]): boolean {
-  if (visibleTabIds.includes(queueTabId)) return true;
-  if (queueTabId === TODOS_QUEUE_TAB.id) return false;
-  return visibleTabIds.some(
-    (id) => id !== TODOS_QUEUE_TAB.id && salaoQueueTabIdsMatch(id, queueTabId)
-  );
-}
-
-export function resolveSalaoQueueTabClickId(tabId: string): string {
-  if (tabId === TODOS_QUEUE_TAB.id) return tabId;
-  if (!isSalaoCanonicalPipelineTabId(tabId)) return tabId;
-  return normalizeSalaoTabId(tabId);
-}
-
-export function buildSalaoCanonicalQueueTabs(): QueueTabEntry[] {
-  return SALAO_PIPELINE_ORDER.map((id) => ({
-    id,
-    preset: "outros" as const,
-    label: SALAO_STEP_LABELS[id],
-    customTypeLabel: SALAO_STEP_LABELS[id],
-  }));
+export function buildSalaoDefaultQueueTabs(): QueueTabEntry[] {
+  return [
+    { id: SALAO_TAB.HORA, preset: "hora", label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.HORA] },
+    { id: SALAO_TAB.ORDEM, preset: "ordem", label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.ORDEM] },
+    { id: SALAO_TAB.ENCAIXE, preset: "encaixe", label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.ENCAIXE] },
+    { id: SALAO_TAB.URGENTE, preset: "urgente", label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.URGENTE] },
+    { id: SALAO_TAB.REAGENDAR, preset: "reagendar", label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.REAGENDAR] },
+  ];
 }
 
 export function resolveSalaoQueueTabs(config: {
   queueTabs: QueueTabEntry[];
   showTodosTab?: boolean;
 }): QueueTabEntry[] {
-  const flowTabs = buildSalaoCanonicalQueueTabs();
+  const hasClassificationTabs = config.queueTabs.some(
+    (t) => t.preset !== "todos" && t.preset !== "outros"
+  );
+  const flowTabs = hasClassificationTabs ? config.queueTabs.filter((t) => t.preset !== "todos") : buildSalaoDefaultQueueTabs();
   return config.showTodosTab ? [TODOS_QUEUE_TAB, ...flowTabs] : flowTabs;
 }
 
-export function getSalaoActiveColumns(
-  queueTabs: Pick<QueueTabEntry, "id" | "preset">[]
-): Pick<QueueTabEntry, "id" | "preset">[] {
-  return queueTabs.filter((t) => t.preset !== "todos");
+export function normalizeSalaoFilaTabId(tabId: string | null | undefined): string | null {
+  if (!tabId) return null;
+  return LEGACY_PIPELINE_TAB_TO_SALAO_TAB[tabId] ?? tabId;
 }
 
-export function findSalaoQueueTabByStep(
-  queueTabs: Pick<QueueTabEntry, "id" | "label">[],
-  step: SalaoQueueTabId
-): Pick<QueueTabEntry, "id" | "label"> | undefined {
-  const direct = queueTabs.find((t) => t.id === step);
-  if (direct) return direct;
-  return queueTabs.find((t) => normalizeSalaoTabId(t.id) === step);
+export function resolveSalaoQueueTabLabel(
+  tabId: string,
+  queueTabs?: Array<Pick<QueueTabEntry, "id"> & Partial<Pick<QueueTabEntry, "label">>>
+): string {
+  const normalized = normalizeSalaoFilaTabId(tabId) ?? tabId;
+  const tab = queueTabs?.find((t) => t.id === normalized);
+  if (tab?.label?.trim()) return tab.label.trim();
+  const presetLabel = SALAO_QUEUE_TAB_LABELS[normalized as SalaoTabId];
+  if (presetLabel) return presetLabel;
+  return normalized;
 }
 
-export function findSalaoQueueTabById(
-  queueTabs: Pick<QueueTabEntry, "id" | "label" | "preset">[],
-  tabId: string
-): Pick<QueueTabEntry, "id" | "label" | "preset"> | undefined {
-  const direct = queueTabs.find((t) => t.id === tabId);
-  if (direct) return direct;
-  if (!isSalaoCanonicalPipelineTabId(tabId)) return undefined;
-  const fallback = findSalaoQueueTabByStep(queueTabs, normalizeSalaoTabId(tabId));
-  if (!fallback) return undefined;
-  return queueTabs.find((t) => t.id === fallback.id) ?? { ...fallback, preset: "outros" as const };
-}
-
+/** @deprecated Use resolveSalaoQueueTabLabel */
 export function getSalaoStepLabel(
   step: string,
   queueTabs?: Pick<QueueTabEntry, "id" | "label">[]
 ): string {
-  const tab = queueTabs ? findSalaoQueueTabByStep(queueTabs, normalizeSalaoTabId(step)) : undefined;
-  return tab?.label?.trim() || SALAO_STEP_LABELS[normalizeSalaoTabId(step)];
+  return resolveSalaoQueueTabLabel(step, queueTabs);
 }
 
 export function resolveSalaoKanbanColumnLabel(tab: Pick<QueueTabEntry, "id" | "label">): string {
   const saved = tab.label?.trim();
   if (saved) return saved.toUpperCase();
-  return SALAO_STEP_LABELS[normalizeSalaoTabId(tab.id)];
+  return resolveSalaoQueueTabLabel(tab.id);
 }
 
-export function resolveSalaoStepFromObservacao(
-  observacao: string | null | undefined
-): SalaoQueueTabId {
-  return normalizeSalaoTabId(parseFilaTabId(observacao));
+export function resolveSalaoQueueTabClickId(tabId: string): string {
+  return normalizeSalaoFilaTabId(tabId) ?? tabId;
+}
+
+export function isSalaoQueueTabIdInVisible(queueTabId: string, visibleTabIds: string[]): boolean {
+  if (visibleTabIds.includes(queueTabId)) return true;
+  if (queueTabId === TODOS_QUEUE_TAB.id) return false;
+  const normalized = normalizeSalaoFilaTabId(queueTabId);
+  return visibleTabIds.some((id) => normalizeSalaoFilaTabId(id) === normalized);
+}
+
+export function isSalaoQueueTabSelected(queueTabId: string, tabId: string): boolean {
+  if (tabId === TODOS_QUEUE_TAB.id || queueTabId === TODOS_QUEUE_TAB.id) {
+    return queueTabId === tabId;
+  }
+  return normalizeSalaoFilaTabId(queueTabId) === normalizeSalaoFilaTabId(tabId);
+}
+
+export function resolveSalaoTabIdFromObservacao(
+  observacao: string | null | undefined,
+  activeColumns: Array<Pick<QueueTabEntry, "id"> & Partial<Pick<QueueTabEntry, "preset">>>
+): string | null {
+  if (activeColumns.length === 0) return null;
+  const raw = parseFilaTabId(observacao);
+  if (raw) {
+    const normalized = normalizeSalaoFilaTabId(raw) ?? raw;
+    const idx = activeColumns.findIndex((t) => t.id === normalized);
+    if (idx >= 0) return activeColumns[idx]!.id;
+  }
+  const preset = parseFilaPreset(observacao);
+  if (preset && preset !== "outros" && preset !== "todos") {
+    const byPreset = activeColumns.find((t) => t.preset === preset);
+    if (byPreset) return byPreset.id;
+  }
+  return activeColumns[0]?.id ?? null;
 }
 
 export function parseSalaoCadastroFields(
@@ -232,6 +217,10 @@ export function parseSalaoCadastroFields(
   } catch {
     return {};
   }
+}
+
+export function getSalaoMarkedNextAt(observacao: string | null | undefined): string | null {
+  return parseSalaoCadastroFields(observacao)[SALAO_FIELD_MARKED_NEXT_AT] ?? null;
 }
 
 export function embedSalaoCadastroFields(
@@ -276,7 +265,9 @@ export function mergeSalaoObservacao(params: {
   } else if (params.preserveTabWhenUnset !== false) {
     const tabId = parseFilaTabId(current);
     if (tabId) {
-      withFila = embedFilaPreset(withFila, "outros", tabId);
+      const normalized = normalizeSalaoFilaTabId(tabId) ?? tabId;
+      const preset = parseFilaPreset(current) ?? "ordem";
+      withFila = embedFilaPreset(withFila, preset === "outros" ? "ordem" : preset, normalized);
     } else {
       const preset = parseFilaPreset(current);
       if (preset) withFila = embedFilaPreset(withFila, preset);
@@ -293,12 +284,36 @@ export function buildSalaoRegistryObservacao(
   salaoFields: SalaoCadastroFields
 ): string | null {
   const preset: QueueTabId = filaPreset === "todos" ? "ordem" : filaPreset;
-  const tab = tabId ? { id: tabId, preset } : null;
+  const tab = tabId ? { id: normalizeSalaoFilaTabId(tabId) ?? tabId, preset } : null;
   return mergeSalaoObservacao({
     current: userObs || null,
     tab,
     salaoFields,
     preserveTabWhenUnset: false,
+  });
+}
+
+export function buildSalaoMarkedNextObservacao(
+  currentObservacao: string | null | undefined
+): string | null {
+  const fields = parseSalaoCadastroFields(currentObservacao);
+  fields[SALAO_FIELD_MARKED_NEXT_AT] = new Date().toISOString();
+  return mergeSalaoObservacao({
+    current: currentObservacao,
+    salaoFields: fields,
+    preserveTabWhenUnset: true,
+  });
+}
+
+export function clearSalaoMarkedNextObservacao(
+  currentObservacao: string | null | undefined
+): string | null {
+  const fields = parseSalaoCadastroFields(currentObservacao);
+  delete fields[SALAO_FIELD_MARKED_NEXT_AT];
+  return mergeSalaoObservacao({
+    current: currentObservacao,
+    salaoFields: fields,
+    preserveTabWhenUnset: true,
   });
 }
 
@@ -423,27 +438,6 @@ export function resolveSalaoCategoryDisplay(
   );
 }
 
-export function resolveSalaoTabIdFromObservacao(
-  observacao: string | null | undefined,
-  activeColumns: Pick<QueueTabEntry, "id">[]
-): string | null {
-  if (activeColumns.length === 0) return null;
-  const raw = parseFilaTabId(observacao);
-  if (raw) {
-    const idx = activeColumns.findIndex((t) => salaoQueueTabIdsMatch(t.id, raw));
-    if (idx >= 0) return activeColumns[idx]!.id;
-  }
-  return activeColumns[0]?.id ?? null;
-}
-
-/** Coluna de trabalho genérica — cadeira/sala ficam nos metadados do card. */
-export function resolveSalaoTabFromLocalNome(
-  _localNome?: string | null,
-  _queueTabs?: Pick<QueueTabEntry, "id" | "label">[]
-): SalaoQueueTabId {
-  return SALAO_QUEUE_TAB.EM_ATENDIMENTO;
-}
-
 export function resolveSalaoLocalLabel(
   row: Pick<AtendimentoLite, "observacao" | "cadastro_valores" | "local_id" | "localNome">,
   categories: CadastroCategoryEntry[],
@@ -559,6 +553,93 @@ export function resolveSalaoKanbanMeta(
   };
 }
 
+export function normalizeSalaoStatus(
+  status: string | null | undefined
+): SalaoStatus | "legacy_waiting" | "legacy_called" | "legacy_completed" {
+  const s = (status ?? "").trim().toLowerCase();
+  if (s === SALAO_STATUS.waiting) return SALAO_STATUS.waiting;
+  if (s === SALAO_STATUS.next) return SALAO_STATUS.next;
+  if (s === SALAO_STATUS.called) return SALAO_STATUS.called;
+  if (s === SALAO_STATUS.processing) return SALAO_STATUS.processing;
+  if (s === SALAO_STATUS.completed) return SALAO_STATUS.completed;
+  if (s === "finalizado") return SALAO_STATUS.completed;
+  if (s.includes("recham")) return SALAO_STATUS.called;
+  if (s.includes("chamado") || (s.includes("cham") && !s.includes("aguard"))) return SALAO_STATUS.called;
+  if (s.includes("aguard")) return SALAO_STATUS.waiting;
+  return SALAO_STATUS.waiting;
+}
+
+export function isSalaoWaitingStatus(status: string | null | undefined): boolean {
+  const n = normalizeSalaoStatus(status);
+  return n === SALAO_STATUS.waiting || n === "legacy_waiting";
+}
+
+export function isSalaoNextStatus(status: string | null | undefined): boolean {
+  return normalizeSalaoStatus(status) === SALAO_STATUS.next;
+}
+
+export function isSalaoCalledStatus(status: string | null | undefined): boolean {
+  const n = normalizeSalaoStatus(status);
+  return n === SALAO_STATUS.called || n === "legacy_called";
+}
+
+export function isSalaoActiveStatus(status: string | null | undefined): boolean {
+  const n = normalizeSalaoStatus(status);
+  return n !== SALAO_STATUS.completed && n !== "legacy_completed";
+}
+
+export function normalizeSalaoStatusLabel(status: string | null | undefined): string {
+  const n = normalizeSalaoStatus(status);
+  switch (n) {
+    case SALAO_STATUS.next:
+      return "Próximo";
+    case SALAO_STATUS.called:
+    case "legacy_called":
+      return "Chamado";
+    case SALAO_STATUS.processing:
+      return "Em atendimento";
+    case SALAO_STATUS.completed:
+    case "legacy_completed":
+      return "Finalizado";
+    case SALAO_STATUS.waiting:
+    case "legacy_waiting":
+    default:
+      return "Aguardando";
+  }
+}
+
+export function salaoStatusRank(status: string | null | undefined): number {
+  const n = normalizeSalaoStatus(status);
+  if (n === SALAO_STATUS.next) return 0;
+  if (n === SALAO_STATUS.waiting || n === "legacy_waiting") return 1;
+  if (n === SALAO_STATUS.called || n === "legacy_called") return 2;
+  if (n === SALAO_STATUS.processing) return 3;
+  return 4;
+}
+
+function compareSalaoNextThenTabOrder(
+  a: AtendimentoLite,
+  b: AtendimentoLite,
+  tabPreset: QueueTabEntry["preset"]
+): number {
+  const rankDiff = salaoStatusRank(a.status) - salaoStatusRank(b.status);
+  if (rankDiff !== 0) return rankDiff;
+
+  const aNext = getSalaoMarkedNextAt(a.observacao);
+  const bNext = getSalaoMarkedNextAt(b.observacao);
+  if (isSalaoNextStatus(a.status) && isSalaoNextStatus(b.status)) {
+    const tn = timeMs(aNext) - timeMs(bNext);
+    if (tn !== 0) return tn;
+  }
+
+  if (tabPreset === "hora") {
+    const th = horaComparable(a.hora_marcada) - horaComparable(b.hora_marcada);
+    if (th !== 0) return th;
+  }
+
+  return compareQueueArrivalOrder(a, b);
+}
+
 export function rowMatchesSalaoQueueTabEntry(
   row: {
     observacao: string | null;
@@ -566,91 +647,50 @@ export function rowMatchesSalaoQueueTabEntry(
     classificacao_prioridade: string | null;
     prioridade: boolean | null;
   },
-  tab: Pick<QueueTabEntry, "id" | "preset">
+  tab: Pick<QueueTabEntry, "id" | "preset">,
+  queueTabs?: Pick<QueueTabEntry, "id" | "preset">[]
 ): boolean {
   if (tab.preset === "todos") return true;
-  const rowTabId = parseFilaTabId(row.observacao);
-  if (rowTabId) {
-    return salaoQueueTabIdsMatch(rowTabId, tab.id);
+  const rawTabId = parseFilaTabId(row.observacao);
+  if (rawTabId) {
+    const normalized = normalizeSalaoFilaTabId(rawTabId) ?? rawTabId;
+    if (normalized === tab.id) return true;
   }
-  if (row.observacao?.includes("__sf_salao:")) {
-    return normalizeSalaoTabId(tab.id) === SALAO_QUEUE_TAB.FILA_ESPERA;
+  if (queueTabs?.length) {
+    const resolved = resolveRowQueueTabId(row, queueTabs);
+    if (resolved === tab.id) return true;
   }
   return rowMatchesQueueTabEntry(row, tab);
 }
 
 export function filterAndSortSalaoQueue(
   rows: AtendimentoLite[],
-  tab: Pick<QueueTabEntry, "id" | "preset">
+  tab: Pick<QueueTabEntry, "id" | "preset">,
+  allTabs?: Pick<QueueTabEntry, "id" | "preset">[]
 ): AtendimentoLite[] {
   const active =
     tab.preset === "todos"
-      ? rows.filter(isActiveQueueRow)
+      ? rows.filter((r) => isActiveQueueRow(r) && isSalaoActiveStatus(r.status))
       : rows
-          .filter(isActiveQueueRow)
-          .filter((r) => rowMatchesSalaoQueueTabEntry(r, tab));
-  return [...active].sort(compareQueueArrivalOrder);
+          .filter((r) => isActiveQueueRow(r) && isSalaoActiveStatus(r.status))
+          .filter((r) => rowMatchesSalaoQueueTabEntry(r, tab, allTabs));
+  return [...active].sort((a, b) => compareSalaoNextThenTabOrder(a, b, tab.preset));
 }
 
 export function countActiveBySalaoQueueTab(
   rows: AtendimentoLite[],
   tabs: Pick<QueueTabEntry, "id" | "preset">[]
 ): Record<string, number> {
-  const active = rows.filter(isActiveQueueRow);
+  const active = rows.filter((r) => isActiveQueueRow(r) && isSalaoActiveStatus(r.status));
   const counts: Record<string, number> = {};
   for (const tab of tabs) {
     if (tab.preset === "todos") {
       counts[tab.id] = active.length;
     } else {
-      counts[tab.id] = active.filter((r) => rowMatchesSalaoQueueTabEntry(r, tab)).length;
+      counts[tab.id] = active.filter((r) => rowMatchesSalaoQueueTabEntry(r, tab, tabs)).length;
     }
   }
   return counts;
-}
-
-function findSalaoActiveColumnIndex(
-  tabId: string,
-  activeColumns: Pick<QueueTabEntry, "id">[]
-): number {
-  const direct = activeColumns.findIndex((t) => t.id === tabId);
-  if (direct >= 0) return direct;
-  if (!isSalaoCanonicalPipelineTabId(tabId)) return -1;
-  const normalized = normalizeSalaoTabId(tabId);
-  return activeColumns.findIndex((t) => salaoQueueTabIdsMatch(t.id, normalized));
-}
-
-export function getSalaoTabIndex(
-  tabId: string,
-  activeColumns: Pick<QueueTabEntry, "id">[]
-): number {
-  return findSalaoActiveColumnIndex(tabId, activeColumns);
-}
-
-export function shiftSalaoTab(
-  tabId: string,
-  delta: -1 | 1,
-  activeColumns: Pick<QueueTabEntry, "id">[]
-): string | null {
-  const idx = getSalaoTabIndex(tabId, activeColumns);
-  if (idx < 0) return null;
-  const next = idx + delta;
-  if (next < 0 || next >= activeColumns.length) return null;
-  return activeColumns[next]?.id ?? null;
-}
-
-export function canShiftSalaoTab(
-  tabId: string | null | undefined,
-  delta: -1 | 1,
-  activeColumns: Pick<QueueTabEntry, "id">[]
-): boolean {
-  if (!tabId || activeColumns.length === 0) return false;
-  return shiftSalaoTab(tabId, delta, activeColumns) !== null;
-}
-
-export function salaoStepTvStatus(step: SalaoQueueTabId): string | undefined {
-  if (step === SALAO_QUEUE_TAB.FILA_ESPERA) return STATUS_UPDATE.chamar;
-  if (step === SALAO_QUEUE_TAB.EM_ATENDIMENTO) return STATUS_UPDATE.rechamar;
-  return undefined;
 }
 
 /** Rótulo do botão de chamada conforme o posto alocado (cadeira vs sala). */
@@ -662,37 +702,67 @@ export function resolveSalaoChamarLabel(localNome: string | null | undefined): s
   return "Chamar para Cadeira";
 }
 
-export function resolveSalaoHeaderActionState(
-  tabId: string | null | undefined,
-  localNome?: string | null
-): SalaoHeaderActionState {
-  const step = normalizeSalaoTabId(tabId);
-  const chamarLabel = resolveSalaoChamarLabel(localNome);
+export function resolveSalaoProfissionalKey(
+  row: Pick<AtendimentoLite, "observacao" | "cadastro_valores" | "profissional_id" | "profissionalNome">,
+  categories: CadastroCategoryEntry[],
+  lookups: CadastroLookups
+): string {
+  return (
+    resolveSalaoProfissionalLabel(row, categories, lookups)?.trim() ||
+    row.profissionalNome?.trim() ||
+    row.profissional_id ||
+    "—"
+  );
+}
 
-  if (step === SALAO_QUEUE_TAB.FINALIZADO) {
-    return {
-      chamarLabel,
-      iniciarLabel: "Iniciar Atendimento",
-      finalizarLabel: "Finalizar / Caixa",
-      primaryAction: "finalizar",
-    };
-  }
+export type SalaoProximoEntry = {
+  row: AtendimentoLite;
+  profissional: string;
+};
 
-  if (step === SALAO_QUEUE_TAB.FILA_ESPERA) {
-    return {
-      chamarLabel,
-      iniciarLabel: "Iniciar Atendimento",
-      finalizarLabel: "Finalizar / Caixa",
-      primaryAction: "chamar",
-    };
-  }
+/** Próximos da vez para o painel de TV (next → waiting em hora/ordem). */
+export function buildSalaoProximosDaVez(
+  rows: AtendimentoLite[],
+  categories: CadastroCategoryEntry[],
+  lookups: CadastroLookups,
+  limit = 12
+): SalaoProximoEntry[] {
+  const active = rows.filter((r) => isActiveQueueRow(r) && isSalaoActiveStatus(r.status));
+  const candidates = active.filter((r) => {
+    const st = normalizeSalaoStatus(r.status);
+    if (st === SALAO_STATUS.next || st === SALAO_STATUS.waiting || st === "legacy_waiting") {
+      const tabId = parseFilaTabId(r.observacao);
+      const normalized = normalizeSalaoFilaTabId(tabId) ?? tabId;
+      if (normalized === SALAO_TAB.HORA || normalized === SALAO_TAB.ORDEM) return true;
+      const preset = parseFilaPreset(r.observacao);
+      if (preset === "hora" || preset === "ordem") return true;
+      if (st === SALAO_STATUS.next) return true;
+    }
+    return false;
+  });
 
-  return {
-    chamarLabel,
-    iniciarLabel: "Iniciar Atendimento",
-    finalizarLabel: "Finalizar / Caixa",
-    primaryAction: "iniciar",
-  };
+  const sorted = [...candidates].sort((a, b) => {
+    const rank = salaoStatusRank(a.status) - salaoStatusRank(b.status);
+    if (rank !== 0) return rank;
+    const aNext = getSalaoMarkedNextAt(a.observacao);
+    const bNext = getSalaoMarkedNextAt(b.observacao);
+    if (isSalaoNextStatus(a.status) && isSalaoNextStatus(b.status)) {
+      const tn = timeMs(aNext) - timeMs(bNext);
+      if (tn !== 0) return tn;
+    }
+    const tabIdA = normalizeSalaoFilaTabId(parseFilaTabId(a.observacao));
+    const tabIdB = normalizeSalaoFilaTabId(parseFilaTabId(b.observacao));
+    if (tabIdA === SALAO_TAB.HORA && tabIdB === SALAO_TAB.HORA) {
+      const th = horaComparable(a.hora_marcada) - horaComparable(b.hora_marcada);
+      if (th !== 0) return th;
+    }
+    return compareQueueArrivalOrder(a, b);
+  });
+
+  return sorted.slice(0, limit).map((row) => ({
+    row,
+    profissional: resolveSalaoProfissionalKey(row, categories, lookups),
+  }));
 }
 
 /** Plano PRO: desbloqueia a aba consolidada de Agenda futura (não o campo no balcão). */

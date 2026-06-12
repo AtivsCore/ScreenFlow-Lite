@@ -7,15 +7,24 @@ import {
   mapAtendimentosNestedToFlat,
 } from "@/lib/atendimentos-lite";
 import { buildServicoLookup } from "@/lib/atendimentos-rest";
+import { restoreDefaultCadastroCategories } from "@/lib/tenant-config";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import { mergeTenantConfig } from "@/lib/tenant-config";
 import { resolvePublicTenantId } from "@/lib/tenant-id";
+import {
+  SALAO_ESTETICA_SEGMENT_ID,
+  buildSalaoProximosDaVez,
+  isSalaoCalledStatus,
+  isSalaoEsteticaSegment,
+  normalizeSalaoStatusLabel,
+} from "@/lib/salao-estetica-logistics";
+import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 function isCallingStatus(status: string | null): boolean {
   const s = (status ?? "").toLowerCase();
-  return s.includes("cham") || s.includes("recham");
+  return s.includes("cham") || s.includes("recham") || s === "called";
 }
 
 const PALETTE_STYLES: Record<
@@ -63,6 +72,9 @@ export default function DisplayPage() {
   const [footerIdx, setFooterIdx] = useState(0);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [blinkOn, setBlinkOn] = useState(true);
+
+  const salaoMode = isSalaoEsteticaSegment(config.segmentoAplicado);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -91,6 +103,23 @@ export default function DisplayPage() {
   const tvMerged = useMemo(() => ({ ...config.tvDisplay, ...tvLocal }), [config.tvDisplay, tvLocal]);
 
   const palette = PALETTE_STYLES[tvMerged.colorPalette] ?? PALETTE_STYLES["blue-white"];
+
+  const cadastroCategories = useMemo(
+    () => config.cadastroCategories ?? restoreDefaultCadastroCategories(),
+    [config.cadastroCategories]
+  );
+
+  const cadastroLookups = useMemo((): CadastroLookups => {
+    const profissionais = new Map<string, string>();
+    const locais = new Map<string, string>();
+    const servicos = new Map<string, string>();
+    for (const r of rows) {
+      if (r.profissional_id && r.profissionalNome) profissionais.set(r.profissional_id, r.profissionalNome);
+      if (r.local_id && r.localNome) locais.set(r.local_id, r.localNome);
+      if (r.especialidade_id && r.servicoNome) servicos.set(r.especialidade_id, r.servicoNome);
+    }
+    return { profissionais, locais, servicos };
+  }, [rows]);
 
   useEffect(() => {
     if (!tenantId) {
@@ -125,7 +154,7 @@ export default function DisplayPage() {
         }
         const nested = qJson.data as AtendimentoLiteNested[];
         const lookup = qJson.servicos ? buildServicoLookup(qJson.servicos) : undefined;
-        const flat = mapAtendimentosNestedToFlat(nested, lookup).filter(
+        const flat = mapAtendimentosNestedToFlat(nested, lookup, cadastroCategories).filter(
           (r) => (r.tenant_id ?? "").toLowerCase() === scopedTenantId
         );
         if (cancelled) return;
@@ -153,7 +182,7 @@ export default function DisplayPage() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [tenantId]);
+  }, [tenantId, cadastroCategories]);
 
   useEffect(() => {
     const lines = tvMerged.footerLines;
@@ -164,8 +193,25 @@ export default function DisplayPage() {
     return () => window.clearInterval(t);
   }, [tvMerged.footerLines]);
 
-  const { highlight, history } = useMemo(() => {
-    const active = rows.filter((r) => (r.status ?? "").toLowerCase() !== "finalizado");
+  useEffect(() => {
+    if (!salaoMode) return;
+    const t = window.setInterval(() => setBlinkOn((v) => !v), 700);
+    return () => window.clearInterval(t);
+  }, [salaoMode]);
+
+  const { highlight, history, proximos } = useMemo(() => {
+    const active = rows.filter((r) => (r.status ?? "").toLowerCase() !== "finalizado" && (r.status ?? "").toLowerCase() !== "completed");
+
+    if (salaoMode) {
+      const calling = active.filter((r) => isSalaoCalledStatus(r.status));
+      const sortedCall = [...calling].sort(
+        (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+      );
+      const hi = sortedCall[0] ?? null;
+      const prox = buildSalaoProximosDaVez(active, cadastroCategories, cadastroLookups, 10);
+      return { highlight: hi, history: [], proximos: prox };
+    }
+
     const calling = active.filter((r) => isCallingStatus(r.status));
     const sortedCall = [...calling].sort(
       (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
@@ -175,8 +221,8 @@ export default function DisplayPage() {
       .filter((r) => r.id !== hi?.id)
       .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
       .slice(0, 12);
-    return { highlight: hi, history: hist };
-  }, [rows]);
+    return { highlight: hi, history: hist, proximos: [] };
+  }, [rows, salaoMode, cadastroCategories, cadastroLookups]);
 
   const qrTarget = useMemo(() => {
     const custom = config.tvDisplay.qrTargetUrl?.trim();
@@ -208,6 +254,10 @@ export default function DisplayPage() {
 
   const bgUrl = tvMerged.backgroundImageDataUrl;
 
+  const highlightStatusLabel = salaoMode
+    ? normalizeSalaoStatusLabel(highlight?.status)
+    : highlight?.status ?? "";
+
   return (
     <div className={`relative flex min-h-[100dvh] flex-col overflow-hidden ${palette.shell}`}>
       {bgUrl ? (
@@ -220,26 +270,28 @@ export default function DisplayPage() {
       ) : null}
 
       <div className="relative z-[1] flex min-h-[100dvh] flex-1 flex-col p-6 lg:flex-row lg:gap-8">
-        <aside className="flex w-full shrink-0 flex-col border-b border-white/10 pb-6 lg:w-80 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-6">
-          <p className={`text-xs font-semibold uppercase tracking-widest ${palette.muted}`}>Últimas chamadas</p>
-          <ul className="mt-4 flex max-h-[62vh] flex-col gap-2 overflow-auto">
-            {history.length === 0 && (
-              <li className={`rounded-lg border border-white/10 px-3 py-4 text-sm ${palette.muted}`}>
-                Nenhum histórico recente.
-              </li>
-            )}
-            {history.map((r) => (
-              <li
-                key={r.id}
-                className={`rounded-xl border px-3 py-2 text-left shadow-sm backdrop-blur-sm ${palette.card}`}
-              >
-                <p className="text-lg font-bold leading-tight">{r.nome ?? "—"}</p>
-                <p className={`mt-0.5 text-xs ${palette.muted}`}>{r.profissionalNome ?? "—"}</p>
-                <p className={`mt-1 font-mono text-[11px] ${palette.accent}`}>{r.status ?? "—"}</p>
-              </li>
-            ))}
-          </ul>
-        </aside>
+        {!salaoMode ? (
+          <aside className="flex w-full shrink-0 flex-col border-b border-white/10 pb-6 lg:w-80 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-6">
+            <p className={`text-xs font-semibold uppercase tracking-widest ${palette.muted}`}>Últimas chamadas</p>
+            <ul className="mt-4 flex max-h-[62vh] flex-col gap-2 overflow-auto">
+              {history.length === 0 && (
+                <li className={`rounded-lg border border-white/10 px-3 py-4 text-sm ${palette.muted}`}>
+                  Nenhum histórico recente.
+                </li>
+              )}
+              {history.map((r) => (
+                <li
+                  key={r.id}
+                  className={`rounded-xl border px-3 py-2 text-left shadow-sm backdrop-blur-sm ${palette.card}`}
+                >
+                  <p className="text-lg font-bold leading-tight">{r.nome ?? "—"}</p>
+                  <p className={`mt-0.5 text-xs ${palette.muted}`}>{r.profissionalNome ?? "—"}</p>
+                  <p className={`mt-1 font-mono text-[11px] ${palette.accent}`}>{r.status ?? "—"}</p>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        ) : null}
 
         <main className="flex min-w-0 flex-1 flex-col items-center justify-center gap-8">
           {loadErr ? (
@@ -249,10 +301,18 @@ export default function DisplayPage() {
           ) : null}
 
           <div
-            className={`w-full max-w-4xl rounded-3xl border-2 px-8 py-12 text-center shadow-2xl backdrop-blur-md ${palette.card}`}
+            className={`w-full max-w-4xl rounded-3xl border-2 px-8 py-12 text-center shadow-2xl backdrop-blur-md transition ${
+              salaoMode && highlight ? (blinkOn ? "border-sky-400/80" : "border-sky-200/30") : ""
+            } ${palette.card}`}
           >
-            <p className={`text-sm font-semibold uppercase tracking-[0.3em] ${palette.muted}`}>Última chamada</p>
-            <p className="mt-4 text-5xl font-black leading-none tracking-tight lg:text-7xl">
+            <p className={`text-sm font-semibold uppercase tracking-[0.3em] ${palette.muted}`}>
+              {salaoMode ? "Chamada em andamento" : "Última chamada"}
+            </p>
+            <p
+              className={`mt-4 text-5xl font-black leading-none tracking-tight lg:text-7xl ${
+                salaoMode && highlight && blinkOn ? "animate-pulse" : ""
+              }`}
+            >
               {highlight?.nome ?? "Aguardando chamada"}
             </p>
             <p className={`mt-6 text-xl font-semibold ${palette.accent}`}>
@@ -262,7 +322,7 @@ export default function DisplayPage() {
               <span>Horário: {formatHoraMarcada(highlight?.hora_marcada ?? null)}</span>
               <span>Chegada: {formatCreatedAt(highlight?.created_at ?? null)}</span>
             </div>
-            <p className={`mt-8 text-2xl font-bold ${palette.accent}`}>{highlight?.status ?? ""}</p>
+            <p className={`mt-8 text-2xl font-bold ${palette.accent}`}>{highlightStatusLabel}</p>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-10">
@@ -279,6 +339,45 @@ export default function DisplayPage() {
             </div>
           </div>
         </main>
+
+        {salaoMode ? (
+          <aside className="flex w-full shrink-0 flex-col border-t border-white/10 pt-6 lg:w-96 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <p className={`text-xs font-semibold uppercase tracking-widest ${palette.muted}`}>
+              Próximos da Vez
+            </p>
+            <ul className="mt-4 flex max-h-[62vh] flex-col gap-2 overflow-auto">
+              {proximos.length === 0 && (
+                <li className={`rounded-lg border border-white/10 px-3 py-4 text-sm ${palette.muted}`}>
+                  Nenhum cliente aguardando.
+                </li>
+              )}
+              {proximos.map(({ row, profissional }, i) => (
+                <li
+                  key={row.id}
+                  className={`rounded-xl border px-3 py-3 text-left shadow-sm backdrop-blur-sm ${
+                    i === 0 ? "border-violet-400/60 bg-violet-950/30" : palette.card
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-xl font-bold leading-tight">{row.nome ?? "—"}</p>
+                    {i === 0 ? (
+                      <span className="shrink-0 rounded-full bg-violet-500/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-200">
+                        Próximo
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className={`mt-1 text-xs ${palette.muted}`}>{profissional}</p>
+                  <p className={`mt-1 font-mono text-[11px] ${palette.accent}`}>
+                    {formatHoraMarcada(row.hora_marcada)}
+                  </p>
+                  <p className={`mt-0.5 text-[10px] ${palette.muted}`}>
+                    {normalizeSalaoStatusLabel(row.status)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        ) : null}
       </div>
 
       <footer className="relative z-[1] border-t border-white/10 bg-black/40 px-6 py-4 text-center text-sm backdrop-blur-md">
@@ -341,6 +440,11 @@ export default function DisplayPage() {
           >
             Restaurar padrão do servidor
           </button>
+          {config.segmentoAplicado ? (
+            <p className="text-[9px] text-white/50">
+              Segmento: {config.segmentoAplicado === SALAO_ESTETICA_SEGMENT_ID ? "Salão" : config.segmentoAplicado}
+            </p>
+          ) : null}
         </div>
       </details>
     </div>

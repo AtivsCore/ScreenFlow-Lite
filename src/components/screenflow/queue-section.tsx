@@ -16,7 +16,11 @@ import {
   filterAndSortMroQueue,
   rowMatchesMroQueueSearch,
 } from "@/lib/aviacao-logistics";
-import { rowMatchesSalaoQueueSearch } from "@/lib/salao-estetica-logistics";
+import {
+  isSalaoWaitingStatus,
+  normalizeSalaoStatusLabel,
+  rowMatchesSalaoQueueSearch,
+} from "@/lib/salao-estetica-logistics";
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
@@ -45,6 +49,7 @@ import {
   Pencil,
   Plus,
   Printer,
+  ChevronsUp,
   Search,
   Trash2,
   UserPlus,
@@ -55,9 +60,11 @@ import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 
 export type QueueViewMode = "list" | "kanban";
 
-function queueStatusStyle(label: ReturnType<typeof normalizeQueueStatusLabel>): string {
-  if (label === "chamado") return "text-sky-700 dark:text-sky-400";
-  if (label === "rechamado") return "text-amber-700 dark:text-amber-400";
+function queueStatusStyle(label: string): string {
+  const l = label.toLowerCase();
+  if (l === "próximo" || l === "proximo") return "text-violet-700 dark:text-violet-400";
+  if (l === "chamado") return "text-sky-700 dark:text-sky-400";
+  if (l === "rechamado" || l === "em atendimento") return "text-amber-700 dark:text-amber-400";
   return "text-zinc-600 dark:text-zinc-400";
 }
 
@@ -217,6 +224,7 @@ type KanbanCardProps = {
   onPrintRow: (row: AtendimentoLite) => void;
   onCopyRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
+  onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
 };
 
 const KanbanCard = memo(function KanbanCard({
@@ -236,11 +244,14 @@ const KanbanCard = memo(function KanbanCard({
   onPrintRow,
   onCopyRow,
   onDelete,
+  onSalaoDefinirProximo,
 }: KanbanCardProps) {
   const prioStyle = priorityLawEnabled
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
     : null;
-  const statusLabel = normalizeQueueStatusLabel(row.status);
+  const statusLabel = salaoEsteticaActive
+    ? normalizeSalaoStatusLabel(row.status)
+    : normalizeQueueStatusLabel(row.status);
   const clientName = meta.title;
   const contextLine = formatKanbanContextLine(meta);
   const horaMarcadaLabel = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : null;
@@ -256,6 +267,17 @@ const KanbanCard = memo(function KanbanCard({
 
   const actionButtons = (
     <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
+      {salaoEsteticaActive && onSalaoDefinirProximo && isSalaoWaitingStatus(row.status) ? (
+        <button
+          type="button"
+          title="Definir como Próximo"
+          className="inline-flex rounded p-0.5 text-sky-600 transition hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-200"
+          onClick={() => onSalaoDefinirProximo(row)}
+        >
+          <ChevronsUp className="size-3.5" strokeWidth={2} />
+          <span className="sr-only">Definir como Próximo</span>
+        </button>
+      ) : null}
       {!isCompactView && !notesInline && observacaoText ? (
         <Tooltip content={observacaoText} side="top" align="end">
           <button
@@ -517,6 +539,7 @@ type QueueRowProps = {
   onPrintRow: (row: AtendimentoLite) => void;
   onCopyRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
+  onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
 };
 
 const QueueRow = memo(function QueueRow({
@@ -535,10 +558,14 @@ const QueueRow = memo(function QueueRow({
   onPrintRow,
   onCopyRow,
   onDelete,
+  onSalaoDefinirProximo,
 }: QueueRowProps) {
   const prioStyle = priorityLawEnabled
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
     : null;
+  const statusLabel = salaoEsteticaActive
+    ? normalizeSalaoStatusLabel(row.status)
+    : normalizeQueueStatusLabel(row.status);
   const observacaoText = aviacaoLogisticsActive
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
@@ -650,12 +677,23 @@ const QueueRow = memo(function QueueRow({
         );
       })}
       <td
-        className={`w-24 overflow-hidden truncate px-2 py-1.5 capitalize ${queueStatusStyle(normalizeQueueStatusLabel(row.status))}`}
+        className={`w-24 overflow-hidden truncate px-2 py-1.5 capitalize ${queueStatusStyle(statusLabel)}`}
       >
-        {normalizeQueueStatusLabel(row.status)}
+        {statusLabel}
       </td>
       <td className="w-[108px] px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-row items-center justify-end gap-1">
+        {salaoEsteticaActive && onSalaoDefinirProximo && isSalaoWaitingStatus(row.status) ? (
+          <button
+            type="button"
+            title="Definir como Próximo"
+            className="inline-flex shrink-0 rounded p-0.5 text-sky-600 hover:bg-sky-50 hover:text-sky-800 dark:text-sky-400 dark:hover:bg-sky-950/40"
+            onClick={() => onSalaoDefinirProximo(row)}
+          >
+            <ChevronsUp className="size-3.5" strokeWidth={2} />
+            <span className="sr-only">Definir como Próximo</span>
+          </button>
+        ) : null}
         <button
           type="button"
           title="Copiar resumo"
@@ -757,6 +795,7 @@ type QueueSectionProps = {
   queueSearchQuery?: string;
   onQueueSearchQueryChange?: (query: string) => void;
   onQueueSearchMatch?: (row: AtendimentoLite) => void;
+  onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
 };
 
 export function QueueSection({
@@ -817,6 +856,7 @@ export function QueueSection({
   queueSearchQuery = "",
   onQueueSearchQueryChange,
   onQueueSearchMatch,
+  onSalaoDefinirProximo,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
@@ -849,11 +889,11 @@ export function QueueSection({
         return filterAndSortMroQueue(rows, tab, mroSegmentId);
       }
       if (salaoEsteticaActive) {
-        return filterAndSortSalaoQueue(rows, tab);
+        return filterAndSortSalaoQueue(rows, tab, queueTabs);
       }
       return filterAndSortQueue(rows, tab, { priorityLawEnabled });
     },
-    [aviacaoLogisticsActive, salaoEsteticaActive, rows, mroSegmentId, priorityLawEnabled]
+    [aviacaoLogisticsActive, salaoEsteticaActive, rows, queueTabs, mroSegmentId, priorityLawEnabled]
   );
 
   useEffect(() => {
@@ -1203,7 +1243,7 @@ export function QueueSection({
               const tabLabel = aviacaoLogisticsActive
                 ? resolveAviacaoKanbanColumnLabel(t, mroSegmentId)
                 : salaoEsteticaActive
-                  ? resolveSalaoKanbanColumnLabel(t)
+                  ? (t.label?.trim() || resolveSalaoKanbanColumnLabel(t))
                   : t.label;
               const label = typeof count === "number" ? `${tabLabel} (${count})` : tabLabel;
               return (
@@ -1283,6 +1323,7 @@ export function QueueSection({
                       onPrintRow={onPrintRow}
                       onCopyRow={(r) => void handleCopyRow(r)}
                       onDelete={(r) => void handleDelete(r)}
+                      onSalaoDefinirProximo={onSalaoDefinirProximo}
                     />
                   ))
                 )}
@@ -1354,6 +1395,7 @@ export function QueueSection({
                             onPrintRow={onPrintRow}
                             onCopyRow={(r) => void handleCopyRow(r)}
                             onDelete={(r) => void handleDelete(r)}
+                            onSalaoDefinirProximo={onSalaoDefinirProximo}
                           />
                         ))}
                       </div>

@@ -173,7 +173,15 @@ export function normalizeQueueStatusLabel(
   return "aguardando";
 }
 
-export type QueueTabId = "todos" | "ordem" | "hora" | "encaixe" | "prioridade" | "urgente" | "outros";
+export type QueueTabId =
+  | "todos"
+  | "ordem"
+  | "hora"
+  | "encaixe"
+  | "prioridade"
+  | "urgente"
+  | "reagendar"
+  | "outros";
 
 export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
   todos: "Todos",
@@ -182,6 +190,7 @@ export const QUEUE_TAB_LABELS: Record<QueueTabId, string> = {
   encaixe: "Encaixe",
   prioridade: "Prioridade",
   urgente: "Urgente",
+  reagendar: "Reagendar",
   outros: "Outros",
 };
 
@@ -231,7 +240,8 @@ export function horaComparable(raw: string | null): number {
 }
 
 export function isFinalizado(row: AtendimentoLite): boolean {
-  return (row.status ?? "").trim().toLowerCase() === "finalizado";
+  const s = (row.status ?? "").trim().toLowerCase();
+  return s === "finalizado" || s === "completed";
 }
 
 export function isActiveQueueRow(row: AtendimentoLite): boolean {
