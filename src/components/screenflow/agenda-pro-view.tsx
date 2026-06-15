@@ -3,20 +3,20 @@
 import type { AtendimentoLite } from "@/lib/atendimentos-lite";
 import { formatHoraMarcada, isActiveQueueRow } from "@/lib/atendimentos-lite";
 import { isFutureHoraMarcada } from "@/lib/hora-marcada";
+import type { RegistryInitialDraft } from "@/lib/salao-agenda-matrix";
 import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { resolveCategoryDisplayLabel } from "@/lib/cadastro-valores";
 import {
   isSalaoAgendaEligibleRow,
-  isSalaoAgendaTodayRow,
   isSalaoEsteticaSegment,
-  resolveSalaoCategoryDisplay,
 } from "@/lib/salao-estetica-logistics";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowRightCircle, CalendarPlus, Pencil, Trash2 } from "lucide-react";
+import { CalendarPlus, Pencil, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { AgendaBookingModal } from "@/components/screenflow/agenda-booking-modal";
+import { SalaoAgendaMatrixView } from "@/components/screenflow/salao-agenda-matrix-view";
 
 type AgendaProViewProps = {
   rows: AtendimentoLite[];
@@ -30,8 +30,8 @@ type AgendaProViewProps = {
   onRefresh: () => void;
   onEditRow: (row: AtendimentoLite) => void;
   onDeleteRow: (row: AtendimentoLite) => void | Promise<void>;
-  /** Salão: abre o mesmo modal "Novo registro" do balcão (`RegistryPatientModal`). */
-  onNewBooking?: () => void;
+  /** Salão: abre o modal "Novo registro" do balcão, com pré-preenchimento opcional. */
+  onOpenRegistry?: (draft?: RegistryInitialDraft) => void;
   onSalaoSendToBalcao?: (row: AtendimentoLite) => void | Promise<void>;
   onSalaoAnteciparOrdem?: (row: AtendimentoLite) => void | Promise<void>;
 };
@@ -48,14 +48,13 @@ export function AgendaProView({
   onRefresh,
   onEditRow,
   onDeleteRow,
-  onNewBooking,
+  onOpenRegistry,
   onSalaoSendToBalcao,
   onSalaoAnteciparOrdem,
 }: AgendaProViewProps) {
   const salaoMode = isSalaoEsteticaSegment(tenantConfig.segmentoAplicado);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [quickActionId, setQuickActionId] = useState<string | null>(null);
 
   const agendaRows = useMemo(() => {
     return rows
@@ -74,8 +73,8 @@ export function AgendaProView({
   }, [rows, salaoMode, queueTabs]);
 
   function handleNewBookingClick() {
-    if (salaoMode && onNewBooking) {
-      onNewBooking();
+    if (salaoMode && onOpenRegistry) {
+      onOpenRegistry();
       return;
     }
     setBookingOpen(true);
@@ -91,29 +90,28 @@ export function AgendaProView({
     }
   }
 
-  async function runQuickAction(
-    row: AtendimentoLite,
-    action: "balcao" | "ordem"
-  ) {
-    setQuickActionId(row.id);
-    try {
-      if (action === "balcao") {
-        await onSalaoSendToBalcao?.(row);
-      } else {
-        await onSalaoAnteciparOrdem?.(row);
-      }
-    } finally {
-      setQuickActionId(null);
-    }
+  if (salaoMode) {
+    return (
+      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <SalaoAgendaMatrixView
+          rows={rows}
+          loading={loading}
+          cadastroCategories={cadastroCategories}
+          cadastroLookups={cadastroLookups}
+          queueTabs={queueTabs}
+          onOpenRegistry={(draft) => onOpenRegistry?.(draft)}
+          onEditRow={onEditRow}
+          onDeleteRow={onDeleteRow}
+          onSalaoSendToBalcao={onSalaoSendToBalcao}
+          onSalaoAnteciparOrdem={onSalaoAnteciparOrdem}
+        />
+      </div>
+    );
   }
 
-  const title = salaoMode ? "Agenda — esteira convergente" : "Agenda — agendamentos futuros";
-  const subtitle = salaoMode
-    ? "Agendamentos de hoje e datas futuras na coluna Hora Marcada. Antecipe clientes que chegaram cedo."
-    : "Registros com data posterior a hoje. Edite, exclua ou crie novos agendamentos.";
-  const emptyMessage = salaoMode
-    ? "Nenhum agendamento na coluna Hora Marcada."
-    : "Nenhum agendamento futuro cadastrado.";
+  const title = "Agenda — agendamentos futuros";
+  const subtitle = "Registros com data posterior a hoje. Edite, exclua ou crie novos agendamentos.";
+  const emptyMessage = "Nenhum agendamento futuro cadastrado.";
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -161,9 +159,6 @@ export function AgendaProView({
                   localNome: row.localNome,
                   servicoNome: row.servicoNome,
                 };
-                const showSalaoQuickActions =
-                  salaoMode && isSalaoAgendaTodayRow(row) && (onSalaoSendToBalcao || onSalaoAnteciparOrdem);
-                const quickBusy = quickActionId === row.id;
 
                 return (
                   <tr
@@ -175,23 +170,14 @@ export function AgendaProView({
                     </td>
                     <td className="px-2 py-1.5 font-medium">{row.nome ?? "—"}</td>
                     {cadastroCategories.map((cat) => {
-                      const label = salaoMode
-                        ? resolveSalaoCategoryDisplay(
-                            cat.id,
-                            row.observacao,
-                            row.cadastro_valores ?? {},
-                            cadastroLookups,
-                            cadastroCategories,
-                            legacyCtx
-                          )
-                        : resolveCategoryDisplayLabel(
-                            cat.id,
-                            row.cadastro_valores ?? {},
-                            cadastroLookups,
-                            cadastroCategories,
-                            undefined,
-                            legacyCtx
-                          );
+                      const label = resolveCategoryDisplayLabel(
+                        cat.id,
+                        row.cadastro_valores ?? {},
+                        cadastroLookups,
+                        cadastroCategories,
+                        undefined,
+                        legacyCtx
+                      );
                       return (
                         <td key={cat.id} className="max-w-[8rem] truncate px-2 py-1.5 text-zinc-600 dark:text-zinc-400">
                           {label ?? "—"}
@@ -199,34 +185,6 @@ export function AgendaProView({
                       );
                     })}
                     <td className="px-2 py-1.5 text-right">
-                      {showSalaoQuickActions ? (
-                        <div className="mb-1 flex flex-col gap-0.5 sm:flex-row sm:justify-end">
-                          {onSalaoAnteciparOrdem ? (
-                            <button
-                              type="button"
-                              disabled={quickBusy}
-                              title="Antecipar para Fila (Ordem de Chegada)"
-                              className="inline-flex items-center justify-center gap-0.5 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-40 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
-                              onClick={() => void runQuickAction(row, "ordem")}
-                            >
-                              <ArrowRightCircle className="size-3" strokeWidth={2} />
-                              Antecipar p/ Fila
-                            </button>
-                          ) : null}
-                          {onSalaoSendToBalcao ? (
-                            <button
-                              type="button"
-                              disabled={quickBusy}
-                              title="Enviar para o Balcão (Fila Ativa)"
-                              className="inline-flex items-center justify-center gap-0.5 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-900 hover:bg-emerald-100 disabled:opacity-40 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
-                              onClick={() => void runQuickAction(row, "balcao")}
-                            >
-                              <ArrowRightCircle className="size-3" strokeWidth={2} />
-                              Enviar p/ Balcão
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
                       <button
                         type="button"
                         title="Editar"
@@ -253,16 +211,14 @@ export function AgendaProView({
         )}
       </div>
 
-      {!salaoMode ? (
-        <AgendaBookingModal
-          open={bookingOpen}
-          onClose={() => setBookingOpen(false)}
-          supabase={supabase}
-          tenantId={tenantId}
-          tenantConfig={tenantConfig}
-          onBooked={onRefresh}
-        />
-      ) : null}
+      <AgendaBookingModal
+        open={bookingOpen}
+        onClose={() => setBookingOpen(false)}
+        supabase={supabase}
+        tenantId={tenantId}
+        tenantConfig={tenantConfig}
+        onBooked={onRefresh}
+      />
     </div>
   );
 }

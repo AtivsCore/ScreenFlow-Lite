@@ -113,6 +113,7 @@ import {
   resolveSalaoTabIdFromObservacao,
 } from "@/lib/salao-estetica-logistics";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
+import type { RegistryInitialDraft } from "@/lib/salao-agenda-matrix";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
 import {
   fetchSessionTenantId,
@@ -142,6 +143,7 @@ export default function Home() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<"fluxo" | "geral" | "cadastros">("fluxo");
   const [registryOpen, setRegistryOpen] = useState(false);
+  const [registryDraft, setRegistryDraft] = useState<RegistryInitialDraft | null>(null);
   const [segmentOpen, setSegmentOpen] = useState(false);
   const [segmentoDefinido, setSegmentoDefinido] = useState<string | null>(null);
   const [tenantMetaLoaded, setTenantMetaLoaded] = useState(false);
@@ -1532,6 +1534,16 @@ export default function Home() {
   const canMutate =
     !pending && !!selectedId && (!!supabase || (!!mergedEnv.url && !!mergedEnv.anonKey));
 
+  const openRegistry = useCallback((draft?: RegistryInitialDraft) => {
+    setRegistryDraft(draft ?? null);
+    setRegistryOpen(true);
+  }, []);
+
+  const closeRegistry = useCallback(() => {
+    setRegistryOpen(false);
+    setRegistryDraft(null);
+  }, []);
+
   const shortcutHandlers = useMemo(
     () => ({
       onChamar: () => {
@@ -1576,7 +1588,7 @@ export default function Home() {
         }
       },
       onLimpar: () => setSelectedId(null),
-      onNovoRegistro: () => setRegistryOpen(true),
+      onNovoRegistro: () => openRegistry(),
       onToggleView: () => setQueueViewMode((m) => (m === "list" ? "kanban" : "list")),
       onOpenSettings: () => openGeneralSettings(),
       onCrudProfissionais:
@@ -1611,6 +1623,7 @@ export default function Home() {
       openGeneralSettings,
       openAviacaoQuickCrud,
       hardwareTiMode,
+      openRegistry,
     ]
   );
 
@@ -1750,8 +1763,8 @@ export default function Home() {
                 setEditRow(row);
               }}
               onDeleteRow={handleDeleteRow}
-              onNewBooking={
-                salaoEsteticaActive ? () => setRegistryOpen(true) : undefined
+              onOpenRegistry={
+                salaoEsteticaActive ? (draft) => openRegistry(draft) : undefined
               }
               onSalaoSendToBalcao={
                 salaoEsteticaActive ? (row) => void salaoAgendaSendToBalcao(row) : undefined
@@ -1776,7 +1789,7 @@ export default function Home() {
               loading={loading}
               supabase={supabase}
               onRefresh={() => void refreshRows()}
-              onRegisterClick={() => setRegistryOpen(true)}
+              onRegisterClick={() => openRegistry()}
               onOpenFlowSettings={openFlowSettings}
               onEditRow={(row) => {
                 setEditFromAgenda(false);
@@ -2032,10 +2045,11 @@ export default function Home() {
 
       <RegistryPatientModal
         open={registryOpen}
-        onClose={() => setRegistryOpen(false)}
+        onClose={closeRegistry}
         supabase={supabase}
         tenantId={tenantIdForInsert}
         tenantConfig={tenantConfig}
+        initialDraft={registryDraft}
         onRegistered={(meta) => {
           if (meta?.queueTabId && appView !== "agenda") {
             setQueueTabId(meta.queueTabId);

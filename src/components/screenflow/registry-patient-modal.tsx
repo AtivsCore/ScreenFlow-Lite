@@ -72,6 +72,7 @@ import {
   resolveSalaoQueueTabs,
   serializeSalaoServicosSolicitados,
 } from "@/lib/salao-estetica-logistics";
+import type { RegistryInitialDraft } from "@/lib/salao-agenda-matrix";
 import { PriorityClassSelector } from "@/components/screenflow/priority-class-selector";
 
 type OptRow = { id: string; nome: string | null };
@@ -90,6 +91,7 @@ type RegistryPatientModalProps = {
   tenantId: string | null;
   tenantConfig: ResolvedTenantConfig;
   defaultStatus?: string;
+  initialDraft?: RegistryInitialDraft | null;
   onRegistered?: (meta?: { queueTabId?: string }) => void;
 };
 
@@ -100,6 +102,7 @@ export function RegistryPatientModal({
   tenantId,
   tenantConfig,
   defaultStatus = "Aguardando",
+  initialDraft = null,
   onRegistered,
 }: RegistryPatientModalProps) {
   const rf = tenantConfig.registerForm;
@@ -322,16 +325,16 @@ export function RegistryPatientModal({
   useEffect(() => {
     if (!open) return;
     setNomeCliente("");
-    setTriagemTabId(initialTriagemTabId);
-    setFormValues({});
-    setHoraMarcada("");
+    setTriagemTabId(initialDraft?.triagemTabId ?? initialTriagemTabId);
+    setFormValues(initialDraft?.formValues ?? {});
+    setHoraMarcada(initialDraft?.horaMarcada ?? "");
     setClassificacao("normal");
     setObservacaoBase("");
     setPendingAnexos([]);
     setDragOver(false);
     setError(null);
     setUploadWarning(null);
-  }, [open, tenantConfig.priorityLawEnabled, queueTabs, initialTriagemTabId]);
+  }, [open, tenantConfig.priorityLawEnabled, queueTabs, initialTriagemTabId, initialDraft]);
 
   async function readFileAsDataUrl(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
