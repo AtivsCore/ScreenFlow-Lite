@@ -91,12 +91,18 @@ import {
 } from "@/lib/docas-logistics";
 import {
   SALAO_STATUS,
+  SALAO_TAB,
   buildSalaoMarkedNextObservacao,
+  buildSalaoMoveToFilaAtivaObservacao,
+  buildSalaoSwapSortOrderObservacao,
   clearSalaoMarkedNextObservacao,
+  collectSalaoHoraAutoMoveCandidates,
   countActiveBySalaoQueueTab,
+  filterAndSortSalaoQueue,
   isSalaoEsteticaSegment,
   isSalaoQueueTabIdInVisible,
   isSalaoWaitingStatus,
+  resolveSalaoFilaAtivaTab,
   resolveSalaoQueueTabClickId,
   resolveSalaoQueueTabs,
   resolveSalaoTabIdFromObservacao,
@@ -110,7 +116,7 @@ import {
 } from "@/lib/session-tenant";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 const ENV_TENANT_ID = resolveDefaultTenantId();
 
@@ -876,6 +882,45 @@ export default function Home() {
     [supabase, selectedId, applyLocalPatch, refreshRows, tryProxyPatch]
   );
 
+  const patchAtendimentoById = useCallback(
+    async (
+      id: string,
+      patch: {
+        profissional_id?: string | null;
+        observacao?: string | null;
+        local_id?: string | null;
+        especialidade_id?: string | null;
+        cadastro_valores?: Record<string, string | null>;
+        tv_id?: string | null;
+        status?: string;
+      }
+    ) => {
+      applyLocalPatch(id, patch);
+      try {
+        if (supabase) {
+          const { error } = await supabase.from("atendimentos_lite").update(patch).eq("id", id);
+          if (!error) return true;
+          if (isNetworkLikeFetchFailure(error.message)) {
+            return tryProxyPatch(id, patch);
+          }
+          setLoadError(error.message);
+          void refreshRows();
+          return false;
+        }
+        return tryProxyPatch(id, patch);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (isNetworkLikeFetchFailure(msg)) {
+          return tryProxyPatch(id, patch);
+        }
+        setLoadError(msg);
+        void refreshRows();
+        return false;
+      }
+    },
+    [supabase, applyLocalPatch, refreshRows, tryProxyPatch]
+  );
+
   const handleHardwareDeviceTypeChange = useCallback(
     (value: string) => {
       setHardwareDeviceType(value);
@@ -1061,6 +1106,93 @@ export default function Home() {
     },
     [selected, selectedId, supabase, applyLocalPatch, tryProxyPatch, updateSalaoStatus]
   );
+
+  const salaoAtenderAgora = useCallback(
+    async (row: AtendimentoLite, options?: { setCalled?: boolean }) => {
+      const filaTab = resolveSalaoFilaAtivaTab(visibleQueueTabs);
+      const filaRows = filterAndSortSalaoQueue(rows, filaTab, visibleQueueTabs).filter(
+        (r) => r.id !== row.id
+      );
+      let observacao = buildSalaoMoveToFilaAtivaObservacao(
+        row.observacao,
+        visibleQueueTabs,
+        "top",
+        filaRows
+      );
+      observacao = clearSalaoMarkedNextObservacao(observacao) ?? observacao;
+      const patch: { observacao: string | null; status?: string } = { observacao };
+      if (options?.setCalled) patch.status = SALAO_STATUS.called;
+
+      setPending(true);
+      setLoadError(null);
+      try {
+        await patchAtendimentoById(row.id, patch);
+        if (row.id !== selectedId) setSelectedId(row.id);
+        setQueueTabId(resolveSalaoQueueTabClickId(SALAO_TAB.FILA_ATIVA));
+      } finally {
+        setPending(false);
+      }
+    },
+    [rows, visibleQueueTabs, patchAtendimentoById, selectedId]
+  );
+
+  const salaoMoveFilaAtiva = useCallback(
+    async (row: AtendimentoLite, direction: -1 | 1) => {
+      const filaTab = resolveSalaoFilaAtivaTab(visibleQueueTabs);
+      const sorted = filterAndSortSalaoQueue(rows, filaTab, visibleQueueTabs);
+      const idx = sorted.findIndex((r) => r.id === row.id);
+      if (idx < 0) return;
+      const swapIdx = idx + direction;
+      if (swapIdx < 0 || swapIdx >= sorted.length) return;
+      const other = sorted[swapIdx]!;
+      const { observacaoA, observacaoB } = buildSalaoSwapSortOrderObservacao(row, other);
+
+      setPending(true);
+      setLoadError(null);
+      try {
+        await Promise.all([
+          patchAtendimentoById(row.id, { observacao: observacaoA }),
+          patchAtendimentoById(other.id, { observacao: observacaoB }),
+        ]);
+      } finally {
+        setPending(false);
+      }
+    },
+    [rows, visibleQueueTabs, patchAtendimentoById]
+  );
+
+  const salaoAutoMoveRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!salaoEsteticaActive || !sessionReady || pending || loading) return;
+
+    const filaTab = resolveSalaoFilaAtivaTab(visibleQueueTabs);
+    const candidates = collectSalaoHoraAutoMoveCandidates(rows, visibleQueueTabs);
+    const toMove = candidates.filter((row) => !salaoAutoMoveRef.current.has(row.id));
+    if (toMove.length === 0) return;
+
+    void (async () => {
+      for (const row of toMove) {
+        salaoAutoMoveRef.current.add(row.id);
+        const filaRows = filterAndSortSalaoQueue(rows, filaTab, visibleQueueTabs);
+        const observacao = buildSalaoMoveToFilaAtivaObservacao(
+          row.observacao,
+          visibleQueueTabs,
+          "bottom",
+          filaRows
+        );
+        await patchAtendimentoById(row.id, { observacao });
+      }
+    })();
+  }, [
+    rows,
+    salaoEsteticaActive,
+    sessionReady,
+    pending,
+    loading,
+    visibleQueueTabs,
+    patchAtendimentoById,
+  ]);
 
   const advanceDocasLogistics = useCallback(
     async (targetTabId: DocasQueueTabId, status?: string) => {
@@ -1277,9 +1409,7 @@ export default function Home() {
         } else if (aviacaoLogisticsActive) {
           void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.TRIAGEM, STATUS_UPDATE.chamar);
         } else if (salaoEsteticaActive) {
-          void updateSalaoStatus(SALAO_STATUS.called, {
-            observacao: selected ? clearSalaoMarkedNextObservacao(selected.observacao) : undefined,
-          });
+          if (selected) void salaoAtenderAgora(selected, { setCalled: true });
         } else {
           void updateStatus(STATUS_UPDATE.chamar);
         }
@@ -1343,6 +1473,7 @@ export default function Home() {
       advanceDocasLogistics,
       advanceAviacaoLogistics,
       updateSalaoStatus,
+      salaoAtenderAgora,
       updateStatus,
       openGeneralSettings,
       openAviacaoQuickCrud,
@@ -1582,6 +1713,15 @@ export default function Home() {
               }
               onSalaoDefinirProximo={
                 salaoEsteticaActive ? (row) => void definirSalaoProximo(row) : undefined
+              }
+              onSalaoAtenderAgora={
+                salaoEsteticaActive ? (row) => void salaoAtenderAgora(row) : undefined
+              }
+              onSalaoMoveFilaUp={
+                salaoEsteticaActive ? (row) => void salaoMoveFilaAtiva(row, -1) : undefined
+              }
+              onSalaoMoveFilaDown={
+                salaoEsteticaActive ? (row) => void salaoMoveFilaAtiva(row, 1) : undefined
               }
             />
           )}

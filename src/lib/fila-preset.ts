@@ -46,7 +46,9 @@ const SALAO_KANBAN_TAB_EQUIV: Record<string, string> = {
   cadeira_01: "em_atendimento",
   cadeira_02: "em_atendimento",
   sala_estetica_01: "em_atendimento",
-  em_atendimento: "em_atendimento",
+  em_atendimento: "tab-fila-ativa",
+  "tab-encaixe": "tab-encaixe-urgente",
+  "tab-urgente": "tab-encaixe-urgente",
 };
 
 /** Equivalência de ids de coluna Oficina / Hardware TI (estável ↔ legado `of-t*`). */

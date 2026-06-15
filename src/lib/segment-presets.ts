@@ -274,7 +274,7 @@ const SALAO_ESTETICA = makePreset(
   "💅",
   "Salões de Beleza, Spas e Estética",
   "Cliente, Serviço Solicitado, Profissional Alocado, Cadeira/Sala, Classificação de Prioridade",
-  "Hora Marcada, Ordem de Chegada, Encaixe, Urgente, Reagendar",
+  "Fila Ativa, Hora Marcada, Ordem de Chegada, Encaixe/Urgente, Reagendar",
   [
     cat("sal-c1", "Profissional Alocado", "profissionais"),
     cat("sal-c2", "Cadeira / Sala de Atendimento", "locais"),

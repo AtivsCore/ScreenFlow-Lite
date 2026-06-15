@@ -17,21 +17,21 @@ import {
   rowMatchesMroQueueSearch,
 } from "@/lib/aviacao-logistics";
 import {
+  SALAO_TAB,
+  filterAndSortSalaoQueue,
+  isSalaoPoolTabId,
+  isSalaoQueueTabSelected,
   isSalaoWaitingStatus,
   normalizeSalaoStatusLabel,
+  resolveSalaoCategoryDisplay,
+  resolveSalaoKanbanColumnLabel,
+  resolveSalaoKanbanMeta,
+  resolveSalaoQueueTabClickId,
   rowMatchesSalaoQueueSearch,
 } from "@/lib/salao-estetica-logistics";
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
-import {
-  filterAndSortSalaoQueue,
-  isSalaoQueueTabSelected,
-  resolveSalaoCategoryDisplay,
-  resolveSalaoKanbanColumnLabel,
-  resolveSalaoKanbanMeta,
-  resolveSalaoQueueTabClickId,
-} from "@/lib/salao-estetica-logistics";
 import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AviacaoHangarStepper } from "@/components/screenflow/aviacao-hangar-stepper";
@@ -50,6 +50,8 @@ import {
   Plus,
   Printer,
   ChevronsUp,
+  ChevronDown,
+  ChevronUp,
   Search,
   Trash2,
   UserPlus,
@@ -225,6 +227,12 @@ type KanbanCardProps = {
   onCopyRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
   onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
+  kanbanColumnId?: string;
+  salaoFilaAtivaIndex?: number;
+  salaoFilaAtivaCount?: number;
+  onSalaoAtenderAgora?: (row: AtendimentoLite) => void;
+  onSalaoMoveFilaUp?: (row: AtendimentoLite) => void;
+  onSalaoMoveFilaDown?: (row: AtendimentoLite) => void;
 };
 
 const KanbanCard = memo(function KanbanCard({
@@ -245,6 +253,12 @@ const KanbanCard = memo(function KanbanCard({
   onCopyRow,
   onDelete,
   onSalaoDefinirProximo,
+  kanbanColumnId,
+  salaoFilaAtivaIndex = -1,
+  salaoFilaAtivaCount = 0,
+  onSalaoAtenderAgora,
+  onSalaoMoveFilaUp,
+  onSalaoMoveFilaDown,
 }: KanbanCardProps) {
   const prioStyle = priorityLawEnabled
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
@@ -258,6 +272,9 @@ const KanbanCard = memo(function KanbanCard({
   const observacaoText = aviacaoLogisticsActive
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
+  const isSalaoFilaAtivaColumn = salaoEsteticaActive && kanbanColumnId === SALAO_TAB.FILA_ATIVA;
+  const isSalaoPoolColumn =
+    salaoEsteticaActive && kanbanColumnId != null && isSalaoPoolTabId(kanbanColumnId);
 
   const cardShellClass = `group cursor-pointer border-l-2 bg-white text-left transition hover:bg-zinc-50/90 dark:bg-zinc-900 dark:hover:bg-zinc-800/40 ${
     isSel
@@ -267,7 +284,39 @@ const KanbanCard = memo(function KanbanCard({
 
   const actionButtons = (
     <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
-      {salaoEsteticaActive && onSalaoDefinirProximo && isSalaoWaitingStatus(row.status) ? (
+      {isSalaoFilaAtivaColumn && onSalaoMoveFilaUp && salaoFilaAtivaIndex > 0 ? (
+        <button
+          type="button"
+          title="Subir na fila"
+          className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+          onClick={() => onSalaoMoveFilaUp(row)}
+        >
+          <ChevronUp className="size-3.5" strokeWidth={2} />
+          <span className="sr-only">Subir</span>
+        </button>
+      ) : null}
+      {isSalaoFilaAtivaColumn && onSalaoMoveFilaDown && salaoFilaAtivaIndex >= 0 && salaoFilaAtivaIndex < salaoFilaAtivaCount - 1 ? (
+        <button
+          type="button"
+          title="Descer na fila"
+          className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+          onClick={() => onSalaoMoveFilaDown(row)}
+        >
+          <ChevronDown className="size-3.5" strokeWidth={2} />
+          <span className="sr-only">Descer</span>
+        </button>
+      ) : null}
+      {isSalaoPoolColumn && onSalaoAtenderAgora ? (
+        <button
+          type="button"
+          title="Atender Agora"
+          className="inline-flex rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-emerald-700 transition hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+          onClick={() => onSalaoAtenderAgora(row)}
+        >
+          Atender
+        </button>
+      ) : null}
+      {salaoEsteticaActive && onSalaoDefinirProximo && isSalaoWaitingStatus(row.status) && !isSalaoPoolColumn && !isSalaoFilaAtivaColumn ? (
         <button
           type="button"
           title="Definir como Próximo"
@@ -540,6 +589,12 @@ type QueueRowProps = {
   onCopyRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
   onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
+  listTabId?: string;
+  salaoFilaAtivaIndex?: number;
+  salaoFilaAtivaCount?: number;
+  onSalaoAtenderAgora?: (row: AtendimentoLite) => void;
+  onSalaoMoveFilaUp?: (row: AtendimentoLite) => void;
+  onSalaoMoveFilaDown?: (row: AtendimentoLite) => void;
 };
 
 const QueueRow = memo(function QueueRow({
@@ -559,6 +614,12 @@ const QueueRow = memo(function QueueRow({
   onCopyRow,
   onDelete,
   onSalaoDefinirProximo,
+  listTabId,
+  salaoFilaAtivaIndex = -1,
+  salaoFilaAtivaCount = 0,
+  onSalaoAtenderAgora,
+  onSalaoMoveFilaUp,
+  onSalaoMoveFilaDown,
 }: QueueRowProps) {
   const prioStyle = priorityLawEnabled
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
@@ -569,6 +630,8 @@ const QueueRow = memo(function QueueRow({
   const observacaoText = aviacaoLogisticsActive
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
+  const isSalaoFilaAtivaList = salaoEsteticaActive && listTabId === SALAO_TAB.FILA_ATIVA;
+  const isSalaoPoolList = salaoEsteticaActive && listTabId != null && isSalaoPoolTabId(listTabId);
   const clientLabel = aviacaoLogisticsActive
     ? resolveAviacaoKanbanMeta(row, cadastroCategories, cadastroLookups).title
     : row.nome?.trim() || "—";
@@ -683,7 +746,39 @@ const QueueRow = memo(function QueueRow({
       </td>
       <td className="w-[108px] px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-row items-center justify-end gap-1">
-        {salaoEsteticaActive && onSalaoDefinirProximo && isSalaoWaitingStatus(row.status) ? (
+        {isSalaoFilaAtivaList && onSalaoMoveFilaUp && salaoFilaAtivaIndex > 0 ? (
+          <button
+            type="button"
+            title="Subir na fila"
+            className="inline-flex shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+            onClick={() => onSalaoMoveFilaUp(row)}
+          >
+            <ChevronUp className="size-3.5" strokeWidth={2} />
+            <span className="sr-only">Subir</span>
+          </button>
+        ) : null}
+        {isSalaoFilaAtivaList && onSalaoMoveFilaDown && salaoFilaAtivaIndex >= 0 && salaoFilaAtivaIndex < salaoFilaAtivaCount - 1 ? (
+          <button
+            type="button"
+            title="Descer na fila"
+            className="inline-flex shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+            onClick={() => onSalaoMoveFilaDown(row)}
+          >
+            <ChevronDown className="size-3.5" strokeWidth={2} />
+            <span className="sr-only">Descer</span>
+          </button>
+        ) : null}
+        {isSalaoPoolList && onSalaoAtenderAgora ? (
+          <button
+            type="button"
+            title="Atender Agora"
+            className="inline-flex shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+            onClick={() => onSalaoAtenderAgora(row)}
+          >
+            Atender
+          </button>
+        ) : null}
+        {salaoEsteticaActive && onSalaoDefinirProximo && isSalaoWaitingStatus(row.status) && !isSalaoPoolList && !isSalaoFilaAtivaList ? (
           <button
             type="button"
             title="Definir como Próximo"
@@ -796,6 +891,9 @@ type QueueSectionProps = {
   onQueueSearchQueryChange?: (query: string) => void;
   onQueueSearchMatch?: (row: AtendimentoLite) => void;
   onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
+  onSalaoAtenderAgora?: (row: AtendimentoLite) => void;
+  onSalaoMoveFilaUp?: (row: AtendimentoLite) => void;
+  onSalaoMoveFilaDown?: (row: AtendimentoLite) => void;
 };
 
 export function QueueSection({
@@ -857,6 +955,9 @@ export function QueueSection({
   onQueueSearchQueryChange,
   onQueueSearchMatch,
   onSalaoDefinirProximo,
+  onSalaoAtenderAgora,
+  onSalaoMoveFilaUp,
+  onSalaoMoveFilaDown,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
@@ -1305,7 +1406,7 @@ export function QueueSection({
                     </td>
                   </tr>
                 ) : (
-                  listRows.map((row) => (
+                  listRows.map((row, rowIdx) => (
                     <QueueRow
                       key={row.id}
                       row={row}
@@ -1324,6 +1425,18 @@ export function QueueSection({
                       onCopyRow={(r) => void handleCopyRow(r)}
                       onDelete={(r) => void handleDelete(r)}
                       onSalaoDefinirProximo={onSalaoDefinirProximo}
+                      listTabId={activeTab?.id}
+                      salaoFilaAtivaIndex={
+                        salaoEsteticaActive && activeTab?.id === SALAO_TAB.FILA_ATIVA ? rowIdx : -1
+                      }
+                      salaoFilaAtivaCount={
+                        salaoEsteticaActive && activeTab?.id === SALAO_TAB.FILA_ATIVA
+                          ? listRows.length
+                          : 0
+                      }
+                      onSalaoAtenderAgora={onSalaoAtenderAgora}
+                      onSalaoMoveFilaUp={onSalaoMoveFilaUp}
+                      onSalaoMoveFilaDown={onSalaoMoveFilaDown}
                     />
                   ))
                 )}
@@ -1342,7 +1455,9 @@ export function QueueSection({
               const count = tabCounts[tab.id] ?? cards.length;
               const columnLabel = aviacaoLogisticsActive
                 ? resolveAviacaoKanbanColumnLabel(tab, mroSegmentId)
-                : tab.label;
+                : salaoEsteticaActive
+                  ? resolveSalaoKanbanColumnLabel(tab)
+                  : tab.label;
               return (
                 <section
                   key={tab.id}
@@ -1367,7 +1482,7 @@ export function QueueSection({
                       <p className="py-6 text-center text-[9px] text-zinc-400 dark:text-zinc-500">—</p>
                     ) : (
                       <div className={`flex flex-col ${compactKanbanActive ? "gap-0.5" : "gap-1"}`}>
-                        {cards.map((row) => (
+                        {cards.map((row, cardIdx) => (
                           <KanbanCard
                             key={row.id}
                             row={row}
@@ -1396,6 +1511,16 @@ export function QueueSection({
                             onCopyRow={(r) => void handleCopyRow(r)}
                             onDelete={(r) => void handleDelete(r)}
                             onSalaoDefinirProximo={onSalaoDefinirProximo}
+                            kanbanColumnId={tab.id}
+                            salaoFilaAtivaIndex={
+                              salaoEsteticaActive && tab.id === SALAO_TAB.FILA_ATIVA ? cardIdx : -1
+                            }
+                            salaoFilaAtivaCount={
+                              salaoEsteticaActive && tab.id === SALAO_TAB.FILA_ATIVA ? cards.length : 0
+                            }
+                            onSalaoAtenderAgora={onSalaoAtenderAgora}
+                            onSalaoMoveFilaUp={onSalaoMoveFilaUp}
+                            onSalaoMoveFilaDown={onSalaoMoveFilaDown}
                           />
                         ))}
                       </div>

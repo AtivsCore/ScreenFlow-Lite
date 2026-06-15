@@ -13,10 +13,11 @@ import { mergeTenantConfig } from "@/lib/tenant-config";
 import { resolvePublicTenantId } from "@/lib/tenant-id";
 import {
   SALAO_ESTETICA_SEGMENT_ID,
-  buildSalaoProximosDaVez,
-  isSalaoCalledStatus,
+  buildSalaoDefaultQueueTabs,
+  buildSalaoFilaAtivaTvDisplay,
   isSalaoEsteticaSegment,
   normalizeSalaoStatusLabel,
+  type SalaoProximoEntry,
 } from "@/lib/salao-estetica-logistics";
 import type { CadastroLookups } from "@/lib/cadastro-valores";
 import { useSearchParams } from "next/navigation";
@@ -200,16 +201,20 @@ export default function DisplayPage() {
   }, [salaoMode]);
 
   const { highlight, history, proximos } = useMemo(() => {
-    const active = rows.filter((r) => (r.status ?? "").toLowerCase() !== "finalizado" && (r.status ?? "").toLowerCase() !== "completed");
+    const active = rows.filter(
+      (r) =>
+        (r.status ?? "").toLowerCase() !== "finalizado" &&
+        (r.status ?? "").toLowerCase() !== "completed"
+    );
 
     if (salaoMode) {
-      const calling = active.filter((r) => isSalaoCalledStatus(r.status));
-      const sortedCall = [...calling].sort(
-        (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+      const tv = buildSalaoFilaAtivaTvDisplay(
+        active,
+        cadastroCategories,
+        cadastroLookups,
+        config.queueTabs.length > 0 ? config.queueTabs : buildSalaoDefaultQueueTabs()
       );
-      const hi = sortedCall[0] ?? null;
-      const prox = buildSalaoProximosDaVez(active, cadastroCategories, cadastroLookups, 10);
-      return { highlight: hi, history: [], proximos: prox };
+      return { highlight: tv.highlight, history: [] as AtendimentoLite[], proximos: tv.proximos };
     }
 
     const calling = active.filter((r) => isCallingStatus(r.status));
@@ -221,8 +226,8 @@ export default function DisplayPage() {
       .filter((r) => r.id !== hi?.id)
       .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
       .slice(0, 12);
-    return { highlight: hi, history: hist, proximos: [] };
-  }, [rows, salaoMode, cadastroCategories, cadastroLookups]);
+    return { highlight: hi, history: hist, proximos: [] as SalaoProximoEntry[] };
+  }, [rows, salaoMode, cadastroCategories, cadastroLookups, config.queueTabs]);
 
   const qrTarget = useMemo(() => {
     const custom = config.tvDisplay.qrTargetUrl?.trim();
