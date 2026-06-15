@@ -33,6 +33,7 @@ export const SALAO_TAB = {
   HORA: "tab-hora",
   ORDEM: "tab-ordem",
   ENCAIXE_URGENTE: "tab-encaixe-urgente",
+  AGUARDANDO_PAGAMENTO: "tab-aguardando-pagamento",
   REAGENDAR: "tab-reagendar",
 } as const;
 
@@ -43,6 +44,7 @@ export const SALAO_QUEUE_TAB_ORDER: readonly SalaoTabId[] = [
   SALAO_TAB.HORA,
   SALAO_TAB.ORDEM,
   SALAO_TAB.ENCAIXE_URGENTE,
+  SALAO_TAB.AGUARDANDO_PAGAMENTO,
   SALAO_TAB.REAGENDAR,
 ];
 
@@ -51,8 +53,17 @@ export const SALAO_QUEUE_TAB_LABELS: Record<SalaoTabId, string> = {
   [SALAO_TAB.HORA]: "HORA MARCADA",
   [SALAO_TAB.ORDEM]: "ORDEM DE CHEGADA",
   [SALAO_TAB.ENCAIXE_URGENTE]: "ENCAIXE / URGENTE",
+  [SALAO_TAB.AGUARDANDO_PAGAMENTO]: "AGUARDANDO PAGAMENTO",
   [SALAO_TAB.REAGENDAR]: "REAGENDAR",
 };
+
+/** Colunas de fila cujo botão verde envia para aguardando pagamento. */
+export const SALAO_QUEUE_FILA_TAB_IDS: readonly SalaoTabId[] = [
+  SALAO_TAB.FILA_ATIVA,
+  SALAO_TAB.HORA,
+  SALAO_TAB.ORDEM,
+  SALAO_TAB.ENCAIXE_URGENTE,
+];
 
 /** Pools periféricos que alimentam a fila ativa via "Atender Agora". */
 export const SALAO_POOL_TAB_IDS: readonly SalaoTabId[] = [
@@ -140,6 +151,12 @@ export function buildSalaoDefaultQueueTabs(): QueueTabEntry[] {
       id: SALAO_TAB.ENCAIXE_URGENTE,
       preset: "encaixe",
       label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.ENCAIXE_URGENTE],
+    },
+    {
+      id: SALAO_TAB.AGUARDANDO_PAGAMENTO,
+      preset: "outros",
+      label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.AGUARDANDO_PAGAMENTO],
+      customTypeLabel: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.AGUARDANDO_PAGAMENTO],
     },
     { id: SALAO_TAB.REAGENDAR, preset: "reagendar", label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.REAGENDAR] },
   ];
@@ -268,6 +285,81 @@ export function isSalaoPoolTabId(tabId: string | null | undefined): boolean {
   if (!tabId) return false;
   const normalized = normalizeSalaoFilaTabId(tabId) ?? tabId;
   return (SALAO_POOL_TAB_IDS as readonly string[]).includes(normalized);
+}
+
+export function isSalaoQueueFilaTabId(tabId: string | null | undefined): boolean {
+  if (!tabId) return false;
+  const normalized = normalizeSalaoFilaTabId(tabId) ?? tabId;
+  return (SALAO_QUEUE_FILA_TAB_IDS as readonly string[]).includes(normalized);
+}
+
+export function isSalaoAguardandoPagamentoTabId(tabId: string | null | undefined): boolean {
+  if (!tabId) return false;
+  const normalized = normalizeSalaoFilaTabId(tabId) ?? tabId;
+  return normalized === SALAO_TAB.AGUARDANDO_PAGAMENTO;
+}
+
+export function resolveSalaoAguardandoPagamentoTab(
+  queueTabs: Pick<QueueTabEntry, "id" | "preset" | "label">[]
+): Pick<QueueTabEntry, "id" | "preset"> {
+  return (
+    queueTabs.find((t) => t.id === SALAO_TAB.AGUARDANDO_PAGAMENTO) ?? {
+      id: SALAO_TAB.AGUARDANDO_PAGAMENTO,
+      preset: "outros",
+    }
+  );
+}
+
+export type SalaoHeaderActionState = {
+  showPrimary: boolean;
+  primaryLabel: string;
+  primaryAction: "aguardando_pagamento" | "finalizar" | null;
+};
+
+/** Botão verde dinâmico do balcão conforme a coluna do card selecionado. */
+export function resolveSalaoHeaderActionState(
+  tabId: string | null | undefined
+): SalaoHeaderActionState {
+  if (isSalaoAguardandoPagamentoTabId(tabId)) {
+    return { showPrimary: true, primaryLabel: "Finalizar", primaryAction: "finalizar" };
+  }
+  if (isSalaoQueueFilaTabId(tabId)) {
+    return {
+      showPrimary: true,
+      primaryLabel: "Aguardando Pagamento",
+      primaryAction: "aguardando_pagamento",
+    };
+  }
+  return { showPrimary: false, primaryLabel: "", primaryAction: null };
+}
+
+export function buildSalaoMoveToTabObservacao(
+  currentObservacao: string | null | undefined,
+  targetTab: Pick<QueueTabEntry, "id" | "preset">
+): string | null {
+  const salaoFields = parseSalaoCadastroFields(currentObservacao);
+  if (targetTab.id !== SALAO_TAB.FILA_ATIVA) {
+    delete salaoFields[SALAO_FIELD_SORT_ORDER];
+  }
+  if (targetTab.id !== SALAO_TAB.AGUARDANDO_PAGAMENTO) {
+    delete salaoFields[SALAO_FIELD_MARKED_NEXT_AT];
+  }
+  return mergeSalaoObservacao({
+    current: currentObservacao,
+    tab: targetTab,
+    salaoFields,
+    preserveTabWhenUnset: false,
+  });
+}
+
+export function buildSalaoMoveToAguardandoPagamentoObservacao(
+  currentObservacao: string | null | undefined,
+  queueTabs: Pick<QueueTabEntry, "id" | "preset" | "label">[]
+): string | null {
+  return buildSalaoMoveToTabObservacao(
+    currentObservacao,
+    resolveSalaoAguardandoPagamentoTab(queueTabs)
+  );
 }
 
 /** Horário marcado entrou na janela de 30 min antecedentes ao momento atual. */

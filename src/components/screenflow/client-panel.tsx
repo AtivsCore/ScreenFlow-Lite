@@ -40,8 +40,12 @@ import {
   parseSalaoCadastroFields,
   parseSalaoServicosSolicitados,
   resolveSalaoChamarLabel,
+  resolveSalaoHeaderActionState,
   resolveSalaoLocalLabel,
   SALAO_FIELD_SERVICOS,
+  SALAO_LOCAL_CATEGORY_ID,
+  SALAO_PROFISSIONAL_CATEGORY_ID,
+  SALAO_REGISTER_FORM_LABELS,
 } from "@/lib/salao-estetica-logistics";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import type { CadastroCategoryEntry, ObservacoesVisibility } from "@/lib/tenant-config";
@@ -97,6 +101,10 @@ type ClientPanelProps = {
   onDefinirProximo?: () => void;
   /** Estágio atual da aeronave selecionada (coluna Kanban/lista). */
   aviacaoCurrentTabId?: string | null;
+  /** Coluna Kanban/lista do card selecionado (salão). */
+  salaoCurrentTabId?: string | null;
+  /** Salão: edição rápida do nome do cliente. */
+  onPatchClienteNome?: (nome: string) => Promise<void>;
   /** Incrementar após CRUD rápido (+ Bancada / + Equipe / + Serviços) para recarregar selects. */
   cadastrosRevision?: number;
 };
@@ -159,6 +167,8 @@ export const ClientPanel = memo(function ClientPanel({
   onCopySelected,
   onDefinirProximo,
   aviacaoCurrentTabId,
+  salaoCurrentTabId,
+  onPatchClienteNome,
   cadastrosRevision = 0,
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
@@ -166,8 +176,10 @@ export const ClientPanel = memo(function ClientPanel({
   const [servicos, setServicos] = useState<Opt[]>([]);
   const [tvs, setTvs] = useState<Opt[]>([]);
   const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
+  const [clienteNomeDraft, setClienteNomeDraft] = useState("");
   const optionsLoadedRef = useRef<string | null>(null);
   const aviacaoFreeTextPatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const salaoClienteNomePatchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const enabledCategories = useMemo(
     () => cadastroCategories.filter((c) => c.enabled),
@@ -196,11 +208,14 @@ export const ClientPanel = memo(function ClientPanel({
     return parseAviacaoCadastroFields(selected.observacao)[AVIACAO_FIELD_DEVICE_TYPE]?.trim() ?? "";
   }, [mroProfile.baseSelectorOptions, baseSelectorValue, selected?.observacao]);
   const panelCategories = useMemo(() => {
-    if (!aviacaoMode) return enabledCategories;
+    if (!aviacaoMode) {
+      if (!salaoMode) return enabledCategories;
+      return enabledCategories.filter((c) => c.id !== "sal-c3");
+    }
     const hidden = new Set<string>(AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS);
     const visible = enabledCategories.filter((c) => !hidden.has(c.id));
     return sortAviacaoPanelCategories(visible);
-  }, [enabledCategories, aviacaoMode]);
+  }, [enabledCategories, aviacaoMode, salaoMode]);
 
   function optionsFor(cat: CadastroCategoryEntry): Opt[] {
     if (aviacaoMode && isAviacaoRigidSelectField(cat.id)) {
@@ -375,8 +390,22 @@ export const ClientPanel = memo(function ClientPanel({
   useEffect(() => {
     return () => {
       if (aviacaoFreeTextPatchTimerRef.current) clearTimeout(aviacaoFreeTextPatchTimerRef.current);
+      if (salaoClienteNomePatchTimerRef.current) clearTimeout(salaoClienteNomePatchTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    setClienteNomeDraft(selected?.nome?.trim() ?? "");
+  }, [selected?.id, selected?.nome]);
+
+  function patchSalaoClienteNome(value: string) {
+    setClienteNomeDraft(value);
+    if (!onPatchClienteNome) return;
+    if (salaoClienteNomePatchTimerRef.current) clearTimeout(salaoClienteNomePatchTimerRef.current);
+    salaoClienteNomePatchTimerRef.current = setTimeout(() => {
+      void onPatchClienteNome(value);
+    }, 400);
+  }
 
   useEffect(() => {
     if (!selected) {
@@ -476,6 +505,11 @@ export const ClientPanel = memo(function ClientPanel({
   const salaoChamarLabel = useMemo(
     () => (salaoMode ? resolveSalaoChamarLabel(salaoLocalLabel) : "Chamar"),
     [salaoMode, salaoLocalLabel]
+  );
+
+  const salaoHeaderAction = useMemo(
+    () => (salaoMode ? resolveSalaoHeaderActionState(salaoCurrentTabId) : null),
+    [salaoMode, salaoCurrentTabId]
   );
 
   const primaryBtnClass =
@@ -617,7 +651,33 @@ export const ClientPanel = memo(function ClientPanel({
               </label>
             )
           ) : null}
-          {panelCategories.map((cat) => renderCategoryField(cat))}
+          {salaoMode ? (
+            <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
+              <span>{SALAO_REGISTER_FORM_LABELS.showClienteNome}</span>
+              <input
+                type="text"
+                value={clienteNomeDraft}
+                disabled={fieldDisabled || !onPatchClienteNome}
+                onChange={(e) => patchSalaoClienteNome(e.target.value)}
+                className="mt-0.5 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-[11px] text-zinc-900 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-50"
+                autoComplete="off"
+                placeholder="Nome do cliente"
+              />
+            </label>
+          ) : null}
+          {panelCategories.map((cat) =>
+            salaoMode
+              ? renderCategoryField({
+                  ...cat,
+                  label:
+                    cat.id === SALAO_PROFISSIONAL_CATEGORY_ID
+                      ? SALAO_REGISTER_FORM_LABELS.showProfissional
+                      : cat.id === SALAO_LOCAL_CATEGORY_ID
+                        ? SALAO_REGISTER_FORM_LABELS.showLocal
+                        : cat.label,
+                } as CadastroCategoryEntry)
+              : renderCategoryField(cat)
+          )}
 
           {!aviacaoMode ? (
             <label className="block text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
@@ -665,20 +725,22 @@ export const ClientPanel = memo(function ClientPanel({
               </button>
               <button
                 type="button"
-                disabled={!canMutate}
-                onClick={onRechamar}
+                disabled={!selected}
+                onClick={onLimpar}
                 className={secondaryBtnClass}
               >
-                Iniciar Atendimento
+                Limpar Seleção
               </button>
-              <button
-                type="button"
-                disabled={!canMutate}
-                onClick={onFinalizar}
-                className={finalizarBtnClass}
-              >
-                Finalizar / Caixa
-              </button>
+              {salaoHeaderAction?.showPrimary ? (
+                <button
+                  type="button"
+                  disabled={!canMutate}
+                  onClick={onFinalizar}
+                  className={finalizarBtnClass}
+                >
+                  {salaoHeaderAction.primaryLabel}
+                </button>
+              ) : null}
             </>
           ) : (
             <>

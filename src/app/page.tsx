@@ -93,13 +93,16 @@ import {
   SALAO_STATUS,
   SALAO_TAB,
   buildSalaoMarkedNextObservacao,
+  buildSalaoMoveToAguardandoPagamentoObservacao,
   buildSalaoMoveToFilaAtivaObservacao,
   buildSalaoSwapSortOrderObservacao,
   clearSalaoMarkedNextObservacao,
   collectSalaoHoraAutoMoveCandidates,
   countActiveBySalaoQueueTab,
   filterAndSortSalaoQueue,
+  isSalaoAguardandoPagamentoTabId,
   isSalaoEsteticaSegment,
+  isSalaoQueueFilaTabId,
   isSalaoQueueTabIdInVisible,
   isSalaoWaitingStatus,
   resolveSalaoFilaAtivaTab,
@@ -1194,6 +1197,85 @@ export default function Home() {
     patchAtendimentoById,
   ]);
 
+  const salaoPrimaryAction = useCallback(async () => {
+    if (!selected || !selectedSalaoTabId) return;
+
+    if (isSalaoAguardandoPagamentoTabId(selectedSalaoTabId)) {
+      await updateSalaoStatus(SALAO_STATUS.completed, { clearSelection: true });
+      return;
+    }
+
+    if (!isSalaoQueueFilaTabId(selectedSalaoTabId)) return;
+
+    const observacao = buildSalaoMoveToAguardandoPagamentoObservacao(
+      selected.observacao,
+      visibleQueueTabs
+    );
+    setPending(true);
+    setLoadError(null);
+    try {
+      await patchAtendimento({ observacao });
+      setQueueTabId(resolveSalaoQueueTabClickId(SALAO_TAB.AGUARDANDO_PAGAMENTO));
+    } finally {
+      setPending(false);
+    }
+  }, [
+    selected,
+    selectedSalaoTabId,
+    updateSalaoStatus,
+    visibleQueueTabs,
+    patchAtendimento,
+  ]);
+
+  const patchClienteNome = useCallback(
+    async (nome: string) => {
+      if (!selectedId || !selected || !supabase) return;
+      const trimmed = nome.trim();
+      if (!trimmed) return;
+
+      setPending(true);
+      setLoadError(null);
+      try {
+        if (selected.paciente_id) {
+          const { error } = await supabase
+            .from("pacientes")
+            .update({ nome: trimmed })
+            .eq("id", selected.paciente_id);
+          if (error) {
+            setLoadError(error.message);
+            return;
+          }
+          applyLocalPatch(selectedId, { nome: trimmed });
+          return;
+        }
+
+        const tenantId = selected.tenant_id ?? effectiveTenantId;
+        if (!tenantId) return;
+
+        const { data: pRow, error: insertErr } = await supabase
+          .from("pacientes")
+          .insert({ nome: trimmed, tenant_id: tenantId })
+          .select("id")
+          .single();
+        if (insertErr || !pRow) {
+          setLoadError(insertErr?.message ?? "Falha ao vincular cliente.");
+          return;
+        }
+
+        const pacientePatch = { paciente_id: (pRow as { id: string }).id };
+        applyLocalPatch(selectedId, { ...pacientePatch, nome: trimmed });
+        const { error: linkErr } = await supabase
+          .from("atendimentos_lite")
+          .update(pacientePatch)
+          .eq("id", selectedId);
+        if (linkErr) setLoadError(linkErr.message);
+      } finally {
+        setPending(false);
+      }
+    },
+    [selectedId, selected, supabase, effectiveTenantId, applyLocalPatch]
+  );
+
   const advanceDocasLogistics = useCallback(
     async (targetTabId: DocasQueueTabId, status?: string) => {
       if (!selectedId || !selected) return;
@@ -1421,7 +1503,7 @@ export default function Home() {
         } else if (aviacaoLogisticsActive) {
           void advanceAviacaoLogistics(AVIACAO_QUEUE_TAB.EM_MANUTENCAO, STATUS_UPDATE.rechamar);
         } else if (salaoEsteticaActive) {
-          void updateSalaoStatus(SALAO_STATUS.processing);
+          setSelectedId(null);
         } else {
           void updateStatus(STATUS_UPDATE.rechamar);
         }
@@ -1438,7 +1520,7 @@ export default function Home() {
             void advanceAviacaoLogistics(liberadoTabId, "Aguardando");
           }
         } else if (salaoEsteticaActive) {
-          void updateSalaoStatus(SALAO_STATUS.completed, { clearSelection: true });
+          void salaoPrimaryAction();
         } else {
           setFinalizeOpen(true);
         }
@@ -1474,6 +1556,7 @@ export default function Home() {
       advanceAviacaoLogistics,
       updateSalaoStatus,
       salaoAtenderAgora,
+      salaoPrimaryAction,
       updateStatus,
       openGeneralSettings,
       openAviacaoQuickCrud,
@@ -1560,6 +1643,8 @@ export default function Home() {
             onChamar={() => shortcutHandlers.onChamar()}
             onRechamar={() => shortcutHandlers.onRechamar()}
             onFinalizar={() => shortcutHandlers.onFinalizar()}
+            salaoCurrentTabId={salaoEsteticaActive ? selectedSalaoTabId : undefined}
+            onPatchClienteNome={salaoEsteticaActive ? patchClienteNome : undefined}
             onDefinirProximo={
               salaoEsteticaActive && selected && isSalaoWaitingStatus(selected.status)
                 ? () => void definirSalaoProximo()
