@@ -101,6 +101,7 @@ import {
   collectSalaoHoraAutoMoveCandidates,
   countActiveBySalaoQueueTab,
   filterAndSortSalaoQueue,
+  filterSalaoKanbanOperationalRows,
   isSalaoAguardandoPagamentoTabId,
   isSalaoEsteticaSegment,
   isSalaoQueueFilaTabId,
@@ -525,15 +526,20 @@ export default function Home() {
         hangarIds: aviacaoSelectedHangarIds.length > 0 ? aviacaoSelectedHangarIds : undefined,
       });
     }
+    if (salaoEsteticaActive) {
+      result = filterSalaoKanbanOperationalRows(result, tenantConfig.segmentoAplicado);
+    }
     return result;
   }, [
     rows,
     docasLogisticsActive,
     aviacaoLogisticsActive,
+    salaoEsteticaActive,
     planTier,
     aviacaoFilterPriorityOnly,
     aviacaoHideAguardandoPecas,
     aviacaoSelectedHangarIds,
+    tenantConfig.segmentoAplicado,
   ]);
 
   const tabCounts = useMemo(
@@ -1209,13 +1215,7 @@ export default function Home() {
     [patchAtendimentoById]
   );
 
-  const handleSalaoAgendaBooked = useCallback(() => {
-    setAppView("fila");
-    setQueueTabId(SALAO_TAB.HORA);
-  }, []);
-
   const salaoAutoMoveRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     if (!salaoEsteticaActive || !sessionReady || pending || loading) return;
 
@@ -1750,13 +1750,15 @@ export default function Home() {
                 setEditRow(row);
               }}
               onDeleteRow={handleDeleteRow}
+              onNewBooking={
+                salaoEsteticaActive ? () => setRegistryOpen(true) : undefined
+              }
               onSalaoSendToBalcao={
                 salaoEsteticaActive ? (row) => void salaoAgendaSendToBalcao(row) : undefined
               }
               onSalaoAnteciparOrdem={
                 salaoEsteticaActive ? (row) => void salaoAgendaAnteciparOrdem(row) : undefined
               }
-              onSalaoBooked={salaoEsteticaActive ? handleSalaoAgendaBooked : undefined}
             />
           ) : (
             <QueueSection
@@ -2035,7 +2037,9 @@ export default function Home() {
         tenantId={tenantIdForInsert}
         tenantConfig={tenantConfig}
         onRegistered={(meta) => {
-          if (meta?.queueTabId) setQueueTabId(meta.queueTabId);
+          if (meta?.queueTabId && appView !== "agenda") {
+            setQueueTabId(meta.queueTabId);
+          }
           void refreshRows();
         }}
       />

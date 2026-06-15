@@ -454,6 +454,7 @@ export function collectSalaoHoraAutoMoveCandidates(
     (r) =>
       isActiveQueueRow(r) &&
       isSalaoActiveStatus(r.status) &&
+      isSalaoKanbanVisibleRow(r) &&
       rowMatchesSalaoQueueTabEntry(r, horaTab, queueTabs) &&
       isSalaoHoraReadyForFilaAtiva(r.hora_marcada, nowMs)
   );
@@ -824,6 +825,38 @@ export function isSalaoActiveStatus(status: string | null | undefined): boolean 
   return n !== SALAO_STATUS.completed && n !== "legacy_completed";
 }
 
+/** Statuses que permanecem no Kanban após virar o dia (atendimento em curso). */
+export function isSalaoKanbanOperationalStatus(status: string | null | undefined): boolean {
+  const n = normalizeSalaoStatus(status);
+  return (
+    n === SALAO_STATUS.next ||
+    n === SALAO_STATUS.called ||
+    n === SALAO_STATUS.processing
+  );
+}
+
+/**
+ * Kanban (/) = operação do dia corrente.
+ * Com `hora_marcada`: só entra se for hoje, exceto status operacional ativo.
+ * Sem `hora_marcada`: visível (ordem de chegada / encaixe walk-in).
+ */
+export function isSalaoKanbanVisibleRow(
+  row: Pick<AtendimentoLite, "hora_marcada" | "status">
+): boolean {
+  if (!row.hora_marcada?.trim()) return true;
+  if (Number.isNaN(Date.parse(row.hora_marcada))) return true;
+  if (isSalaoKanbanOperationalStatus(row.status)) return true;
+  return isTodayHoraMarcada(row.hora_marcada);
+}
+
+export function filterSalaoKanbanOperationalRows(
+  rows: AtendimentoLite[],
+  segmentoAplicado?: string | null
+): AtendimentoLite[] {
+  if (!isSalaoEsteticaSegment(segmentoAplicado)) return rows;
+  return rows.filter(isSalaoKanbanVisibleRow);
+}
+
 export function normalizeSalaoStatusLabel(status: string | null | undefined): string {
   const n = normalizeSalaoStatus(status);
   switch (n) {
@@ -910,17 +943,31 @@ export function rowMatchesSalaoQueueTabEntry(
   return rowMatchesQueueTabEntry(row, tab);
 }
 
+/** Coluna HORA MARCADA no Kanban: só hoje, exceto status operacional ativo. */
+export function isSalaoHoraTabKanbanVisibleRow(
+  row: Pick<AtendimentoLite, "hora_marcada" | "status">
+): boolean {
+  if (isSalaoKanbanOperationalStatus(row.status)) return true;
+  return isTodayHoraMarcada(row.hora_marcada);
+}
+
 export function filterAndSortSalaoQueue(
   rows: AtendimentoLite[],
   tab: Pick<QueueTabEntry, "id" | "preset">,
   allTabs?: Pick<QueueTabEntry, "id" | "preset">[]
 ): AtendimentoLite[] {
+  const matchesKanbanDay = (r: AtendimentoLite) => {
+    if (!isActiveQueueRow(r) || !isSalaoActiveStatus(r.status)) return false;
+    if (tab.id === SALAO_TAB.HORA || tab.preset === "hora") {
+      return isSalaoHoraTabKanbanVisibleRow(r);
+    }
+    return isSalaoKanbanVisibleRow(r);
+  };
+
   const active =
     tab.preset === "todos"
-      ? rows.filter((r) => isActiveQueueRow(r) && isSalaoActiveStatus(r.status))
-      : rows
-          .filter((r) => isActiveQueueRow(r) && isSalaoActiveStatus(r.status))
-          .filter((r) => rowMatchesSalaoQueueTabEntry(r, tab, allTabs));
+      ? rows.filter(matchesKanbanDay)
+      : rows.filter(matchesKanbanDay).filter((r) => rowMatchesSalaoQueueTabEntry(r, tab, allTabs));
 
   if (tab.id === SALAO_TAB.FILA_ATIVA) {
     return [...active].sort(compareSalaoFilaAtivaOrder);
@@ -937,9 +984,9 @@ export function countActiveBySalaoQueueTab(
   const counts: Record<string, number> = {};
   for (const tab of tabs) {
     if (tab.preset === "todos") {
-      counts[tab.id] = active.length;
+      counts[tab.id] = active.filter(isSalaoKanbanVisibleRow).length;
     } else {
-      counts[tab.id] = active.filter((r) => rowMatchesSalaoQueueTabEntry(r, tab, tabs)).length;
+      counts[tab.id] = filterAndSortSalaoQueue(rows, tab, tabs).length;
     }
   }
   return counts;

@@ -30,9 +30,10 @@ type AgendaProViewProps = {
   onRefresh: () => void;
   onEditRow: (row: AtendimentoLite) => void;
   onDeleteRow: (row: AtendimentoLite) => void | Promise<void>;
+  /** Salão: abre o mesmo modal "Novo registro" do balcão (`RegistryPatientModal`). */
+  onNewBooking?: () => void;
   onSalaoSendToBalcao?: (row: AtendimentoLite) => void | Promise<void>;
   onSalaoAnteciparOrdem?: (row: AtendimentoLite) => void | Promise<void>;
-  onSalaoBooked?: () => void;
 };
 
 export function AgendaProView({
@@ -47,9 +48,9 @@ export function AgendaProView({
   onRefresh,
   onEditRow,
   onDeleteRow,
+  onNewBooking,
   onSalaoSendToBalcao,
   onSalaoAnteciparOrdem,
-  onSalaoBooked,
 }: AgendaProViewProps) {
   const salaoMode = isSalaoEsteticaSegment(tenantConfig.segmentoAplicado);
   const [bookingOpen, setBookingOpen] = useState(false);
@@ -71,6 +72,14 @@ export function AgendaProView({
         return ta - tb;
       });
   }, [rows, salaoMode, queueTabs]);
+
+  function handleNewBookingClick() {
+    if (salaoMode && onNewBooking) {
+      onNewBooking();
+      return;
+    }
+    setBookingOpen(true);
+  }
 
   async function handleDelete(row: AtendimentoLite) {
     if (!confirm(`Excluir agendamento de “${row.nome ?? "cliente"}”?`)) return;
@@ -115,7 +124,7 @@ export function AgendaProView({
         </div>
         <button
           type="button"
-          onClick={() => setBookingOpen(true)}
+          onClick={handleNewBookingClick}
           className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           <CalendarPlus className="size-3.5" strokeWidth={2} aria-hidden />
@@ -244,15 +253,16 @@ export function AgendaProView({
         )}
       </div>
 
-      <AgendaBookingModal
-        open={bookingOpen}
-        onClose={() => setBookingOpen(false)}
-        supabase={supabase}
-        tenantId={tenantId}
-        tenantConfig={tenantConfig}
-        onBooked={onRefresh}
-        onSalaoBooked={onSalaoBooked}
-      />
+      {!salaoMode ? (
+        <AgendaBookingModal
+          open={bookingOpen}
+          onClose={() => setBookingOpen(false)}
+          supabase={supabase}
+          tenantId={tenantId}
+          tenantConfig={tenantConfig}
+          onBooked={onRefresh}
+        />
+      ) : null}
     </div>
   );
 }
