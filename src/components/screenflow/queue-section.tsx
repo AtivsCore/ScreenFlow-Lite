@@ -26,6 +26,7 @@ import {
   resolveSalaoCategoryDisplay,
   resolveSalaoKanbanColumnLabel,
   resolveSalaoKanbanMeta,
+  resolveSalaoHoraMarcadaBadgeMeta,
   resolveSalaoQueueTabClickId,
   rowMatchesSalaoQueueSearch,
 } from "@/lib/salao-estetica-logistics";
@@ -269,6 +270,7 @@ const KanbanCard = memo(function KanbanCard({
   const clientName = meta.title;
   const contextLine = formatKanbanContextLine(meta);
   const horaMarcadaLabel = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : null;
+  const horaMarcadaBadge = resolveSalaoHoraMarcadaBadgeMeta(salaoEsteticaActive);
   const observacaoText = aviacaoLogisticsActive
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
@@ -398,9 +400,9 @@ const KanbanCard = memo(function KanbanCard({
         {horaMarcadaLabel ? (
           <p
             className="mb-0.5 truncate text-[9px] font-semibold leading-none tracking-wide text-teal-700 dark:text-teal-400"
-            title={`Previsão de retirada: ${horaMarcadaLabel}`}
+            title={`${horaMarcadaBadge.titlePrefix}: ${horaMarcadaLabel}`}
           >
-            Retirada {horaMarcadaLabel}
+            {horaMarcadaBadge.prefix} {horaMarcadaLabel}
           </p>
         ) : null}
         <div className="flex items-center justify-between gap-1">
@@ -452,9 +454,9 @@ const KanbanCard = memo(function KanbanCard({
       {horaMarcadaLabel ? (
         <p
           className="mb-0.5 truncate text-[9px] font-semibold leading-none tracking-wide text-teal-700 dark:text-teal-400"
-          title={`Previsão de retirada: ${horaMarcadaLabel}`}
+          title={`${horaMarcadaBadge.titlePrefix}: ${horaMarcadaLabel}`}
         >
-          Retirada {horaMarcadaLabel}
+          {horaMarcadaBadge.prefix} {horaMarcadaLabel}
         </p>
       ) : null}
       <div className="flex items-center justify-between gap-1">

@@ -41,6 +41,8 @@ import {
   parseSalaoServicosSolicitados,
   resolveSalaoChamarLabel,
   resolveSalaoHeaderActionState,
+  resolveSalaoHeaderServicoLabel,
+  resolveSalaoHoraMarcadaBadgeMeta,
   resolveSalaoLocalLabel,
   SALAO_FIELD_SERVICOS,
   SALAO_LOCAL_CATEGORY_ID,
@@ -488,6 +490,14 @@ export const ClientPanel = memo(function ClientPanel({
   const selectedDisplayName = docasPlaca || aviacaoPrefixo || selected?.nome?.trim() || null;
   const previsaoRetiradaLabel =
     selected?.hora_marcada ? formatHoraMarcada(selected.hora_marcada) : null;
+  const horaMarcadaBadge = resolveSalaoHoraMarcadaBadgeMeta(salaoMode);
+
+  const salaoHeaderServicoLabel = useMemo(() => {
+    if (!salaoMode || !selected) return null;
+    return resolveSalaoHeaderServicoLabel(selected, cadastroCategories, cadastroLookups);
+  }, [salaoMode, selected, cadastroCategories, cadastroLookups]);
+
+  const salaoHeaderObservacao = salaoMode ? observacaoText.trim() : "";
 
   const aviacaoHeaderActions = useMemo(
     () =>
@@ -529,17 +539,43 @@ export const ClientPanel = memo(function ClientPanel({
           <div className="mt-1 flex min-h-[1.75rem] min-w-0 items-center gap-2">
             {selected ? (
               <>
-                <p className="shrink-0 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
-                  {selectedDisplayName ?? "—"}
-                </p>
-                {previsaoRetiradaLabel ? (
-                  <span
-                    className="shrink-0 rounded-md border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200"
-                    title={`Previsão de retirada: ${previsaoRetiradaLabel}`}
-                  >
-                    Retirada {previsaoRetiradaLabel}
-                  </span>
-                ) : null}
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                  <p className="shrink-0 truncate text-base font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
+                    {selectedDisplayName ?? "—"}
+                  </p>
+                  {previsaoRetiradaLabel ? (
+                    <span
+                      className="shrink-0 rounded-md border border-teal-200 bg-teal-50 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200"
+                      title={`${horaMarcadaBadge.titlePrefix}: ${previsaoRetiradaLabel}`}
+                    >
+                      {horaMarcadaBadge.prefix} {previsaoRetiradaLabel}
+                    </span>
+                  ) : null}
+                  {salaoMode && salaoHeaderServicoLabel ? (
+                    <span
+                      className="min-w-0 max-w-full truncate text-[11px] leading-snug text-zinc-600 dark:text-zinc-300"
+                      title={`Serviço: ${salaoHeaderServicoLabel}`}
+                    >
+                      <span className="text-zinc-400" aria-hidden>
+                        •{" "}
+                      </span>
+                      <span className="font-medium text-zinc-500 dark:text-zinc-400">Serviço:</span>{" "}
+                      {salaoHeaderServicoLabel}
+                    </span>
+                  ) : null}
+                  {salaoMode && salaoHeaderObservacao ? (
+                    <span
+                      className="min-w-0 max-w-full truncate text-[11px] leading-snug text-zinc-500 dark:text-zinc-400"
+                      title={salaoHeaderObservacao}
+                    >
+                      <span className="text-zinc-400" aria-hidden>
+                        •{" "}
+                      </span>
+                      <span className="font-medium text-zinc-500 dark:text-zinc-400">Obs:</span>{" "}
+                      {salaoHeaderObservacao}
+                    </span>
+                  ) : null}
+                </div>
                 {onPrintSelected && !salaoMode ? (
                   <button
                     type="button"
@@ -552,7 +588,7 @@ export const ClientPanel = memo(function ClientPanel({
                     <Printer className="size-3.5" strokeWidth={1.75} aria-hidden />
                   </button>
                 ) : null}
-                {observacoesAlwaysVisible && hasObs ? (
+                {observacoesAlwaysVisible && hasObs && !salaoMode ? (
                   <span
                     className="min-w-0 max-w-[45%] truncate text-xs text-zinc-600 dark:text-zinc-300"
                     title={observacaoText}
@@ -560,7 +596,7 @@ export const ClientPanel = memo(function ClientPanel({
                     {observacaoText}
                   </span>
                 ) : null}
-                {!observacoesAlwaysVisible && selected && hasObs ? (
+                {!observacoesAlwaysVisible && selected && hasObs && !salaoMode ? (
                   <ObservacaoPopover observacao={selected.observacao} className="shrink-0" />
                 ) : null}
                 {salaoMode && onCopySelected && onPrintSelected ? (

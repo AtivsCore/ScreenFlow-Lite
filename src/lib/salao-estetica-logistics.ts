@@ -945,6 +945,38 @@ export function countActiveBySalaoQueueTab(
 }
 
 /** Rótulo do botão de chamada conforme o posto alocado (cadeira vs sala). */
+export function resolveSalaoHoraMarcadaBadgeMeta(isSalaoSegment: boolean): {
+  prefix: string;
+  titlePrefix: string;
+} {
+  if (isSalaoSegment) {
+    return { prefix: "Horário", titlePrefix: "Horário de atendimento" };
+  }
+  return { prefix: "Retirada", titlePrefix: "Previsão de retirada" };
+}
+
+export function resolveSalaoHeaderServicoLabel(
+  row: Pick<
+    AtendimentoLite,
+    "observacao" | "cadastro_valores" | "especialidade_id" | "servicoNome"
+  >,
+  categories: CadastroCategoryEntry[],
+  lookups: CadastroLookups
+): string | null {
+  const label = resolveSalaoCategoryDisplay(
+    "sal-c3",
+    row.observacao,
+    row.cadastro_valores ?? {},
+    lookups,
+    categories,
+    {
+      especialidade_id: row.especialidade_id,
+      servicoNome: row.servicoNome,
+    }
+  );
+  return label?.trim() || null;
+}
+
 export function resolveSalaoChamarLabel(localNome: string | null | undefined): string {
   const n = (localNome ?? "").trim().toLowerCase();
   if (n.includes("estética") || n.includes("estetica") || n.includes("sala")) {
