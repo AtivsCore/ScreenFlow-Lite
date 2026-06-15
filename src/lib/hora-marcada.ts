@@ -41,6 +41,36 @@ export function isFutureHoraMarcada(horaMarcada: string | null | undefined): boo
   return ms > endToday.getTime();
 }
 
+/** Hoje (inclusive) ou datas futuras — usado na agenda do salão. */
+export function isTodayOrFutureHoraMarcada(horaMarcada: string | null | undefined): boolean {
+  if (!horaMarcada) return false;
+  const ms = Date.parse(horaMarcada);
+  if (Number.isNaN(ms)) return false;
+  const startToday = new Date();
+  startToday.setHours(0, 0, 0, 0);
+  return ms >= startToday.getTime();
+}
+
+/** Agendamento cujo horário cai no dia civil atual (fuso local). */
+export function isTodayHoraMarcada(horaMarcada: string | null | undefined): boolean {
+  if (!horaMarcada) return false;
+  const ms = Date.parse(horaMarcada);
+  if (Number.isNaN(ms)) return false;
+  const now = new Date();
+  const startToday = new Date(now);
+  startToday.setHours(0, 0, 0, 0);
+  const endToday = new Date(now);
+  endToday.setHours(23, 59, 59, 999);
+  return ms >= startToday.getTime() && ms <= endToday.getTime();
+}
+
+/** Valor mínimo para `datetime-local` a partir de agora (fuso local). */
+export function minDatetimeLocalFromNow(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function minFutureDatetimeLocal(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);

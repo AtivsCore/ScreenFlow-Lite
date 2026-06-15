@@ -95,6 +95,7 @@ import {
   buildSalaoMarkedNextObservacao,
   buildSalaoMoveToAguardandoPagamentoObservacao,
   buildSalaoMoveToFilaAtivaObservacao,
+  buildSalaoMoveToTabObservacao,
   buildSalaoSwapSortOrderObservacao,
   clearSalaoMarkedNextObservacao,
   collectSalaoHoraAutoMoveCandidates,
@@ -1164,6 +1165,55 @@ export default function Home() {
     [rows, visibleQueueTabs, patchAtendimentoById]
   );
 
+  const salaoAgendaSendToBalcao = useCallback(
+    async (row: AtendimentoLite) => {
+      const filaTab = resolveSalaoFilaAtivaTab(visibleQueueTabs);
+      const filaRows = filterAndSortSalaoQueue(rows, filaTab, visibleQueueTabs).filter(
+        (r) => r.id !== row.id
+      );
+      const observacao = buildSalaoMoveToFilaAtivaObservacao(
+        row.observacao,
+        visibleQueueTabs,
+        "top",
+        filaRows
+      );
+      setPending(true);
+      setLoadError(null);
+      try {
+        await patchAtendimentoById(row.id, { observacao });
+        setAppView("fila");
+        setQueueTabId(SALAO_TAB.FILA_ATIVA);
+      } finally {
+        setPending(false);
+      }
+    },
+    [rows, visibleQueueTabs, patchAtendimentoById]
+  );
+
+  const salaoAgendaAnteciparOrdem = useCallback(
+    async (row: AtendimentoLite) => {
+      const observacao = buildSalaoMoveToTabObservacao(row.observacao, {
+        id: SALAO_TAB.ORDEM,
+        preset: "ordem",
+      });
+      setPending(true);
+      setLoadError(null);
+      try {
+        await patchAtendimentoById(row.id, { observacao });
+        setAppView("fila");
+        setQueueTabId(SALAO_TAB.ORDEM);
+      } finally {
+        setPending(false);
+      }
+    },
+    [patchAtendimentoById]
+  );
+
+  const handleSalaoAgendaBooked = useCallback(() => {
+    setAppView("fila");
+    setQueueTabId(SALAO_TAB.HORA);
+  }, []);
+
   const salaoAutoMoveRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
@@ -1567,7 +1617,8 @@ export default function Home() {
   useKeyboardShortcuts(shortcutHandlers, sessionReady && !envMissing && appView === "fila");
 
   const handleOpenAgenda = useCallback(() => {
-    if (!proActive) {
+    const agendaAvailable = proActive || salaoEsteticaActive;
+    if (!agendaAvailable) {
       setProUpgradeTitle("Agenda no Plano PRO");
       setProUpgradeDescription(
         "Gerencie agendamentos futuros com data e hora livres, edite e exclua compromissos e planeje a operação com antecedência. Ative o Plano PRO pelo WhatsApp."
@@ -1576,7 +1627,7 @@ export default function Home() {
       return;
     }
     setAppView((v) => (v === "agenda" ? "fila" : "agenda"));
-  }, [proActive]);
+  }, [proActive, salaoEsteticaActive]);
 
   if (supabase && !sessionReady && !envMissing) {
     return (
@@ -1692,12 +1743,20 @@ export default function Home() {
               tenantConfig={tenantConfig}
               cadastroCategories={tenantConfig.cadastroCategories}
               cadastroLookups={cadastroLookups}
+              queueTabs={visibleQueueTabs}
               onRefresh={() => void refreshRows()}
               onEditRow={(row) => {
                 setEditFromAgenda(true);
                 setEditRow(row);
               }}
               onDeleteRow={handleDeleteRow}
+              onSalaoSendToBalcao={
+                salaoEsteticaActive ? (row) => void salaoAgendaSendToBalcao(row) : undefined
+              }
+              onSalaoAnteciparOrdem={
+                salaoEsteticaActive ? (row) => void salaoAgendaAnteciparOrdem(row) : undefined
+              }
+              onSalaoBooked={salaoEsteticaActive ? handleSalaoAgendaBooked : undefined}
             />
           ) : (
             <QueueSection

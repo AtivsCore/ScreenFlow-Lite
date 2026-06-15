@@ -21,6 +21,7 @@ import {
   type AtendimentoLite,
   type QueueTabId,
 } from "@/lib/atendimentos-lite";
+import { isTodayHoraMarcada, isTodayOrFutureHoraMarcada } from "@/lib/hora-marcada";
 import { isProPlan, type PlanTier } from "@/lib/plan-tier";
 import { TODOS_QUEUE_TAB, type CadastroCategoryEntry, type QueueTabEntry } from "@/lib/tenant-config";
 
@@ -1044,6 +1045,30 @@ export function buildSalaoProximosDaVez(
 /** Plano PRO: desbloqueia a aba consolidada de Agenda futura (não o campo no balcão). */
 export function canUseSalaoAgendaFeatures(planTier: PlanTier): boolean {
   return isProPlan(planTier);
+}
+
+/** Observação padrão para agendamentos criados pela Agenda PRO do salão. */
+export function buildSalaoAgendaBookingObservacao(
+  userObs: string | null,
+  salaoFields: SalaoCadastroFields
+): string | null {
+  return buildSalaoRegistryObservacao(userObs, "hora", SALAO_TAB.HORA, salaoFields);
+}
+
+/** Linha elegível na Agenda PRO: hoje ou futuro, coluna HORA MARCADA. */
+export function isSalaoAgendaEligibleRow(
+  row: AtendimentoLite,
+  queueTabs: Pick<QueueTabEntry, "id" | "preset">[]
+): boolean {
+  if (!isActiveQueueRow(row) || !isSalaoActiveStatus(row.status)) return false;
+  if (!isTodayOrFutureHoraMarcada(row.hora_marcada)) return false;
+  const horaTab = { id: SALAO_TAB.HORA, preset: "hora" as const };
+  return rowMatchesSalaoQueueTabEntry(row, horaTab, queueTabs);
+}
+
+/** Agendamento com horário no dia de hoje (ações rápidas na Agenda). */
+export function isSalaoAgendaTodayRow(row: Pick<AtendimentoLite, "hora_marcada">): boolean {
+  return isTodayHoraMarcada(row.hora_marcada);
 }
 
 /** Busca instantânea por nome do cliente (salão/estética). */
