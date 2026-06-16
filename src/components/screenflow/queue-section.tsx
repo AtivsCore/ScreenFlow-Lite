@@ -984,13 +984,11 @@ export function QueueSection({
     return buildSalaoProfissionalKanbanColumns(cadastroLookups, rows);
   }, [salaoProfissionalMirror, cadastroLookups, rows]);
 
-  useEffect(() => {
-    if (!salaoProfissionalMirror || viewMode === "kanban") return;
-    onViewModeChange("kanban");
-  }, [salaoProfissionalMirror, viewMode, onViewModeChange]);
-
   const isTabActive = useCallback(
     (tabId: string) => {
+      if (salaoProfissionalMirror) {
+        return queueTabId === tabId;
+      }
       if (aviacaoLogisticsActive) {
         return isAviacaoQueueTabSelected(queueTabId, tabId, mroSegmentId);
       }
@@ -999,7 +997,7 @@ export function QueueSection({
       }
       return queueTabId === tabId;
     },
-    [aviacaoLogisticsActive, salaoEsteticaActive, queueTabId, mroSegmentId]
+    [salaoProfissionalMirror, aviacaoLogisticsActive, salaoEsteticaActive, queueTabId, mroSegmentId]
   );
 
   const filterRowsForTab = useCallback(
@@ -1071,10 +1069,20 @@ export function QueueSection({
     return matched ?? queueTabs[0];
   }, [queueTabs, queueTabId, isTabActive]);
 
+  const activeSalaoColumn = useMemo(() => {
+    if (!salaoProfissionalMirror || salaoProfissionalColumns.length === 0) return null;
+    return (
+      salaoProfissionalColumns.find((c) => c.id === queueTabId) ?? salaoProfissionalColumns[0]!
+    );
+  }, [salaoProfissionalMirror, salaoProfissionalColumns, queueTabId]);
+
   const listRows = useMemo(() => {
+    if (salaoProfissionalMirror && activeSalaoColumn) {
+      return filterAndSortSalaoProfissionalKanbanColumn(rows, activeSalaoColumn);
+    }
     const tab = activeTab ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" };
     return filterRowsForTab(tab);
-  }, [activeTab, filterRowsForTab]);
+  }, [salaoProfissionalMirror, activeSalaoColumn, rows, activeTab, filterRowsForTab]);
 
   const kanbanColumns = salaoProfissionalMirror ? [] : flowTabs;
 
@@ -1348,7 +1356,6 @@ export function QueueSection({
                 <Columns3 className="size-3" strokeWidth={2} aria-hidden />
                 Kanban
               </button>
-              {!salaoProfissionalMirror ? (
               <button
                 type="button"
                 onClick={() => onViewModeChange("list")}
@@ -1361,7 +1368,6 @@ export function QueueSection({
                 <LayoutList className="size-3" strokeWidth={2} aria-hidden />
                 Lista
               </button>
-              ) : null}
             </div>
 
             <button
@@ -1375,13 +1381,35 @@ export function QueueSection({
           </div>
         </div>
 
-        {viewMode === "list" && !salaoProfissionalMirror ? (
+        {viewMode === "list" ? (
           <div
             className="mt-2 flex gap-0.5 overflow-x-auto pb-0.5 sf-scroll-y-hidden"
             role="tablist"
             aria-label="Vistas da fila"
           >
-            {queueTabs.map((t) => {
+            {salaoProfissionalMirror
+              ? salaoProfissionalColumns.map((column) => {
+                  const count = tabCounts[column.id];
+                  const label =
+                    typeof count === "number" ? `${column.label} (${count})` : column.label;
+                  return (
+                    <button
+                      key={column.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isTabActive(column.id)}
+                      onClick={() => onQueueTabId(column.id)}
+                      className={`shrink-0 whitespace-nowrap border-b-2 px-2 py-1 text-[10px] transition ${
+                        isTabActive(column.id)
+                          ? "border-orange-500 font-semibold text-zinc-900 dark:text-zinc-100"
+                          : "border-transparent font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })
+              : queueTabs.map((t) => {
               const count = tabCounts[t.id];
               const tabLabel = aviacaoLogisticsActive
                 ? resolveAviacaoKanbanColumnLabel(t, mroSegmentId)
@@ -1422,6 +1450,11 @@ export function QueueSection({
         {loading ? (
           <p className="flex flex-1 items-center justify-center text-xs text-zinc-500">Carregando registros…</p>
         ) : viewMode === "list" ? (
+          salaoProfissionalMirror && salaoProfissionalColumns.length === 0 ? (
+            <p className="flex flex-1 items-center justify-center text-xs text-zinc-500">
+              Nenhum profissional cadastrado para este tenant.
+            </p>
+          ) : (
           <div className="min-h-0 flex-1 overflow-auto sf-scroll-y">
             <table className="w-full min-w-[880px] table-fixed border-collapse text-left text-[11px] text-zinc-800 dark:text-zinc-100">
               <thead className="sticky top-0 z-[1] border-b border-zinc-200 bg-zinc-50 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/95 dark:text-zinc-400">
@@ -1466,25 +1499,43 @@ export function QueueSection({
                       onPrintRow={onPrintRow}
                       onCopyRow={(r) => void handleCopyRow(r)}
                       onDelete={(r) => void handleDelete(r)}
-                      onSalaoDefinirProximo={onSalaoDefinirProximo}
-                      listTabId={activeTab?.id}
+                      onSalaoDefinirProximo={
+                        salaoProfissionalMirror &&
+                        activeSalaoColumn?.kind === "aguardando_pagamento"
+                          ? undefined
+                          : onSalaoDefinirProximo
+                      }
+                      listTabId={
+                        salaoProfissionalMirror ? activeSalaoColumn?.id : activeTab?.id
+                      }
                       salaoFilaAtivaIndex={
-                        salaoEsteticaActive && activeTab?.id === SALAO_TAB.FILA_ATIVA ? rowIdx : -1
+                        !salaoProfissionalMirror &&
+                        salaoEsteticaActive &&
+                        activeTab?.id === SALAO_TAB.FILA_ATIVA
+                          ? rowIdx
+                          : -1
                       }
                       salaoFilaAtivaCount={
-                        salaoEsteticaActive && activeTab?.id === SALAO_TAB.FILA_ATIVA
+                        !salaoProfissionalMirror &&
+                        salaoEsteticaActive &&
+                        activeTab?.id === SALAO_TAB.FILA_ATIVA
                           ? listRows.length
                           : 0
                       }
-                      onSalaoAtenderAgora={onSalaoAtenderAgora}
-                      onSalaoMoveFilaUp={onSalaoMoveFilaUp}
-                      onSalaoMoveFilaDown={onSalaoMoveFilaDown}
+                      onSalaoAtenderAgora={
+                        salaoProfissionalMirror ? undefined : onSalaoAtenderAgora
+                      }
+                      onSalaoMoveFilaUp={salaoProfissionalMirror ? undefined : onSalaoMoveFilaUp}
+                      onSalaoMoveFilaDown={
+                        salaoProfissionalMirror ? undefined : onSalaoMoveFilaDown
+                      }
                     />
                   ))
                 )}
               </tbody>
             </table>
           </div>
+          )
         ) : salaoProfissionalMirror ? (
           salaoProfissionalColumns.length === 0 ? (
             <p className="flex flex-1 items-center justify-center text-xs text-zinc-500">
