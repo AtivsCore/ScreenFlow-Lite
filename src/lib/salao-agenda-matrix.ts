@@ -252,12 +252,44 @@ export function buildSalaoAgendaTimeSlotsFromBounds(bounds: SalaoAgendaGridMinut
   return slots;
 }
 
+/** Horários exatos (`HH:MM`) dos agendamentos do dia — inclui encaixes fracionados (ex.: 15:15). */
+export function extractSalaoAgendaAppointmentSlotTimes(
+  dayRows: Pick<AtendimentoLite, "hora_marcada">[]
+): string[] {
+  const times: string[] = [];
+  for (const row of dayRows) {
+    const minutes = isoToMinutesSinceMidnight(row.hora_marcada);
+    if (minutes === null) continue;
+    times.push(minutesToHHMM(minutes));
+  }
+  return times;
+}
+
+/** Une slots de 30 min com horários quebrados dos agendamentos; deduplica e ordena. */
+export function mergeSalaoAgendaTimeSlots(
+  baseSlots: string[],
+  appointmentTimes: string[]
+): string[] {
+  const merged = new Set(baseSlots);
+  for (const time of appointmentTimes) {
+    merged.add(time);
+  }
+  return [...merged].sort((a, b) => {
+    const ma = parseHHMMToMinutes(a);
+    const mb = parseHHMMToMinutes(b);
+    if (ma === null || mb === null) return a.localeCompare(b, "pt-BR");
+    return ma - mb;
+  });
+}
+
 export function computeSalaoAgendaTimeSlots(
   gridHours: SalaoAgendaGridHours,
   dayRows: Pick<AtendimentoLite, "hora_marcada">[]
 ): string[] {
   const bounds = resolveSalaoAgendaGridMinuteBounds(gridHours, dayRows);
-  return buildSalaoAgendaTimeSlotsFromBounds(bounds);
+  const baseSlots = buildSalaoAgendaTimeSlotsFromBounds(bounds);
+  const appointmentTimes = extractSalaoAgendaAppointmentSlotTimes(dayRows);
+  return mergeSalaoAgendaTimeSlots(baseSlots, appointmentTimes);
 }
 
 /** @deprecated Use {@link computeSalaoAgendaTimeSlots} */
@@ -274,13 +306,9 @@ export function buildDatetimeLocalForDayAndSlot(day: Date, slotHHMM: string): st
 }
 
 export function isoToAgendaSlotTimeHHMM(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) return null;
-  const d = new Date(ms);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const snapped = d.getMinutes() < 30 ? 0 : 30;
-  return `${pad(d.getHours())}:${pad(snapped)}`;
+  const minutes = isoToMinutesSinceMidnight(iso);
+  if (minutes === null) return null;
+  return minutesToHHMM(minutes);
 }
 
 export function resolveSalaoProfissionalId(

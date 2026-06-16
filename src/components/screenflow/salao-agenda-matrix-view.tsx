@@ -323,14 +323,14 @@ export function SalaoAgendaMatrixView({
           <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-[11px]">
               <thead>
-                <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/90">
-                  <th className="sticky left-0 z-20 min-w-[4.5rem] border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/95">
+                <tr className="border-b border-zinc-200 dark:border-zinc-800">
+                  <th className="sticky top-0 left-0 z-30 min-w-[4.5rem] border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-800/95">
                     Horário
                   </th>
                   {profissionais.map((prof) => (
                     <th
                       key={prof.id}
-                      className="min-w-[9rem] px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300"
+                      className="sticky top-0 z-20 min-w-[9rem] bg-zinc-50 px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:bg-zinc-800/95 dark:text-zinc-300"
                     >
                       {prof.label}
                     </th>

@@ -1130,6 +1130,7 @@ export function RegistryPatientModal({
                   type="datetime-local"
                   value={horaMarcada}
                   disabled={busy}
+                  step={60}
                   onChange={(e) => setHoraMarcada(e.target.value)}
                   className={REGISTRY_FIELD_CLASS}
                 />
