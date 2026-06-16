@@ -18,6 +18,8 @@ import {
 } from "@/lib/aviacao-logistics";
 import {
   SALAO_TAB,
+  buildSalaoProfissionalKanbanColumns,
+  filterAndSortSalaoProfissionalKanbanColumn,
   filterAndSortSalaoQueue,
   isSalaoPoolTabId,
   isSalaoQueueTabSelected,
@@ -29,6 +31,7 @@ import {
   resolveSalaoHoraMarcadaBadgeMeta,
   resolveSalaoQueueTabClickId,
   rowMatchesSalaoQueueSearch,
+  type SalaoProfissionalKanbanColumn,
 } from "@/lib/salao-estetica-logistics";
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
@@ -896,6 +899,8 @@ type QueueSectionProps = {
   onSalaoAtenderAgora?: (row: AtendimentoLite) => void;
   onSalaoMoveFilaUp?: (row: AtendimentoLite) => void;
   onSalaoMoveFilaDown?: (row: AtendimentoLite) => void;
+  /** Espelho diário por profissional (preset salao_estetica). */
+  salaoProfissionalMirror?: boolean;
 };
 
 export function QueueSection({
@@ -960,6 +965,7 @@ export function QueueSection({
   onSalaoAtenderAgora,
   onSalaoMoveFilaUp,
   onSalaoMoveFilaDown,
+  salaoProfissionalMirror = false,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
@@ -972,6 +978,16 @@ export function QueueSection({
 
   const flowTabs = useMemo(() => queueTabs.filter((t) => t.preset !== "todos"), [queueTabs]);
   const mroProfile = useMemo(() => resolveMroProfile(mroSegmentId), [mroSegmentId]);
+
+  const salaoProfissionalColumns = useMemo(() => {
+    if (!salaoProfissionalMirror) return [] as SalaoProfissionalKanbanColumn[];
+    return buildSalaoProfissionalKanbanColumns(cadastroLookups, rows);
+  }, [salaoProfissionalMirror, cadastroLookups, rows]);
+
+  useEffect(() => {
+    if (!salaoProfissionalMirror || viewMode === "kanban") return;
+    onViewModeChange("kanban");
+  }, [salaoProfissionalMirror, viewMode, onViewModeChange]);
 
   const isTabActive = useCallback(
     (tabId: string) => {
@@ -991,12 +1007,20 @@ export function QueueSection({
       if (aviacaoLogisticsActive) {
         return filterAndSortMroQueue(rows, tab, mroSegmentId);
       }
-      if (salaoEsteticaActive) {
+      if (salaoEsteticaActive && !salaoProfissionalMirror) {
         return filterAndSortSalaoQueue(rows, tab, queueTabs);
       }
       return filterAndSortQueue(rows, tab, { priorityLawEnabled });
     },
-    [aviacaoLogisticsActive, salaoEsteticaActive, rows, queueTabs, mroSegmentId, priorityLawEnabled]
+    [
+      aviacaoLogisticsActive,
+      salaoEsteticaActive,
+      salaoProfissionalMirror,
+      rows,
+      queueTabs,
+      mroSegmentId,
+      priorityLawEnabled,
+    ]
   );
 
   useEffect(() => {
@@ -1052,15 +1076,25 @@ export function QueueSection({
     return filterRowsForTab(tab);
   }, [activeTab, filterRowsForTab]);
 
-  const kanbanColumns = flowTabs;
+  const kanbanColumns = salaoProfissionalMirror ? [] : flowTabs;
+
+  const salaoProfissionalColumnRows = useMemo(() => {
+    if (!salaoProfissionalMirror) return {} as Record<string, AtendimentoLite[]>;
+    const map: Record<string, AtendimentoLite[]> = {};
+    for (const column of salaoProfissionalColumns) {
+      map[column.id] = filterAndSortSalaoProfissionalKanbanColumn(rows, column);
+    }
+    return map;
+  }, [salaoProfissionalMirror, salaoProfissionalColumns, rows]);
 
   const columnRows = useMemo(() => {
+    if (salaoProfissionalMirror) return salaoProfissionalColumnRows;
     const map: Record<string, AtendimentoLite[]> = {};
     for (const tab of kanbanColumns) {
       map[tab.id] = filterRowsForTab(tab);
     }
     return map;
-  }, [kanbanColumns, filterRowsForTab]);
+  }, [salaoProfissionalMirror, salaoProfissionalColumnRows, kanbanColumns, filterRowsForTab]);
 
   async function handleDelete(row: AtendimentoLite) {
     if (!confirm(`Excluir registro de “${row.nome ?? "cliente"}”?`)) return;
@@ -1089,7 +1123,10 @@ export function QueueSection({
       <div className="shrink-0 border-b border-zinc-200 px-2 py-2 dark:border-zinc-800">
         <div className="flex w-full items-center justify-between gap-2">
           <div className="flex min-w-0 shrink-0 items-center gap-1.5">
-            <h2 className="shrink-0 text-xs font-semibold text-zinc-800 dark:text-zinc-100">Fila em tempo real</h2>
+            <h2 className="shrink-0 text-xs font-semibold text-zinc-800 dark:text-zinc-100">
+              {salaoProfissionalMirror ? "Espelho de Profissionais" : "Fila em tempo real"}
+            </h2>
+            {!salaoProfissionalMirror ? (
             <button
               type="button"
               title="Configurar fluxo de abas"
@@ -1099,6 +1136,7 @@ export function QueueSection({
             >
               <Plus className="size-3.5" strokeWidth={2} aria-hidden />
             </button>
+            ) : null}
             {aviacaoLogisticsActive &&
             onAviacaoFilterPriorityOnlyChange &&
             onAviacaoHideAguardandoPecasChange &&
@@ -1310,6 +1348,7 @@ export function QueueSection({
                 <Columns3 className="size-3" strokeWidth={2} aria-hidden />
                 Kanban
               </button>
+              {!salaoProfissionalMirror ? (
               <button
                 type="button"
                 onClick={() => onViewModeChange("list")}
@@ -1322,6 +1361,7 @@ export function QueueSection({
                 <LayoutList className="size-3" strokeWidth={2} aria-hidden />
                 Lista
               </button>
+              ) : null}
             </div>
 
             <button
@@ -1335,7 +1375,7 @@ export function QueueSection({
           </div>
         </div>
 
-        {viewMode === "list" ? (
+        {viewMode === "list" && !salaoProfissionalMirror ? (
           <div
             className="mt-2 flex gap-0.5 overflow-x-auto pb-0.5 sf-scroll-y-hidden"
             role="tablist"
@@ -1445,6 +1485,93 @@ export function QueueSection({
               </tbody>
             </table>
           </div>
+        ) : salaoProfissionalMirror ? (
+          salaoProfissionalColumns.length === 0 ? (
+            <p className="flex flex-1 items-center justify-center text-xs text-zinc-500">
+              Nenhum profissional cadastrado para este tenant.
+            </p>
+          ) : (
+            <div className="flex min-h-0 w-full max-w-full flex-1 overflow-x-auto overflow-y-hidden pb-3 sf-scroll-x-hover">
+              <div className="flex h-full min-h-full w-max min-w-full gap-2">
+                {salaoProfissionalColumns.map((column) => {
+                  const cards = columnRows[column.id] ?? [];
+                  const count = tabCounts[column.id] ?? cards.length;
+                  const isPaymentColumn = column.kind === "aguardando_pagamento";
+                  return (
+                    <section
+                      key={column.id}
+                      className={`flex h-full min-h-0 max-h-full w-[240px] shrink-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-950/50 ${
+                        isPaymentColumn
+                          ? "sticky right-0 z-10 border-l border-zinc-200 bg-zinc-50 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.1)] dark:border-zinc-700 dark:bg-zinc-900/95 dark:shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.35)]"
+                          : ""
+                      }`}
+                    >
+                      <header
+                        className={`shrink-0 border-y border-zinc-200 px-2 py-0.5 dark:border-zinc-700 ${
+                          isPaymentColumn
+                            ? "bg-zinc-50 dark:bg-zinc-900/95"
+                            : "bg-zinc-100 dark:bg-zinc-800/80"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <h3
+                            className="truncate text-[8px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
+                            title={column.label}
+                          >
+                            {column.label}
+                          </h3>
+                          <span className="shrink-0 font-mono text-[8px] font-medium leading-none text-zinc-500 dark:text-zinc-400">
+                            {count}
+                          </span>
+                        </div>
+                      </header>
+
+                      <div className="sf-scroll-y-hidden h-0 min-h-0 flex-1 overflow-y-auto overscroll-y-contain bg-zinc-100 p-1 dark:bg-zinc-900/60">
+                        {cards.length === 0 ? (
+                          <p className="py-6 text-center text-[9px] text-zinc-400 dark:text-zinc-500">—</p>
+                        ) : (
+                          <div className={`flex flex-col ${compactKanbanActive ? "gap-0.5" : "gap-1"}`}>
+                            {cards.map((row) => (
+                              <KanbanCard
+                                key={row.id}
+                                row={row}
+                                isSel={row.id === selectedId}
+                                isCompactView={compactKanbanActive}
+                                priorityLawEnabled={priorityLawEnabled}
+                                notesInline={notesInline}
+                                aviacaoLogisticsActive={false}
+                                docasLogisticsActive={false}
+                                salaoEsteticaActive={salaoEsteticaActive}
+                                segmentoId={SALAO_ESTETICA_SEGMENT_ID}
+                                meta={resolveKanbanMeta(
+                                  row,
+                                  enabledCategories,
+                                  cadastroLookups,
+                                  false,
+                                  false,
+                                  salaoEsteticaActive
+                                )}
+                                deleting={deleting}
+                                onSelectId={onSelectId}
+                                onEditRow={onEditRow}
+                                onPrintRow={onPrintRow}
+                                onCopyRow={(r) => void handleCopyRow(r)}
+                                onDelete={(r) => void handleDelete(r)}
+                                onSalaoDefinirProximo={
+                                  !isPaymentColumn ? onSalaoDefinirProximo : undefined
+                                }
+                                kanbanColumnId={column.id}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </div>
+          )
         ) : kanbanColumns.length === 0 ? (
           <p className="flex flex-1 items-center justify-center text-xs text-zinc-500">
             Nenhuma coluna de fluxo configurada.

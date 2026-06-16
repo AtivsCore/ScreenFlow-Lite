@@ -300,6 +300,156 @@ export function isSalaoAguardandoPagamentoTabId(tabId: string | null | undefined
   return normalized === SALAO_TAB.AGUARDANDO_PAGAMENTO;
 }
 
+/** Coluna fallback para atendimentos de hoje sem profissional alocado. */
+export const SALAO_SEM_PROFISSIONAL_TAB_ID = "tab-sem-profissional" as const;
+
+export type SalaoProfissionalKanbanColumnKind =
+  | "profissional"
+  | "sem_profissional"
+  | "aguardando_pagamento";
+
+export type SalaoProfissionalKanbanColumn = {
+  id: string;
+  label: string;
+  kind: SalaoProfissionalKanbanColumnKind;
+  profissionalId?: string;
+};
+
+export function resolveSalaoProfissionalIdFromRow(
+  row: Pick<AtendimentoLite, "profissional_id" | "cadastro_valores">
+): string | null {
+  const direct = row.profissional_id?.trim();
+  if (direct) return direct;
+  const fromCadastro = row.cadastro_valores?.[SALAO_PROFISSIONAL_CATEGORY_ID]?.trim();
+  return fromCadastro || null;
+}
+
+export function isSalaoAguardandoPagamentoRow(
+  row: Pick<AtendimentoLite, "observacao">
+): boolean {
+  return isSalaoAguardandoPagamentoTabId(parseFilaTabId(row.observacao));
+}
+
+function isSalaoProfissionalKanbanEligibleRow(row: AtendimentoLite): boolean {
+  return isActiveQueueRow(row) && isSalaoActiveStatus(row.status) && isSalaoKanbanVisibleRow(row);
+}
+
+function compareSalaoProfissionalKanbanOrder(a: AtendimentoLite, b: AtendimentoLite): number {
+  const th = horaComparable(a.hora_marcada) - horaComparable(b.hora_marcada);
+  if (th !== 0) return th;
+  return compareQueueArrivalOrder(a, b);
+}
+
+/** Monta colunas do espelho diário: profissionais + fallback opcional + pagamento. */
+export function buildSalaoProfissionalKanbanColumns(
+  lookups: CadastroLookups,
+  rows: AtendimentoLite[]
+): SalaoProfissionalKanbanColumn[] {
+  const profissionais: SalaoProfissionalKanbanColumn[] = [...lookups.profissionais.entries()]
+    .map(([id, label]) => ({
+      id,
+      label: (label.trim() || id).toUpperCase(),
+      kind: "profissional" as const,
+      profissionalId: id,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+
+  const hasUnassigned = rows.some(
+    (row) =>
+      isSalaoProfissionalKanbanEligibleRow(row) &&
+      !isSalaoAguardandoPagamentoRow(row) &&
+      !resolveSalaoProfissionalIdFromRow(row)
+  );
+
+  const columns: SalaoProfissionalKanbanColumn[] = [...profissionais];
+
+  if (hasUnassigned) {
+    columns.push({
+      id: SALAO_SEM_PROFISSIONAL_TAB_ID,
+      label: "SEM PROFISSIONAL",
+      kind: "sem_profissional",
+    });
+  }
+
+  columns.push({
+    id: SALAO_TAB.AGUARDANDO_PAGAMENTO,
+    label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.AGUARDANDO_PAGAMENTO],
+    kind: "aguardando_pagamento",
+  });
+
+  return columns;
+}
+
+export function filterAndSortSalaoProfissionalKanbanColumn(
+  rows: AtendimentoLite[],
+  column: SalaoProfissionalKanbanColumn
+): AtendimentoLite[] {
+  const eligible = rows.filter(isSalaoProfissionalKanbanEligibleRow);
+
+  if (column.kind === "aguardando_pagamento") {
+    return eligible.filter(isSalaoAguardandoPagamentoRow).sort(compareSalaoProfissionalKanbanOrder);
+  }
+
+  if (column.kind === "sem_profissional") {
+    return eligible
+      .filter((row) => !isSalaoAguardandoPagamentoRow(row) && !resolveSalaoProfissionalIdFromRow(row))
+      .sort(compareSalaoProfissionalKanbanOrder);
+  }
+
+  const profId = column.profissionalId ?? column.id;
+  return eligible
+    .filter(
+      (row) =>
+        !isSalaoAguardandoPagamentoRow(row) && resolveSalaoProfissionalIdFromRow(row) === profId
+    )
+    .sort(compareSalaoProfissionalKanbanOrder);
+}
+
+export function countActiveBySalaoProfissionalKanban(
+  rows: AtendimentoLite[],
+  columns: SalaoProfissionalKanbanColumn[]
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const column of columns) {
+    counts[column.id] = filterAndSortSalaoProfissionalKanbanColumn(rows, column).length;
+  }
+  return counts;
+}
+
+/** Resolve a coluna do espelho onde o card deve aparecer / estar selecionado. */
+export function resolveSalaoProfissionalKanbanColumnId(
+  row: Pick<AtendimentoLite, "observacao" | "profissional_id" | "cadastro_valores">,
+  columns: SalaoProfissionalKanbanColumn[]
+): string | null {
+  if (isSalaoAguardandoPagamentoRow(row)) {
+    return SALAO_TAB.AGUARDANDO_PAGAMENTO;
+  }
+
+  const profId = resolveSalaoProfissionalIdFromRow(row);
+  if (!profId) {
+    return columns.some((c) => c.id === SALAO_SEM_PROFISSIONAL_TAB_ID)
+      ? SALAO_SEM_PROFISSIONAL_TAB_ID
+      : null;
+  }
+
+  if (columns.some((c) => c.profissionalId === profId || c.id === profId)) {
+    return profId;
+  }
+
+  return columns.some((c) => c.id === SALAO_SEM_PROFISSIONAL_TAB_ID)
+    ? SALAO_SEM_PROFISSIONAL_TAB_ID
+    : profId;
+}
+
+export function isSalaoProfissionalKanbanColumnId(
+  columnId: string | null | undefined
+): boolean {
+  if (!columnId) return false;
+  if (isSalaoAguardandoPagamentoTabId(columnId)) return false;
+  if (columnId === SALAO_SEM_PROFISSIONAL_TAB_ID) return true;
+  return !isSalaoQueueFilaTabId(columnId) && columnId !== TODOS_QUEUE_TAB.id;
+}
+
 export function resolveSalaoAguardandoPagamentoTab(
   queueTabs: Pick<QueueTabEntry, "id" | "preset" | "label">[]
 ): Pick<QueueTabEntry, "id" | "preset"> {
@@ -319,10 +469,21 @@ export type SalaoHeaderActionState = {
 
 /** Botão verde dinâmico do balcão conforme a coluna do card selecionado. */
 export function resolveSalaoHeaderActionState(
-  tabId: string | null | undefined
+  tabId: string | null | undefined,
+  options?: { profissionalMirror?: boolean }
 ): SalaoHeaderActionState {
   if (isSalaoAguardandoPagamentoTabId(tabId)) {
     return { showPrimary: true, primaryLabel: "Finalizar", primaryAction: "finalizar" };
+  }
+  if (options?.profissionalMirror) {
+    if (isSalaoProfissionalKanbanColumnId(tabId)) {
+      return {
+        showPrimary: true,
+        primaryLabel: "Aguardando Pagamento",
+        primaryAction: "aguardando_pagamento",
+      };
+    }
+    return { showPrimary: false, primaryLabel: "", primaryAction: null };
   }
   if (isSalaoQueueFilaTabId(tabId)) {
     return {

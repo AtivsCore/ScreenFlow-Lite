@@ -97,20 +97,22 @@ import {
   buildSalaoMoveToFilaAtivaObservacao,
   buildSalaoMoveToTabObservacao,
   buildSalaoSwapSortOrderObservacao,
+  buildSalaoProfissionalKanbanColumns,
   clearSalaoMarkedNextObservacao,
-  collectSalaoHoraAutoMoveCandidates,
-  countActiveBySalaoQueueTab,
+  countActiveBySalaoProfissionalKanban,
   filterAndSortSalaoQueue,
   filterSalaoKanbanOperationalRows,
   isSalaoAguardandoPagamentoTabId,
   isSalaoEsteticaSegment,
-  isSalaoQueueFilaTabId,
+  isSalaoProfissionalKanbanColumnId,
   isSalaoQueueTabIdInVisible,
   isSalaoWaitingStatus,
+  mergeSalaoObservacao,
+  parseSalaoCadastroFields,
   resolveSalaoFilaAtivaTab,
+  resolveSalaoProfissionalKanbanColumnId,
   resolveSalaoQueueTabClickId,
   resolveSalaoQueueTabs,
-  resolveSalaoTabIdFromObservacao,
 } from "@/lib/salao-estetica-logistics";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import type { RegistryInitialDraft } from "@/lib/salao-agenda-matrix";
@@ -482,42 +484,6 @@ export default function Home() {
     [aviacaoLogisticsActive, visibleQueueTabs]
   );
 
-  const salaoFlowTabs = useMemo(
-    () => (salaoEsteticaActive ? visibleQueueTabs.filter((t) => t.preset !== "todos") : []),
-    [salaoEsteticaActive, visibleQueueTabs]
-  );
-
-  const handleSelectId = useCallback(
-    (id: string) => {
-      startTransition(() => {
-        setSelectedId(id);
-        if (aviacaoLogisticsActive && aviacaoActiveColumns.length > 0) {
-          const row = rows.find((r) => r.id === id);
-          if (row) {
-            const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, aviacaoActiveColumns);
-            if (tabId) setQueueTabId(resolveAviacaoQueueTabClickId(tabId, mroSegmentId));
-          }
-        }
-        if (salaoEsteticaActive && salaoFlowTabs.length > 0) {
-          const row = rows.find((r) => r.id === id);
-          if (row) {
-            const tabId = resolveSalaoTabIdFromObservacao(row.observacao, salaoFlowTabs);
-            if (tabId) setQueueTabId(resolveSalaoQueueTabClickId(tabId));
-          }
-        }
-      });
-    },
-    [
-      startTransition,
-      aviacaoLogisticsActive,
-      salaoEsteticaActive,
-      aviacaoActiveColumns,
-      salaoFlowTabs,
-      rows,
-      mroSegmentId,
-    ]
-  );
-
   const queueDisplayRows = useMemo(() => {
     let result = rows;
     if (docasLogisticsActive) result = filterDocasQueueRowsForPlan(result, planTier);
@@ -544,14 +510,66 @@ export default function Home() {
     tenantConfig.segmentoAplicado,
   ]);
 
+  const salaoProfissionalKanbanColumns = useMemo(
+    () =>
+      salaoEsteticaActive
+        ? buildSalaoProfissionalKanbanColumns(cadastroLookups, queueDisplayRows)
+        : [],
+    [salaoEsteticaActive, cadastroLookups, queueDisplayRows]
+  );
+
+  const handleSelectId = useCallback(
+    (id: string) => {
+      startTransition(() => {
+        setSelectedId(id);
+        if (aviacaoLogisticsActive && aviacaoActiveColumns.length > 0) {
+          const row = rows.find((r) => r.id === id);
+          if (row) {
+            const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, aviacaoActiveColumns);
+            if (tabId) setQueueTabId(resolveAviacaoQueueTabClickId(tabId, mroSegmentId));
+          }
+        }
+        if (salaoEsteticaActive) {
+          const row = rows.find((r) => r.id === id);
+          if (row) {
+            const columnId = resolveSalaoProfissionalKanbanColumnId(
+              row,
+              salaoProfissionalKanbanColumns
+            );
+            if (columnId) setQueueTabId(columnId);
+          }
+        }
+      });
+    },
+    [
+      startTransition,
+      aviacaoLogisticsActive,
+      salaoEsteticaActive,
+      aviacaoActiveColumns,
+      salaoProfissionalKanbanColumns,
+      rows,
+      mroSegmentId,
+    ]
+  );
+
   const tabCounts = useMemo(
     () =>
       aviacaoLogisticsActive
         ? countActiveByMroQueueTab(queueDisplayRows, visibleQueueTabs, mroSegmentId)
         : salaoEsteticaActive
-          ? countActiveBySalaoQueueTab(queueDisplayRows, visibleQueueTabs)
+          ? countActiveBySalaoProfissionalKanban(
+              queueDisplayRows,
+              salaoProfissionalKanbanColumns
+            )
           : countActiveByQueueTab(queueDisplayRows, visibleQueueTabs),
-    [queueDisplayRows, visibleQueueTabs, aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId]
+    [
+      queueDisplayRows,
+      visibleQueueTabs,
+      aviacaoLogisticsActive,
+      salaoEsteticaActive,
+      salaoProfissionalKanbanColumns,
+      mroSegmentId,
+    ]
   );
 
   const selected = useMemo(
@@ -1039,9 +1057,9 @@ export default function Home() {
   }, [aviacaoLogisticsActive, selected, tenantConfig.cadastroCategories, cadastroLookups]);
 
   const selectedSalaoTabId = useMemo(() => {
-    if (!salaoEsteticaActive || !selected || salaoFlowTabs.length === 0) return null;
-    return resolveSalaoTabIdFromObservacao(selected.observacao, salaoFlowTabs);
-  }, [salaoEsteticaActive, selected, salaoFlowTabs]);
+    if (!salaoEsteticaActive || !selected) return null;
+    return resolveSalaoProfissionalKanbanColumnId(selected, salaoProfissionalKanbanColumns);
+  }, [salaoEsteticaActive, selected, salaoProfissionalKanbanColumns]);
 
   const updateSalaoStatus = useCallback(
     async (
@@ -1175,27 +1193,26 @@ export default function Home() {
 
   const salaoAgendaSendToBalcao = useCallback(
     async (row: AtendimentoLite) => {
-      const filaTab = resolveSalaoFilaAtivaTab(visibleQueueTabs);
-      const filaRows = filterAndSortSalaoQueue(rows, filaTab, visibleQueueTabs).filter(
-        (r) => r.id !== row.id
-      );
-      const observacao = buildSalaoMoveToFilaAtivaObservacao(
-        row.observacao,
-        visibleQueueTabs,
-        "top",
-        filaRows
-      );
+      const observacao = mergeSalaoObservacao({
+        current: row.observacao,
+        salaoFields: parseSalaoCadastroFields(row.observacao),
+        preserveTabWhenUnset: false,
+      });
       setPending(true);
       setLoadError(null);
       try {
         await patchAtendimentoById(row.id, { observacao });
         setAppView("fila");
-        setQueueTabId(SALAO_TAB.FILA_ATIVA);
+        const columnId = resolveSalaoProfissionalKanbanColumnId(
+          { ...row, observacao },
+          salaoProfissionalKanbanColumns
+        );
+        if (columnId) setQueueTabId(columnId);
       } finally {
         setPending(false);
       }
     },
-    [rows, visibleQueueTabs, patchAtendimentoById]
+    [patchAtendimentoById, salaoProfissionalKanbanColumns]
   );
 
   const salaoAgendaAnteciparOrdem = useCallback(
@@ -1217,37 +1234,10 @@ export default function Home() {
     [patchAtendimentoById]
   );
 
-  const salaoAutoMoveRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!salaoEsteticaActive || !sessionReady || pending || loading) return;
-
-    const filaTab = resolveSalaoFilaAtivaTab(visibleQueueTabs);
-    const candidates = collectSalaoHoraAutoMoveCandidates(rows, visibleQueueTabs);
-    const toMove = candidates.filter((row) => !salaoAutoMoveRef.current.has(row.id));
-    if (toMove.length === 0) return;
-
-    void (async () => {
-      for (const row of toMove) {
-        salaoAutoMoveRef.current.add(row.id);
-        const filaRows = filterAndSortSalaoQueue(rows, filaTab, visibleQueueTabs);
-        const observacao = buildSalaoMoveToFilaAtivaObservacao(
-          row.observacao,
-          visibleQueueTabs,
-          "bottom",
-          filaRows
-        );
-        await patchAtendimentoById(row.id, { observacao });
-      }
-    })();
-  }, [
-    rows,
-    salaoEsteticaActive,
-    sessionReady,
-    pending,
-    loading,
-    visibleQueueTabs,
-    patchAtendimentoById,
-  ]);
+    // Espelho por profissional: agendamentos aparecem na coluna do profissional alocado.
+  }, [salaoEsteticaActive, sessionReady, pending, loading]);
 
   const salaoPrimaryAction = useCallback(async () => {
     if (!selected || !selectedSalaoTabId) return;
@@ -1257,7 +1247,7 @@ export default function Home() {
       return;
     }
 
-    if (!isSalaoQueueFilaTabId(selectedSalaoTabId)) return;
+    if (!isSalaoProfissionalKanbanColumnId(selectedSalaoTabId)) return;
 
     const observacao = buildSalaoMoveToAguardandoPagamentoObservacao(
       selected.observacao,
@@ -1267,7 +1257,7 @@ export default function Home() {
     setLoadError(null);
     try {
       await patchAtendimento({ observacao });
-      setQueueTabId(resolveSalaoQueueTabClickId(SALAO_TAB.AGUARDANDO_PAGAMENTO));
+      setQueueTabId(SALAO_TAB.AGUARDANDO_PAGAMENTO);
     } finally {
       setPending(false);
     }
@@ -1882,6 +1872,7 @@ export default function Home() {
               onSalaoMoveFilaDown={
                 salaoEsteticaActive ? (row) => void salaoMoveFilaAtiva(row, 1) : undefined
               }
+              salaoProfissionalMirror={salaoEsteticaActive}
             />
           )}
         </main>

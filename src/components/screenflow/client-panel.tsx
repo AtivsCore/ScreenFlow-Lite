@@ -518,7 +518,10 @@ export const ClientPanel = memo(function ClientPanel({
   );
 
   const salaoHeaderAction = useMemo(
-    () => (salaoMode ? resolveSalaoHeaderActionState(salaoCurrentTabId) : null),
+    () =>
+      salaoMode
+        ? resolveSalaoHeaderActionState(salaoCurrentTabId, { profissionalMirror: true })
+        : null,
     [salaoMode, salaoCurrentTabId]
   );
 
