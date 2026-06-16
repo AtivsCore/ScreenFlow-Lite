@@ -7,23 +7,40 @@ import {
   buildSalaoAgendaProfissionalColumns,
   buildSalaoAgendaRegistryDraft,
   buildSalaoAgendaSlotOccupancy,
-  buildSalaoAgendaTimeSlots,
   canShowSalaoAgendaQuickActions,
+  computeSalaoAgendaTimeSlots,
   filterSalaoAgendaRowsForDay,
+  formatDayForDateInput,
   formatLocalDayLabel,
+  gridHoursToTimeInputValue,
   isLocalDayToday,
+  parseDateInputValue,
+  readSalaoAgendaGridHours,
   resolveSalaoAgendaServicoLabel,
   resolveSalaoAgendaSlotAppearance,
   startOfLocalDay,
+  timeInputValueToHour,
+  writeSalaoAgendaGridHours,
   type RegistryInitialDraft,
+  type SalaoAgendaGridHours,
 } from "@/lib/salao-agenda-matrix";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
-import { ArrowRightCircle, CalendarPlus, ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  ArrowRightCircle,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Settings2,
+  Trash2,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type SalaoAgendaMatrixViewProps = {
   rows: AtendimentoLite[];
   loading: boolean;
+  tenantId?: string | null;
   cadastroCategories: CadastroCategoryEntry[];
   cadastroLookups: CadastroLookups;
   queueTabs: QueueTabEntry[];
@@ -34,9 +51,120 @@ type SalaoAgendaMatrixViewProps = {
   onSalaoAnteciparOrdem?: (row: AtendimentoLite) => void | Promise<void>;
 };
 
+function SalaoAgendaGridSettingsPopover({
+  tenantId,
+  gridHours,
+  onSave,
+}: {
+  tenantId: string | null | undefined;
+  gridHours: SalaoAgendaGridHours;
+  onSave: (hours: SalaoAgendaGridHours) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftStart, setDraftStart] = useState(() => gridHoursToTimeInputValue(gridHours.startHour));
+  const [draftEnd, setDraftEnd] = useState(() => gridHoursToTimeInputValue(gridHours.endHour));
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setDraftStart(gridHoursToTimeInputValue(gridHours.startHour));
+    setDraftEnd(gridHoursToTimeInputValue(gridHours.endHour));
+  }, [open, gridHours.startHour, gridHours.endHour]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  function handleSave() {
+    const startHour = timeInputValueToHour(draftStart);
+    const endHour = timeInputValueToHour(draftEnd);
+    if (startHour === null || endHour === null) return;
+    const saved = writeSalaoAgendaGridHours(tenantId, { startHour, endHour });
+    onSave(saved);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        title="Configurar grade"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[10px] font-medium text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300 dark:hover:bg-zinc-700"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Settings2 className="size-3.5" strokeWidth={2} aria-hidden />
+        <span className="hidden sm:inline">Horário</span>
+      </button>
+
+      {open ? (
+        <div
+          role="dialog"
+          aria-label="Horário comercial da grade"
+          className="absolute right-0 top-full z-30 mt-1.5 w-[min(16rem,calc(100vw-1.5rem))] rounded-lg border border-zinc-200 bg-white p-3 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          <p className="text-[11px] font-semibold text-zinc-800 dark:text-zinc-100">
+            Horário comercial
+          </p>
+          <p className="mt-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
+            Define o intervalo padrão da grade. Agendamentos fora desse horário esticam a visualização
+            automaticamente.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">Início</span>
+              <input
+                type="time"
+                value={draftStart}
+                step={1800}
+                onChange={(e) => setDraftStart(e.target.value)}
+                className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] font-mono text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">Fim</span>
+              <input
+                type="time"
+                value={draftEnd}
+                step={1800}
+                onChange={(e) => setDraftEnd(e.target.value)}
+                className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[11px] font-mono text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex justify-end gap-1.5">
+            <button
+              type="button"
+              className="rounded-md px-2 py-1 text-[10px] font-medium text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              onClick={() => setOpen(false)}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-zinc-900 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              onClick={handleSave}
+            >
+              Salvar
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function SalaoAgendaMatrixView({
   rows,
   loading,
+  tenantId = null,
   cadastroCategories,
   cadastroLookups,
   queueTabs,
@@ -47,10 +175,16 @@ export function SalaoAgendaMatrixView({
   onSalaoAnteciparOrdem,
 }: SalaoAgendaMatrixViewProps) {
   const [selectedDay, setSelectedDay] = useState(() => startOfLocalDay(new Date()));
+  const [gridHours, setGridHours] = useState<SalaoAgendaGridHours>(() =>
+    readSalaoAgendaGridHours(tenantId)
+  );
   const [deleting, setDeleting] = useState<string | null>(null);
   const [quickActionId, setQuickActionId] = useState<string | null>(null);
 
-  const timeSlots = useMemo(() => buildSalaoAgendaTimeSlots(), []);
+  useEffect(() => {
+    setGridHours(readSalaoAgendaGridHours(tenantId));
+  }, [tenantId]);
+
   const profissionais = useMemo(
     () => buildSalaoAgendaProfissionalColumns(cadastroLookups),
     [cadastroLookups]
@@ -61,6 +195,11 @@ export function SalaoAgendaMatrixView({
     [rows, selectedDay, queueTabs]
   );
 
+  const timeSlots = useMemo(
+    () => computeSalaoAgendaTimeSlots(gridHours, dayRows),
+    [gridHours, dayRows]
+  );
+
   const occupancy = useMemo(
     () => buildSalaoAgendaSlotOccupancy(dayRows, profissionais.map((p) => p.id)),
     [dayRows, profissionais]
@@ -68,6 +207,12 @@ export function SalaoAgendaMatrixView({
 
   const dayLabel = formatLocalDayLabel(selectedDay);
   const isToday = isLocalDayToday(selectedDay);
+  const dateInputValue = formatDayForDateInput(selectedDay);
+
+  const handleDateInputChange = useCallback((value: string) => {
+    const parsed = parseDateInputValue(value);
+    if (parsed) setSelectedDay(parsed);
+  }, []);
 
   async function handleDelete(row: AtendimentoLite) {
     if (!confirm(`Excluir agendamento de “${row.nome ?? "cliente"}”?`)) return;
@@ -134,7 +279,25 @@ export function SalaoAgendaMatrixView({
               <ChevronRight className="size-4" strokeWidth={2} />
             </button>
           </div>
-          <span className="text-[11px] font-medium capitalize text-zinc-600 dark:text-zinc-300">
+
+          <label className="relative inline-flex items-center">
+            <span className="sr-only">Ir para data</span>
+            <input
+              type="date"
+              value={dateInputValue}
+              onChange={(e) => handleDateInputChange(e.target.value)}
+              className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px] font-medium text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-200 [color-scheme:light] dark:[color-scheme:dark]"
+              title="Selecionar data"
+            />
+          </label>
+
+          <SalaoAgendaGridSettingsPopover
+            tenantId={tenantId}
+            gridHours={gridHours}
+            onSave={setGridHours}
+          />
+
+          <span className="hidden min-[480px]:inline text-[11px] font-medium capitalize text-zinc-600 dark:text-zinc-300">
             {dayLabel}
           </span>
           <button
@@ -143,7 +306,8 @@ export function SalaoAgendaMatrixView({
             className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
           >
             <CalendarPlus className="size-3.5" strokeWidth={2} aria-hidden />
-            Novo agendamento
+            <span className="hidden sm:inline">Novo agendamento</span>
+            <span className="sm:hidden">Novo</span>
           </button>
         </div>
       </div>

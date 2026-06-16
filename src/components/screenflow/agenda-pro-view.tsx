@@ -96,6 +96,7 @@ export function AgendaProView({
         <SalaoAgendaMatrixView
           rows={rows}
           loading={loading}
+          tenantId={tenantId}
           cadastroCategories={cadastroCategories}
           cadastroLookups={cadastroLookups}
           queueTabs={queueTabs}

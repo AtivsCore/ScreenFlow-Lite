@@ -11,9 +11,27 @@ import {
 import { isFutureHoraMarcada, isTodayHoraMarcada } from "@/lib/hora-marcada";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
 
-export const SALAO_AGENDA_SLOT_START_HOUR = 8;
-export const SALAO_AGENDA_SLOT_END_HOUR = 20;
+export const SALAO_AGENDA_DEFAULT_START_HOUR = 7;
+export const SALAO_AGENDA_DEFAULT_END_HOUR = 22;
+/** @deprecated Use {@link SALAO_AGENDA_DEFAULT_START_HOUR} */
+export const SALAO_AGENDA_SLOT_START_HOUR = SALAO_AGENDA_DEFAULT_START_HOUR;
+/** @deprecated Use {@link SALAO_AGENDA_DEFAULT_END_HOUR} */
+export const SALAO_AGENDA_SLOT_END_HOUR = SALAO_AGENDA_DEFAULT_END_HOUR;
 export const SALAO_AGENDA_SLOT_MINUTES = 30;
+
+export const SALAO_AGENDA_HOURS_STORAGE_PREFIX = "sf-salao-agenda-hours";
+
+export type SalaoAgendaGridHours = {
+  /** Hora de abertura (0–23), ex.: 7 → 07:00 */
+  startHour: number;
+  /** Hora de fechamento (1–24), ex.: 22 → último slot 21:30 */
+  endHour: number;
+};
+
+export const DEFAULT_SALAO_AGENDA_GRID_HOURS: SalaoAgendaGridHours = {
+  startHour: SALAO_AGENDA_DEFAULT_START_HOUR,
+  endHour: SALAO_AGENDA_DEFAULT_END_HOUR,
+};
 
 export type SalaoAgendaProfissionalColumn = {
   id: string;
@@ -69,16 +87,182 @@ export function isLocalDayToday(day: Date): boolean {
   return isSameLocalCalendarDay(new Date().toISOString(), day);
 }
 
-/** Gera slots de 08:00 até 19:30 (blocos de 30 min até 20:00). */
-export function buildSalaoAgendaTimeSlots(): string[] {
+export function formatDayForDateInput(day: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
-  const slots: string[] = [];
-  for (let hour = SALAO_AGENDA_SLOT_START_HOUR; hour < SALAO_AGENDA_SLOT_END_HOUR; hour++) {
-    for (const minute of [0, 30]) {
-      slots.push(`${pad(hour)}:${pad(minute)}`);
+  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+}
+
+export function parseDateInputValue(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const date = Number(m[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(date)) return null;
+  const d = new Date(year, month - 1, date);
+  if (
+    d.getFullYear() !== year ||
+    d.getMonth() !== month - 1 ||
+    d.getDate() !== date
+  ) {
+    return null;
+  }
+  return startOfLocalDay(d);
+}
+
+export function salaoAgendaHoursStorageKey(tenantId: string | null | undefined): string {
+  const tid = tenantId?.trim();
+  return `${SALAO_AGENDA_HOURS_STORAGE_PREFIX}:${tid || "default"}`;
+}
+
+function clampGridHour(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(value)));
+}
+
+export function normalizeSalaoAgendaGridHours(
+  raw: Partial<SalaoAgendaGridHours> | null | undefined
+): SalaoAgendaGridHours {
+  const startHour = clampGridHour(
+    raw?.startHour ?? DEFAULT_SALAO_AGENDA_GRID_HOURS.startHour,
+    0,
+    23
+  );
+  let endHour = clampGridHour(
+    raw?.endHour ?? DEFAULT_SALAO_AGENDA_GRID_HOURS.endHour,
+    1,
+    24
+  );
+  if (endHour <= startHour) {
+    endHour = Math.min(24, startHour + 1);
+  }
+  return { startHour, endHour };
+}
+
+export function readSalaoAgendaGridHours(tenantId: string | null | undefined): SalaoAgendaGridHours {
+  if (typeof window === "undefined") return DEFAULT_SALAO_AGENDA_GRID_HOURS;
+  try {
+    const raw = window.localStorage.getItem(salaoAgendaHoursStorageKey(tenantId));
+    if (!raw) return DEFAULT_SALAO_AGENDA_GRID_HOURS;
+    const parsed = JSON.parse(raw) as Partial<SalaoAgendaGridHours>;
+    return normalizeSalaoAgendaGridHours(parsed);
+  } catch {
+    return DEFAULT_SALAO_AGENDA_GRID_HOURS;
+  }
+}
+
+export function writeSalaoAgendaGridHours(
+  tenantId: string | null | undefined,
+  hours: SalaoAgendaGridHours
+): SalaoAgendaGridHours {
+  const normalized = normalizeSalaoAgendaGridHours(hours);
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(
+        salaoAgendaHoursStorageKey(tenantId),
+        JSON.stringify(normalized)
+      );
+    } catch {
+      /* quota / private mode — grade usa defaults em memória */
     }
   }
+  return normalized;
+}
+
+export function parseHHMMToMinutes(hhmm: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const hours = Number(m[1]);
+  const minutes = Number(m[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+export function minutesToHHMM(totalMinutes: number): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const clamped = Math.max(0, Math.min(24 * 60 - 1, Math.trunc(totalMinutes)));
+  const hours = Math.floor(clamped / 60);
+  const minutes = clamped % 60;
+  return `${pad(hours)}:${pad(minutes)}`;
+}
+
+export function gridHoursToTimeInputValue(hour: number): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const h = clampGridHour(hour, 0, 23);
+  return `${pad(h)}:00`;
+}
+
+export function timeInputValueToHour(value: string): number | null {
+  const minutes = parseHHMMToMinutes(value);
+  if (minutes === null) return null;
+  return Math.floor(minutes / 60);
+}
+
+export function isoToMinutesSinceMidnight(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return null;
+  const d = new Date(ms);
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+export type SalaoAgendaGridMinuteBounds = {
+  startMinutes: number;
+  endMinutes: number;
+};
+
+/** Calcula limites da grade: padrão comercial + auto-stretch pelos agendamentos do dia. */
+export function resolveSalaoAgendaGridMinuteBounds(
+  gridHours: SalaoAgendaGridHours,
+  dayRows: Pick<AtendimentoLite, "hora_marcada">[]
+): SalaoAgendaGridMinuteBounds {
+  const normalized = normalizeSalaoAgendaGridHours(gridHours);
+  let startMinutes = normalized.startHour * 60;
+  let endMinutes = normalized.endHour * 60;
+
+  for (const row of dayRows) {
+    const appointmentMinutes = isoToMinutesSinceMidnight(row.hora_marcada);
+    if (appointmentMinutes === null) continue;
+    startMinutes = Math.min(startMinutes, appointmentMinutes);
+    endMinutes = Math.max(endMinutes, appointmentMinutes);
+  }
+
+  startMinutes = Math.floor(startMinutes / SALAO_AGENDA_SLOT_MINUTES) * SALAO_AGENDA_SLOT_MINUTES;
+  endMinutes =
+    Math.ceil((endMinutes + 1) / SALAO_AGENDA_SLOT_MINUTES) * SALAO_AGENDA_SLOT_MINUTES;
+
+  if (endMinutes <= startMinutes) {
+    endMinutes = startMinutes + SALAO_AGENDA_SLOT_MINUTES;
+  }
+
+  return { startMinutes, endMinutes };
+}
+
+/** Gera slots de 30 min entre os limites calculados (inclusive auto-stretch). */
+export function buildSalaoAgendaTimeSlotsFromBounds(bounds: SalaoAgendaGridMinuteBounds): string[] {
+  const slots: string[] = [];
+  for (
+    let m = bounds.startMinutes;
+    m + SALAO_AGENDA_SLOT_MINUTES <= bounds.endMinutes;
+    m += SALAO_AGENDA_SLOT_MINUTES
+  ) {
+    slots.push(minutesToHHMM(m));
+  }
   return slots;
+}
+
+export function computeSalaoAgendaTimeSlots(
+  gridHours: SalaoAgendaGridHours,
+  dayRows: Pick<AtendimentoLite, "hora_marcada">[]
+): string[] {
+  const bounds = resolveSalaoAgendaGridMinuteBounds(gridHours, dayRows);
+  return buildSalaoAgendaTimeSlotsFromBounds(bounds);
+}
+
+/** @deprecated Use {@link computeSalaoAgendaTimeSlots} */
+export function buildSalaoAgendaTimeSlots(): string[] {
+  return computeSalaoAgendaTimeSlots(DEFAULT_SALAO_AGENDA_GRID_HOURS, []);
 }
 
 export function buildDatetimeLocalForDayAndSlot(day: Date, slotHHMM: string): string {
