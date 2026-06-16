@@ -105,6 +105,7 @@ import {
   isSalaoAguardandoPagamentoTabId,
   isSalaoEsteticaSegment,
   isSalaoProfissionalKanbanColumnId,
+  isSalaoProfissionalMirrorQueueTabId,
   isSalaoQueueTabIdInVisible,
   isSalaoWaitingStatus,
   mergeSalaoObservacao,
@@ -114,6 +115,7 @@ import {
   resolveSalaoQueueTabClickId,
   resolveSalaoQueueTabs,
 } from "@/lib/salao-estetica-logistics";
+import { TODOS_TAB_ID } from "@/lib/tenant-config";
 import { applySegmentPreset, shouldAutoApplySegmentPreset } from "@/lib/segment-presets";
 import type { RegistryInitialDraft } from "@/lib/salao-agenda-matrix";
 import { parseTenantIdParam, resolveDefaultTenantId } from "@/lib/tenant-id";
@@ -461,13 +463,28 @@ export default function Home() {
         : resolveVisibleQueueTabs(tenantConfig);
     const ids = visible.map((t) => t.id);
     if (!ids.length) return;
+
+    if (salaoEsteticaActive) {
+      const profIds = [...cadastroLookups.profissionais.keys()];
+      if (isSalaoProfissionalMirrorQueueTabId(queueTabId, profIds)) return;
+      if (!isSalaoQueueTabIdInVisible(queueTabId, ids)) {
+        setQueueTabId(TODOS_TAB_ID);
+      }
+      return;
+    }
+
     const matches = aviacaoLogisticsActive
       ? isAviacaoQueueTabIdInVisible(queueTabId, ids, mroSegmentId)
-      : salaoEsteticaActive
-        ? isSalaoQueueTabIdInVisible(queueTabId, ids)
-        : ids.includes(queueTabId);
+      : ids.includes(queueTabId);
     if (!matches) setQueueTabId(ids[0]!);
-  }, [tenantConfig, queueTabId, aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId]);
+  }, [
+    tenantConfig,
+    queueTabId,
+    aviacaoLogisticsActive,
+    salaoEsteticaActive,
+    mroSegmentId,
+    cadastroLookups.profissionais,
+  ]);
 
   const visibleQueueTabs = useMemo(
     () =>
@@ -605,15 +622,18 @@ export default function Home() {
 
   const handleQueueTabId = useCallback(
     (id: string) => {
+      if (salaoEsteticaActive) {
+        const profIds = [...cadastroLookups.profissionais.keys()];
+        setQueueTabId(
+          isSalaoProfissionalMirrorQueueTabId(id, profIds) ? id : resolveSalaoQueueTabClickId(id)
+        );
+        return;
+      }
       setQueueTabId(
-        aviacaoLogisticsActive
-          ? resolveAviacaoQueueTabClickId(id, mroSegmentId)
-          : salaoEsteticaActive
-            ? resolveSalaoQueueTabClickId(id)
-            : id
+        aviacaoLogisticsActive ? resolveAviacaoQueueTabClickId(id, mroSegmentId) : id
       );
     },
-    [aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId]
+    [aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId, cadastroLookups.profissionais]
   );
 
   const tenantIdForInsert = effectiveTenantId;

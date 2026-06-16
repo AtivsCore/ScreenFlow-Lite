@@ -439,21 +439,79 @@ export function isSalaoProfissionalListTodosTab(
   return tab.kind === "todos" || tab.id === TODOS_TAB_ID;
 }
 
-export function filterSalaoProfissionalListTabRows(
-  rows: AtendimentoLite[],
-  tab: SalaoProfissionalListTab
-): AtendimentoLite[] {
-  if (isSalaoProfissionalListTodosTab(tab)) {
-    return filterAllSalaoProfissionalKanbanRows(rows);
-  }
-  return filterAndSortSalaoProfissionalKanbanColumn(rows, tab);
-}
-
 export function resolveSalaoProfissionalListActiveTab(
   tabs: SalaoProfissionalListTab[],
   queueTabId: string
 ): SalaoProfissionalListTab {
-  return tabs.find((t) => t.id === queueTabId) ?? tabs[0] ?? { id: TODOS_TAB_ID, label: "TODOS", kind: "todos" };
+  const direct = tabs.find((t) => t.id === queueTabId);
+  if (direct) return direct;
+
+  const byProfissionalId = tabs.find(
+    (t) =>
+      t.kind === "profissional" &&
+      (t.profissionalId === queueTabId || t.id === queueTabId)
+  );
+  if (byProfissionalId) return byProfissionalId;
+
+  return tabs[0] ?? { id: TODOS_TAB_ID, label: "TODOS", kind: "todos" };
+}
+
+/** IDs válidos do espelho (lista/kanban) — evita reset indevido para abas legadas. */
+export function isSalaoProfissionalMirrorQueueTabId(
+  tabId: string,
+  profissionalIds: readonly string[]
+): boolean {
+  if (!tabId.trim()) return false;
+  if (tabId === TODOS_TAB_ID) return true;
+  if (tabId === SALAO_TAB.AGUARDANDO_PAGAMENTO) return true;
+  if (tabId === SALAO_SEM_PROFISSIONAL_TAB_ID) return true;
+  return profissionalIds.includes(tabId);
+}
+
+/** Filtra linhas da tabela do modo Lista conforme a aba ativa. */
+export function filterSalaoProfissionalListTabRows(
+  rows: AtendimentoLite[],
+  tab: SalaoProfissionalListTab
+): AtendimentoLite[] {
+  return filterSalaoProfissionalListTabRowsById(rows, tab.id, tab);
+}
+
+export function filterSalaoProfissionalListTabRowsById(
+  rows: AtendimentoLite[],
+  activeTabId: string,
+  tab?: SalaoProfissionalListTab
+): AtendimentoLite[] {
+  if (activeTabId === TODOS_TAB_ID || tab?.kind === "todos") {
+    return filterAllSalaoProfissionalKanbanRows(rows);
+  }
+
+  if (activeTabId === SALAO_TAB.AGUARDANDO_PAGAMENTO || tab?.kind === "aguardando_pagamento") {
+    return filterAndSortSalaoProfissionalKanbanColumn(rows, {
+      id: SALAO_TAB.AGUARDANDO_PAGAMENTO,
+      label: SALAO_QUEUE_TAB_LABELS[SALAO_TAB.AGUARDANDO_PAGAMENTO],
+      kind: "aguardando_pagamento",
+    });
+  }
+
+  if (activeTabId === SALAO_SEM_PROFISSIONAL_TAB_ID || tab?.kind === "sem_profissional") {
+    return filterAndSortSalaoProfissionalKanbanColumn(rows, {
+      id: SALAO_SEM_PROFISSIONAL_TAB_ID,
+      label: "SEM PROFISSIONAL",
+      kind: "sem_profissional",
+    });
+  }
+
+  const profId =
+    tab?.kind === "profissional"
+      ? tab.profissionalId ?? tab.id
+      : activeTabId;
+
+  return filterAndSortSalaoProfissionalKanbanColumn(rows, {
+    id: profId,
+    label: "",
+    kind: "profissional",
+    profissionalId: profId,
+  });
 }
 
 /** Resolve a coluna do espelho onde o card deve aparecer / estar selecionado. */

@@ -23,6 +23,7 @@ import {
   filterAndSortSalaoProfissionalKanbanColumn,
   filterAndSortSalaoQueue,
   filterSalaoProfissionalListTabRows,
+  filterSalaoProfissionalListTabRowsById,
   isSalaoPoolTabId,
   isSalaoProfissionalListTodosTab,
   isSalaoQueueTabSelected,
@@ -40,7 +41,7 @@ import {
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
-import { type CadastroCategoryEntry, type ObservacoesVisibility, type QueueTabEntry } from "@/lib/tenant-config";
+import { TODOS_TAB_ID, type CadastroCategoryEntry, type ObservacoesVisibility, type QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AviacaoHangarStepper } from "@/components/screenflow/aviacao-hangar-stepper";
 import { AviacaoQueueFilterPopover } from "@/components/screenflow/aviacao-queue-filter-popover";
@@ -1096,9 +1097,12 @@ export function QueueSection({
     if (salaoProfissionalMirror && activeSalaoListTab) {
       return filterSalaoProfissionalListTabRows(rows, activeSalaoListTab);
     }
+    if (salaoProfissionalMirror) {
+      return filterSalaoProfissionalListTabRowsById(rows, queueTabId);
+    }
     const tab = activeTab ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" };
     return filterRowsForTab(tab);
-  }, [salaoProfissionalMirror, activeSalaoListTab, rows, activeTab, filterRowsForTab]);
+  }, [salaoProfissionalMirror, activeSalaoListTab, rows, queueTabId, activeTab, filterRowsForTab]);
 
   const isSalaoListPaymentTab =
     salaoProfissionalMirror &&
@@ -1135,6 +1139,16 @@ export function QueueSection({
       setDeleting(null);
     }
   }
+
+  const handleViewModeChange = useCallback(
+    (mode: QueueViewMode) => {
+      if (salaoProfissionalMirror) {
+        onQueueTabId(TODOS_TAB_ID);
+      }
+      onViewModeChange(mode);
+    },
+    [salaoProfissionalMirror, onQueueTabId, onViewModeChange]
+  );
 
   return (
     <TooltipProvider>
@@ -1368,7 +1382,7 @@ export function QueueSection({
             >
               <button
                 type="button"
-                onClick={() => onViewModeChange("kanban")}
+                onClick={() => handleViewModeChange("kanban")}
                 className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
                   viewMode === "kanban"
                     ? "bg-orange-500 text-white"
@@ -1380,7 +1394,7 @@ export function QueueSection({
               </button>
               <button
                 type="button"
-                onClick={() => onViewModeChange("list")}
+                onClick={() => handleViewModeChange("list")}
                 className={`flex items-center gap-1 border-l border-zinc-200 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition dark:border-zinc-700 ${
                   viewMode === "list"
                     ? "bg-orange-500 text-white"
