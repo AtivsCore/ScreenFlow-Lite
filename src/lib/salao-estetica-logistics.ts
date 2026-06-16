@@ -23,7 +23,7 @@ import {
 } from "@/lib/atendimentos-lite";
 import { isTodayHoraMarcada, isTodayOrFutureHoraMarcada } from "@/lib/hora-marcada";
 import { isProPlan, type PlanTier } from "@/lib/plan-tier";
-import { TODOS_QUEUE_TAB, type CadastroCategoryEntry, type QueueTabEntry } from "@/lib/tenant-config";
+import { TODOS_QUEUE_TAB, TODOS_TAB_ID, type CadastroCategoryEntry, type QueueTabEntry } from "@/lib/tenant-config";
 
 /** Slug canônico do segmento licenciado (`segmento_definido` / `segmentoAplicado`). */
 export const SALAO_ESTETICA_SEGMENT_ID = "salao_estetica" as const;
@@ -410,10 +410,50 @@ export function countActiveBySalaoProfissionalKanban(
   columns: SalaoProfissionalKanbanColumn[]
 ): Record<string, number> {
   const counts: Record<string, number> = {};
+  counts[TODOS_TAB_ID] = filterAllSalaoProfissionalKanbanRows(rows).length;
   for (const column of columns) {
     counts[column.id] = filterAndSortSalaoProfissionalKanbanColumn(rows, column).length;
   }
   return counts;
+}
+
+/** Visão geral do modo Lista — todos os atendimentos elegíveis do dia. */
+export function filterAllSalaoProfissionalKanbanRows(rows: AtendimentoLite[]): AtendimentoLite[] {
+  return rows.filter(isSalaoProfissionalKanbanEligibleRow).sort(compareSalaoProfissionalKanbanOrder);
+}
+
+export type SalaoProfissionalListTab =
+  | { id: typeof TODOS_TAB_ID; label: string; kind: "todos" }
+  | SalaoProfissionalKanbanColumn;
+
+/** Abas do modo Lista: TODOS + colunas do espelho diário. */
+export function buildSalaoProfissionalListTabs(
+  columns: SalaoProfissionalKanbanColumn[]
+): SalaoProfissionalListTab[] {
+  return [{ id: TODOS_TAB_ID, label: "TODOS", kind: "todos" }, ...columns];
+}
+
+export function isSalaoProfissionalListTodosTab(
+  tab: Pick<SalaoProfissionalListTab, "id" | "kind">
+): tab is { id: typeof TODOS_TAB_ID; label: string; kind: "todos" } {
+  return tab.kind === "todos" || tab.id === TODOS_TAB_ID;
+}
+
+export function filterSalaoProfissionalListTabRows(
+  rows: AtendimentoLite[],
+  tab: SalaoProfissionalListTab
+): AtendimentoLite[] {
+  if (isSalaoProfissionalListTodosTab(tab)) {
+    return filterAllSalaoProfissionalKanbanRows(rows);
+  }
+  return filterAndSortSalaoProfissionalKanbanColumn(rows, tab);
+}
+
+export function resolveSalaoProfissionalListActiveTab(
+  tabs: SalaoProfissionalListTab[],
+  queueTabId: string
+): SalaoProfissionalListTab {
+  return tabs.find((t) => t.id === queueTabId) ?? tabs[0] ?? { id: TODOS_TAB_ID, label: "TODOS", kind: "todos" };
 }
 
 /** Resolve a coluna do espelho onde o card deve aparecer / estar selecionado. */

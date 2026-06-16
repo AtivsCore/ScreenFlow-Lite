@@ -19,9 +19,12 @@ import {
 import {
   SALAO_TAB,
   buildSalaoProfissionalKanbanColumns,
+  buildSalaoProfissionalListTabs,
   filterAndSortSalaoProfissionalKanbanColumn,
   filterAndSortSalaoQueue,
+  filterSalaoProfissionalListTabRows,
   isSalaoPoolTabId,
+  isSalaoProfissionalListTodosTab,
   isSalaoQueueTabSelected,
   isSalaoWaitingStatus,
   normalizeSalaoStatusLabel,
@@ -29,6 +32,7 @@ import {
   resolveSalaoKanbanColumnLabel,
   resolveSalaoKanbanMeta,
   resolveSalaoHoraMarcadaBadgeMeta,
+  resolveSalaoProfissionalListActiveTab,
   resolveSalaoQueueTabClickId,
   rowMatchesSalaoQueueSearch,
   type SalaoProfissionalKanbanColumn,
@@ -36,7 +40,7 @@ import {
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
-import type { CadastroCategoryEntry, ObservacoesVisibility, QueueTabEntry } from "@/lib/tenant-config";
+import { type CadastroCategoryEntry, type ObservacoesVisibility, type QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AviacaoHangarStepper } from "@/components/screenflow/aviacao-hangar-stepper";
 import { AviacaoQueueFilterPopover } from "@/components/screenflow/aviacao-queue-filter-popover";
@@ -155,6 +159,15 @@ function formatKanbanContextLine(meta: { profissional: string | null; local: str
 
 const CLINICAS_SEGMENT_ID = "clinicas_consultorios";
 const SALAO_ESTETICA_SEGMENT_ID = "salao_estetica";
+
+function queueListTabButtonClass(isActive: boolean): string {
+  return [
+    "shrink-0 cursor-pointer whitespace-nowrap rounded-t-md border-b-2 px-3 py-1.5 text-[11px] transition-colors",
+    isActive
+      ? "border-orange-500 bg-orange-50/60 font-semibold text-orange-700 dark:border-orange-400 dark:bg-orange-950/30 dark:text-orange-300"
+      : "border-transparent font-medium text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-200",
+  ].join(" ");
+}
 
 type CompactKanbanLine = {
   primary: string;
@@ -984,6 +997,11 @@ export function QueueSection({
     return buildSalaoProfissionalKanbanColumns(cadastroLookups, rows);
   }, [salaoProfissionalMirror, cadastroLookups, rows]);
 
+  const salaoListTabs = useMemo(() => {
+    if (!salaoProfissionalMirror) return [];
+    return buildSalaoProfissionalListTabs(salaoProfissionalColumns);
+  }, [salaoProfissionalMirror, salaoProfissionalColumns]);
+
   const isTabActive = useCallback(
     (tabId: string) => {
       if (salaoProfissionalMirror) {
@@ -1069,20 +1087,24 @@ export function QueueSection({
     return matched ?? queueTabs[0];
   }, [queueTabs, queueTabId, isTabActive]);
 
-  const activeSalaoColumn = useMemo(() => {
-    if (!salaoProfissionalMirror || salaoProfissionalColumns.length === 0) return null;
-    return (
-      salaoProfissionalColumns.find((c) => c.id === queueTabId) ?? salaoProfissionalColumns[0]!
-    );
-  }, [salaoProfissionalMirror, salaoProfissionalColumns, queueTabId]);
+  const activeSalaoListTab = useMemo(() => {
+    if (!salaoProfissionalMirror || salaoListTabs.length === 0) return null;
+    return resolveSalaoProfissionalListActiveTab(salaoListTabs, queueTabId);
+  }, [salaoProfissionalMirror, salaoListTabs, queueTabId]);
 
   const listRows = useMemo(() => {
-    if (salaoProfissionalMirror && activeSalaoColumn) {
-      return filterAndSortSalaoProfissionalKanbanColumn(rows, activeSalaoColumn);
+    if (salaoProfissionalMirror && activeSalaoListTab) {
+      return filterSalaoProfissionalListTabRows(rows, activeSalaoListTab);
     }
     const tab = activeTab ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" };
     return filterRowsForTab(tab);
-  }, [salaoProfissionalMirror, activeSalaoColumn, rows, activeTab, filterRowsForTab]);
+  }, [salaoProfissionalMirror, activeSalaoListTab, rows, activeTab, filterRowsForTab]);
+
+  const isSalaoListPaymentTab =
+    salaoProfissionalMirror &&
+    activeSalaoListTab != null &&
+    !isSalaoProfissionalListTodosTab(activeSalaoListTab) &&
+    activeSalaoListTab.kind === "aguardando_pagamento";
 
   const kanbanColumns = salaoProfissionalMirror ? [] : flowTabs;
 
@@ -1383,27 +1405,24 @@ export function QueueSection({
 
         {viewMode === "list" ? (
           <div
-            className="mt-2 flex gap-0.5 overflow-x-auto pb-0.5 sf-scroll-y-hidden"
+            className="mt-2 flex gap-1 overflow-x-auto border-b border-zinc-200 pb-0 sf-scroll-y-hidden dark:border-zinc-800"
             role="tablist"
             aria-label="Vistas da fila"
           >
             {salaoProfissionalMirror
-              ? salaoProfissionalColumns.map((column) => {
-                  const count = tabCounts[column.id];
-                  const label =
-                    typeof count === "number" ? `${column.label} (${count})` : column.label;
+              ? salaoListTabs.map((tab) => {
+                  const count = tabCounts[tab.id];
+                  const tabLabel = tab.label.toUpperCase();
+                  const label = typeof count === "number" ? `${tabLabel} (${count})` : tabLabel;
+                  const active = isTabActive(tab.id);
                   return (
                     <button
-                      key={column.id}
+                      key={tab.id}
                       type="button"
                       role="tab"
-                      aria-selected={isTabActive(column.id)}
-                      onClick={() => onQueueTabId(column.id)}
-                      className={`shrink-0 whitespace-nowrap border-b-2 px-2 py-1 text-[10px] transition ${
-                        isTabActive(column.id)
-                          ? "border-orange-500 font-semibold text-zinc-900 dark:text-zinc-100"
-                          : "border-transparent font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
-                      }`}
+                      aria-selected={active}
+                      onClick={() => onQueueTabId(tab.id)}
+                      className={queueListTabButtonClass(active)}
                     >
                       {label}
                     </button>
@@ -1417,12 +1436,13 @@ export function QueueSection({
                   ? (t.label?.trim() || resolveSalaoKanbanColumnLabel(t))
                   : t.label;
               const label = typeof count === "number" ? `${tabLabel} (${count})` : tabLabel;
+              const active = isTabActive(t.id);
               return (
                 <button
                   key={t.id}
                   type="button"
                   role="tab"
-                  aria-selected={isTabActive(t.id)}
+                  aria-selected={active}
                   onClick={() =>
                     onQueueTabId(
                       aviacaoLogisticsActive
@@ -1432,11 +1452,7 @@ export function QueueSection({
                           : t.id
                     )
                   }
-                  className={`shrink-0 whitespace-nowrap border-b-2 px-2 py-1 text-[10px] transition ${
-                    isTabActive(t.id)
-                      ? "border-orange-500 font-semibold text-zinc-900 dark:text-zinc-100"
-                      : "border-transparent font-medium text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
-                  }`}
+                  className={queueListTabButtonClass(active)}
                 >
                   {label}
                 </button>
@@ -1500,13 +1516,10 @@ export function QueueSection({
                       onCopyRow={(r) => void handleCopyRow(r)}
                       onDelete={(r) => void handleDelete(r)}
                       onSalaoDefinirProximo={
-                        salaoProfissionalMirror &&
-                        activeSalaoColumn?.kind === "aguardando_pagamento"
-                          ? undefined
-                          : onSalaoDefinirProximo
+                        isSalaoListPaymentTab ? undefined : onSalaoDefinirProximo
                       }
                       listTabId={
-                        salaoProfissionalMirror ? activeSalaoColumn?.id : activeTab?.id
+                        salaoProfissionalMirror ? activeSalaoListTab?.id : activeTab?.id
                       }
                       salaoFilaAtivaIndex={
                         !salaoProfissionalMirror &&
