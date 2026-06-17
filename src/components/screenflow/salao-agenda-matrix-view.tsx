@@ -7,7 +7,6 @@ import {
   buildSalaoAgendaProfissionalColumns,
   buildSalaoAgendaRegistryDraft,
   buildSalaoAgendaSlotOccupancy,
-  canShowSalaoAgendaQuickActions,
   computeSalaoAgendaTimeSlots,
   filterSalaoAgendaRowsForDay,
   formatDayForDateInput,
@@ -23,10 +22,10 @@ import {
   writeSalaoAgendaGridHours,
   type RegistryInitialDraft,
   type SalaoAgendaGridHours,
+  type SalaoAgendaSlotIntervalMinutes,
 } from "@/lib/salao-agenda-matrix";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
 import {
-  ArrowRightCircle,
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
@@ -47,8 +46,6 @@ type SalaoAgendaMatrixViewProps = {
   onOpenRegistry: (draft?: RegistryInitialDraft) => void;
   onEditRow: (row: AtendimentoLite) => void;
   onDeleteRow: (row: AtendimentoLite) => void | Promise<void>;
-  onSalaoSendToBalcao?: (row: AtendimentoLite) => void | Promise<void>;
-  onSalaoAnteciparOrdem?: (row: AtendimentoLite) => void | Promise<void>;
 };
 
 function SalaoAgendaGridSettingsPopover({
@@ -63,13 +60,17 @@ function SalaoAgendaGridSettingsPopover({
   const [open, setOpen] = useState(false);
   const [draftStart, setDraftStart] = useState(() => gridHoursToTimeInputValue(gridHours.startHour));
   const [draftEnd, setDraftEnd] = useState(() => gridHoursToTimeInputValue(gridHours.endHour));
+  const [draftInterval, setDraftInterval] = useState<SalaoAgendaSlotIntervalMinutes>(
+    () => gridHours.slotIntervalMinutes
+  );
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setDraftStart(gridHoursToTimeInputValue(gridHours.startHour));
     setDraftEnd(gridHoursToTimeInputValue(gridHours.endHour));
-  }, [open, gridHours.startHour, gridHours.endHour]);
+    setDraftInterval(gridHours.slotIntervalMinutes);
+  }, [open, gridHours.startHour, gridHours.endHour, gridHours.slotIntervalMinutes]);
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +86,11 @@ function SalaoAgendaGridSettingsPopover({
     const startHour = timeInputValueToHour(draftStart);
     const endHour = timeInputValueToHour(draftEnd);
     if (startHour === null || endHour === null) return;
-    const saved = writeSalaoAgendaGridHours(tenantId, { startHour, endHour });
+    const saved = writeSalaoAgendaGridHours(tenantId, {
+      startHour,
+      endHour,
+      slotIntervalMinutes: draftInterval,
+    });
     onSave(saved);
     setOpen(false);
   }
@@ -139,6 +144,35 @@ function SalaoAgendaGridSettingsPopover({
               />
             </label>
           </div>
+          <fieldset className="mt-3">
+            <legend className="text-[10px] font-medium text-zinc-600 dark:text-zinc-400">
+              Intervalo da grade
+            </legend>
+            <div className="mt-1.5 flex flex-col gap-1">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 px-2 py-1.5 text-[10px] text-zinc-700 has-[:checked]:border-zinc-400 has-[:checked]:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:has-[:checked]:border-zinc-500 dark:has-[:checked]:bg-zinc-800/80">
+                <input
+                  type="radio"
+                  name="salao-agenda-interval"
+                  value={30}
+                  checked={draftInterval === 30}
+                  onChange={() => setDraftInterval(30)}
+                  className="size-3 accent-zinc-900 dark:accent-zinc-100"
+                />
+                De 30 em 30 minutos
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-zinc-200 px-2 py-1.5 text-[10px] text-zinc-700 has-[:checked]:border-zinc-400 has-[:checked]:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:has-[:checked]:border-zinc-500 dark:has-[:checked]:bg-zinc-800/80">
+                <input
+                  type="radio"
+                  name="salao-agenda-interval"
+                  value={60}
+                  checked={draftInterval === 60}
+                  onChange={() => setDraftInterval(60)}
+                  className="size-3 accent-zinc-900 dark:accent-zinc-100"
+                />
+                De 1 em 1 hora
+              </label>
+            </div>
+          </fieldset>
           <div className="mt-3 flex justify-end gap-1.5">
             <button
               type="button"
@@ -171,15 +205,12 @@ export function SalaoAgendaMatrixView({
   onOpenRegistry,
   onEditRow,
   onDeleteRow,
-  onSalaoSendToBalcao,
-  onSalaoAnteciparOrdem,
 }: SalaoAgendaMatrixViewProps) {
   const [selectedDay, setSelectedDay] = useState(() => startOfLocalDay(new Date()));
   const [gridHours, setGridHours] = useState<SalaoAgendaGridHours>(() =>
     readSalaoAgendaGridHours(tenantId)
   );
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [quickActionId, setQuickActionId] = useState<string | null>(null);
 
   useEffect(() => {
     setGridHours(readSalaoAgendaGridHours(tenantId));
@@ -224,17 +255,7 @@ export function SalaoAgendaMatrixView({
     }
   }
 
-  async function runQuickAction(row: AtendimentoLite, action: "balcao" | "ordem") {
-    setQuickActionId(row.id);
-    try {
-      if (action === "balcao") await onSalaoSendToBalcao?.(row);
-      else await onSalaoAnteciparOrdem?.(row);
-    } finally {
-      setQuickActionId(null);
-    }
-  }
-
-  function openFreeSlot(profissionalId: string, slotHHMM: string) {
+  function openSlotRegistry(profissionalId: string, slotHHMM: string) {
     onOpenRegistry(buildSalaoAgendaRegistryDraft(selectedDay, profissionalId, slotHHMM));
   }
 
@@ -320,9 +341,8 @@ export function SalaoAgendaMatrixView({
             Nenhum profissional cadastrado para este tenant.
           </p>
         ) : (
-          <div className="overflow-x-auto">
             <table className="min-w-full border-collapse text-[11px]">
-              <thead>
+              <thead className="sticky top-0 z-20 bg-zinc-50 shadow-sm dark:bg-zinc-800/95">
                 <tr className="border-b border-zinc-200 dark:border-zinc-800">
                   <th className="sticky top-0 left-0 z-30 min-w-[4.5rem] border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-800/95">
                     Horário
@@ -351,7 +371,7 @@ export function SalaoAgendaMatrixView({
                             <button
                               type="button"
                               title={`Agendar ${slot} — ${prof.label}`}
-                              onClick={() => openFreeSlot(prof.id, slot)}
+                              onClick={() => openSlotRegistry(prof.id, slot)}
                               className="group flex h-[3.25rem] w-full items-center justify-center rounded-md border border-dashed border-zinc-200 bg-zinc-50/80 text-zinc-400 transition hover:border-emerald-300 hover:bg-emerald-50/60 hover:text-emerald-700 dark:border-zinc-700 dark:bg-zinc-800/30 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300"
                             >
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-medium opacity-0 transition group-hover:opacity-100">
@@ -365,8 +385,6 @@ export function SalaoAgendaMatrixView({
 
                       const appearance = resolveSalaoAgendaSlotAppearance(row);
                       const servico = resolveSalaoAgendaServicoLabel(row, cadastroCategories, cadastroLookups);
-                      const showQuick = canShowSalaoAgendaQuickActions(row, selectedDay);
-                      const quickBusy = quickActionId === row.id;
 
                       return (
                         <td key={prof.id} className="p-1 align-top">
@@ -382,28 +400,14 @@ export function SalaoAgendaMatrixView({
                                 {appearance.statusLabel}
                               </span>
                               <div className="flex shrink-0 items-center gap-0.5">
-                                {showQuick && onSalaoAnteciparOrdem ? (
-                                  <button
-                                    type="button"
-                                    disabled={quickBusy}
-                                    title="Antecipar para Fila"
-                                    className="rounded p-0.5 opacity-80 hover:opacity-100 disabled:opacity-40"
-                                    onClick={() => void runQuickAction(row, "ordem")}
-                                  >
-                                    <ArrowRightCircle className="size-3" strokeWidth={2} />
-                                  </button>
-                                ) : null}
-                                {showQuick && onSalaoSendToBalcao ? (
-                                  <button
-                                    type="button"
-                                    disabled={quickBusy}
-                                    title="Enviar para o Balcão"
-                                    className="rounded p-0.5 opacity-80 hover:opacity-100 disabled:opacity-40"
-                                    onClick={() => void runQuickAction(row, "balcao")}
-                                  >
-                                    <ArrowRightCircle className="size-3 rotate-90" strokeWidth={2} />
-                                  </button>
-                                ) : null}
+                                <button
+                                  type="button"
+                                  title="Encaixe — novo agendamento neste horário"
+                                  className="rounded p-0.5 opacity-70 hover:opacity-100"
+                                  onClick={() => openSlotRegistry(prof.id, slot)}
+                                >
+                                  <Plus className="size-3" strokeWidth={2.5} />
+                                </button>
                                 <button
                                   type="button"
                                   title="Editar"
@@ -431,7 +435,6 @@ export function SalaoAgendaMatrixView({
                 ))}
               </tbody>
             </table>
-          </div>
         )}
       </div>
     </div>

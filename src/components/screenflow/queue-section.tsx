@@ -34,6 +34,7 @@ import {
   resolveSalaoKanbanMeta,
   resolveSalaoHoraMarcadaBadgeMeta,
   resolveSalaoProfissionalListActiveTab,
+  resolveSalaoProfissionalListDefaultTabId,
   resolveSalaoQueueTabClickId,
   rowMatchesSalaoQueueSearch,
   type SalaoProfissionalKanbanColumn,
@@ -41,7 +42,7 @@ import {
 import { buildAtendimentoShareSummary, copyAtendimentoShareSummary } from "@/lib/atendimento-share-summary";
 import { isMroPatioCompactSegment } from "@/lib/mro-segment-profile";
 import { resolveDocasCategoryDisplay, resolveDocasKanbanMeta } from "@/lib/docas-logistics";
-import { TODOS_TAB_ID, type CadastroCategoryEntry, type ObservacoesVisibility, type QueueTabEntry } from "@/lib/tenant-config";
+import { type CadastroCategoryEntry, type ObservacoesVisibility, type QueueTabEntry } from "@/lib/tenant-config";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AviacaoHangarStepper } from "@/components/screenflow/aviacao-hangar-stepper";
 import { AviacaoQueueFilterPopover } from "@/components/screenflow/aviacao-queue-filter-popover";
@@ -915,6 +916,10 @@ type QueueSectionProps = {
   onSalaoMoveFilaDown?: (row: AtendimentoLite) => void;
   /** Espelho diário por profissional (preset salao_estetica). */
   salaoProfissionalMirror?: boolean;
+  /** Exibir aba TODOS no espelho (modo Lista/Kanban salão). */
+  showTodosTab?: boolean;
+  /** Pool ampliado para busca (agenda passado/futuro) — preset salao_estetica. */
+  salaoSearchRows?: AtendimentoLite[];
 };
 
 export function QueueSection({
@@ -980,6 +985,8 @@ export function QueueSection({
   onSalaoMoveFilaUp,
   onSalaoMoveFilaDown,
   salaoProfissionalMirror = false,
+  showTodosTab = true,
+  salaoSearchRows,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
@@ -1000,8 +1007,14 @@ export function QueueSection({
 
   const salaoListTabs = useMemo(() => {
     if (!salaoProfissionalMirror) return [];
-    return buildSalaoProfissionalListTabs(salaoProfissionalColumns);
-  }, [salaoProfissionalMirror, salaoProfissionalColumns]);
+    return buildSalaoProfissionalListTabs(salaoProfissionalColumns, showTodosTab);
+  }, [salaoProfissionalMirror, salaoProfissionalColumns, showTodosTab]);
+
+  const salaoSearchPool = useMemo(() => {
+    if (!salaoEsteticaActive) return rows;
+    if (salaoSearchRows && salaoSearchRows.length > 0) return salaoSearchRows;
+    return rows;
+  }, [salaoEsteticaActive, rows, salaoSearchRows]);
 
   const isTabActive = useCallback(
     (tabId: string) => {
@@ -1048,7 +1061,7 @@ export function QueueSection({
       return;
     }
     const timer = window.setTimeout(() => {
-      const match = rows.find((r) =>
+      const match = salaoSearchPool.find((r) =>
         salaoEsteticaActive ? rowMatchesSalaoQueueSearch(r, q) : rowMatchesMroQueueSearch(r, q)
       );
       if (!match) return;
@@ -1060,7 +1073,7 @@ export function QueueSection({
     return () => window.clearTimeout(timer);
   }, [
     queueSearchQuery,
-    rows,
+    salaoSearchPool,
     aviacaoLogisticsActive,
     salaoEsteticaActive,
     onQueueSearchMatch,
@@ -1143,11 +1156,13 @@ export function QueueSection({
   const handleViewModeChange = useCallback(
     (mode: QueueViewMode) => {
       if (salaoProfissionalMirror) {
-        onQueueTabId(TODOS_TAB_ID);
+        onQueueTabId(
+          resolveSalaoProfissionalListDefaultTabId(salaoProfissionalColumns, showTodosTab)
+        );
       }
       onViewModeChange(mode);
     },
-    [salaoProfissionalMirror, onQueueTabId, onViewModeChange]
+    [salaoProfissionalMirror, salaoProfissionalColumns, showTodosTab, onQueueTabId, onViewModeChange]
   );
 
   return (

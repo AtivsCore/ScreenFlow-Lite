@@ -426,11 +426,24 @@ export type SalaoProfissionalListTab =
   | { id: typeof TODOS_TAB_ID; label: string; kind: "todos" }
   | SalaoProfissionalKanbanColumn;
 
-/** Abas do modo Lista: TODOS + colunas do espelho diário. */
+/** Abas do modo Lista: TODOS (opcional) + colunas do espelho diário. */
 export function buildSalaoProfissionalListTabs(
-  columns: SalaoProfissionalKanbanColumn[]
+  columns: SalaoProfissionalKanbanColumn[],
+  showTodosTab = true
 ): SalaoProfissionalListTab[] {
-  return [{ id: TODOS_TAB_ID, label: "TODOS", kind: "todos" }, ...columns];
+  if (showTodosTab) {
+    return [{ id: TODOS_TAB_ID, label: "TODOS", kind: "todos" }, ...columns];
+  }
+  return [...columns];
+}
+
+/** Primeira aba válida do modo Lista quando TODOS está oculto ou indisponível. */
+export function resolveSalaoProfissionalListDefaultTabId(
+  columns: SalaoProfissionalKanbanColumn[],
+  showTodosTab = true
+): string {
+  if (showTodosTab) return TODOS_TAB_ID;
+  return columns[0]?.id ?? SALAO_SEM_PROFISSIONAL_TAB_ID;
 }
 
 export function isSalaoProfissionalListTodosTab(
@@ -459,10 +472,11 @@ export function resolveSalaoProfissionalListActiveTab(
 /** IDs válidos do espelho (lista/kanban) — evita reset indevido para abas legadas. */
 export function isSalaoProfissionalMirrorQueueTabId(
   tabId: string,
-  profissionalIds: readonly string[]
+  profissionalIds: readonly string[],
+  showTodosTab = true
 ): boolean {
   if (!tabId.trim()) return false;
-  if (tabId === TODOS_TAB_ID) return true;
+  if (tabId === TODOS_TAB_ID) return showTodosTab;
   if (tabId === SALAO_TAB.AGUARDANDO_PAGAMENTO) return true;
   if (tabId === SALAO_SEM_PROFISSIONAL_TAB_ID) return true;
   return profissionalIds.includes(tabId);
@@ -1370,6 +1384,24 @@ export function isSalaoAgendaEligibleRow(
   if (!isTodayOrFutureHoraMarcada(row.hora_marcada)) return false;
   const horaTab = { id: SALAO_TAB.HORA, preset: "hora" as const };
   return rowMatchesSalaoQueueTabEntry(row, horaTab, queueTabs);
+}
+
+/** Linha elegível na busca da agenda: passado, presente e futuro (coluna HORA MARCADA). */
+export function isSalaoAgendaSearchEligibleRow(
+  row: AtendimentoLite,
+  queueTabs: Pick<QueueTabEntry, "id" | "preset">[]
+): boolean {
+  if (!isActiveQueueRow(row) || !isSalaoActiveStatus(row.status)) return false;
+  if (!row.hora_marcada?.trim()) return false;
+  const horaTab = { id: SALAO_TAB.HORA, preset: "hora" as const };
+  return rowMatchesSalaoQueueTabEntry(row, horaTab, queueTabs);
+}
+
+export function filterSalaoAgendaSearchRows(
+  rows: AtendimentoLite[],
+  queueTabs: Pick<QueueTabEntry, "id" | "preset">[]
+): AtendimentoLite[] {
+  return rows.filter((row) => isSalaoAgendaSearchEligibleRow(row, queueTabs));
 }
 
 /** Agendamento com horário no dia de hoje (ações rápidas na Agenda). */

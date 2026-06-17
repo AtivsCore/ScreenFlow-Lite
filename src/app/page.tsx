@@ -102,6 +102,7 @@ import {
   countActiveBySalaoProfissionalKanban,
   filterAndSortSalaoQueue,
   filterSalaoKanbanOperationalRows,
+  filterSalaoAgendaSearchRows,
   isSalaoAguardandoPagamentoTabId,
   isSalaoEsteticaSegment,
   isSalaoProfissionalKanbanColumnId,
@@ -112,6 +113,7 @@ import {
   parseSalaoCadastroFields,
   resolveSalaoFilaAtivaTab,
   resolveSalaoProfissionalKanbanColumnId,
+  resolveSalaoProfissionalListDefaultTabId,
   resolveSalaoQueueTabClickId,
   resolveSalaoQueueTabs,
 } from "@/lib/salao-estetica-logistics";
@@ -455,37 +457,6 @@ export default function Home() {
     segmentoDefinido,
   ]);
 
-  useEffect(() => {
-    const visible = aviacaoLogisticsActive
-      ? resolveAviacaoQueueTabs(tenantConfig)
-      : salaoEsteticaActive
-        ? resolveSalaoQueueTabs(tenantConfig)
-        : resolveVisibleQueueTabs(tenantConfig);
-    const ids = visible.map((t) => t.id);
-    if (!ids.length) return;
-
-    if (salaoEsteticaActive) {
-      const profIds = [...cadastroLookups.profissionais.keys()];
-      if (isSalaoProfissionalMirrorQueueTabId(queueTabId, profIds)) return;
-      if (!isSalaoQueueTabIdInVisible(queueTabId, ids)) {
-        setQueueTabId(TODOS_TAB_ID);
-      }
-      return;
-    }
-
-    const matches = aviacaoLogisticsActive
-      ? isAviacaoQueueTabIdInVisible(queueTabId, ids, mroSegmentId)
-      : ids.includes(queueTabId);
-    if (!matches) setQueueTabId(ids[0]!);
-  }, [
-    tenantConfig,
-    queueTabId,
-    aviacaoLogisticsActive,
-    salaoEsteticaActive,
-    mroSegmentId,
-    cadastroLookups.profissionais,
-  ]);
-
   const visibleQueueTabs = useMemo(
     () =>
       aviacaoLogisticsActive
@@ -534,6 +505,51 @@ export default function Home() {
         : [],
     [salaoEsteticaActive, cadastroLookups, queueDisplayRows]
   );
+
+  const salaoAgendaSearchRows = useMemo(() => {
+    if (!salaoEsteticaActive) return [];
+    return filterSalaoAgendaSearchRows(rows, visibleQueueTabs);
+  }, [salaoEsteticaActive, rows, visibleQueueTabs]);
+
+  useEffect(() => {
+    const visible = aviacaoLogisticsActive
+      ? resolveAviacaoQueueTabs(tenantConfig)
+      : salaoEsteticaActive
+        ? resolveSalaoQueueTabs(tenantConfig)
+        : resolveVisibleQueueTabs(tenantConfig);
+    const ids = visible.map((t) => t.id);
+    if (!ids.length) return;
+
+    if (salaoEsteticaActive) {
+      const profIds = [...cadastroLookups.profissionais.keys()];
+      const defaultMirrorTab = resolveSalaoProfissionalListDefaultTabId(
+        salaoProfissionalKanbanColumns,
+        tenantConfig.showTodosTab
+      );
+      if (
+        isSalaoProfissionalMirrorQueueTabId(queueTabId, profIds, tenantConfig.showTodosTab)
+      ) {
+        return;
+      }
+      if (!isSalaoQueueTabIdInVisible(queueTabId, ids)) {
+        setQueueTabId(defaultMirrorTab);
+      }
+      return;
+    }
+
+    const matches = aviacaoLogisticsActive
+      ? isAviacaoQueueTabIdInVisible(queueTabId, ids, mroSegmentId)
+      : ids.includes(queueTabId);
+    if (!matches) setQueueTabId(ids[0]!);
+  }, [
+    tenantConfig,
+    queueTabId,
+    aviacaoLogisticsActive,
+    salaoEsteticaActive,
+    mroSegmentId,
+    cadastroLookups.profissionais,
+    salaoProfissionalKanbanColumns,
+  ]);
 
   const handleSelectId = useCallback(
     (id: string) => {
@@ -625,7 +641,9 @@ export default function Home() {
       if (salaoEsteticaActive) {
         const profIds = [...cadastroLookups.profissionais.keys()];
         setQueueTabId(
-          isSalaoProfissionalMirrorQueueTabId(id, profIds) ? id : resolveSalaoQueueTabClickId(id)
+          isSalaoProfissionalMirrorQueueTabId(id, profIds, tenantConfig.showTodosTab)
+            ? id
+            : resolveSalaoQueueTabClickId(id)
         );
         return;
       }
@@ -633,7 +651,7 @@ export default function Home() {
         aviacaoLogisticsActive ? resolveAviacaoQueueTabClickId(id, mroSegmentId) : id
       );
     },
-    [aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId, cadastroLookups.profissionais]
+    [aviacaoLogisticsActive, salaoEsteticaActive, mroSegmentId, cadastroLookups.profissionais, tenantConfig.showTodosTab]
   );
 
   const tenantIdForInsert = effectiveTenantId;
@@ -1893,6 +1911,8 @@ export default function Home() {
                 salaoEsteticaActive ? (row) => void salaoMoveFilaAtiva(row, 1) : undefined
               }
               salaoProfissionalMirror={salaoEsteticaActive}
+              showTodosTab={tenantConfig.showTodosTab}
+              salaoSearchRows={salaoEsteticaActive ? salaoAgendaSearchRows : undefined}
             />
           )}
         </main>

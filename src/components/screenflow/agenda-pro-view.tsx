@@ -103,8 +103,6 @@ export function AgendaProView({
           onOpenRegistry={(draft) => onOpenRegistry?.(draft)}
           onEditRow={onEditRow}
           onDeleteRow={onDeleteRow}
-          onSalaoSendToBalcao={onSalaoSendToBalcao}
-          onSalaoAnteciparOrdem={onSalaoAnteciparOrdem}
         />
       </div>
     );

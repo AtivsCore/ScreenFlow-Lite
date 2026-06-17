@@ -18,6 +18,8 @@ export const SALAO_AGENDA_SLOT_START_HOUR = SALAO_AGENDA_DEFAULT_START_HOUR;
 /** @deprecated Use {@link SALAO_AGENDA_DEFAULT_END_HOUR} */
 export const SALAO_AGENDA_SLOT_END_HOUR = SALAO_AGENDA_DEFAULT_END_HOUR;
 export const SALAO_AGENDA_SLOT_MINUTES = 30;
+export const SALAO_AGENDA_SLOT_INTERVAL_OPTIONS = [30, 60] as const;
+export type SalaoAgendaSlotIntervalMinutes = (typeof SALAO_AGENDA_SLOT_INTERVAL_OPTIONS)[number];
 
 export const SALAO_AGENDA_HOURS_STORAGE_PREFIX = "sf-salao-agenda-hours";
 
@@ -26,11 +28,14 @@ export type SalaoAgendaGridHours = {
   startHour: number;
   /** Hora de fechamento (1–24), ex.: 22 → último slot 21:30 */
   endHour: number;
+  /** Intervalo da grade: 30 ou 60 minutos. */
+  slotIntervalMinutes: SalaoAgendaSlotIntervalMinutes;
 };
 
 export const DEFAULT_SALAO_AGENDA_GRID_HOURS: SalaoAgendaGridHours = {
   startHour: SALAO_AGENDA_DEFAULT_START_HOUR,
   endHour: SALAO_AGENDA_DEFAULT_END_HOUR,
+  slotIntervalMinutes: SALAO_AGENDA_SLOT_MINUTES,
 };
 
 export type SalaoAgendaProfissionalColumn = {
@@ -120,6 +125,13 @@ function clampGridHour(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(value)));
 }
 
+function normalizeSalaoAgendaSlotInterval(
+  value: number | null | undefined
+): SalaoAgendaSlotIntervalMinutes {
+  if (value === 60) return 60;
+  return SALAO_AGENDA_SLOT_MINUTES;
+}
+
 export function normalizeSalaoAgendaGridHours(
   raw: Partial<SalaoAgendaGridHours> | null | undefined
 ): SalaoAgendaGridHours {
@@ -136,7 +148,11 @@ export function normalizeSalaoAgendaGridHours(
   if (endHour <= startHour) {
     endHour = Math.min(24, startHour + 1);
   }
-  return { startHour, endHour };
+  return {
+    startHour,
+    endHour,
+    slotIntervalMinutes: normalizeSalaoAgendaSlotInterval(raw?.slotIntervalMinutes),
+  };
 }
 
 export function readSalaoAgendaGridHours(tenantId: string | null | undefined): SalaoAgendaGridHours {
@@ -215,9 +231,11 @@ export type SalaoAgendaGridMinuteBounds = {
 /** Calcula limites da grade: padrão comercial + auto-stretch pelos agendamentos do dia. */
 export function resolveSalaoAgendaGridMinuteBounds(
   gridHours: SalaoAgendaGridHours,
-  dayRows: Pick<AtendimentoLite, "hora_marcada">[]
+  dayRows: Pick<AtendimentoLite, "hora_marcada">[],
+  slotIntervalMinutes: SalaoAgendaSlotIntervalMinutes = SALAO_AGENDA_SLOT_MINUTES
 ): SalaoAgendaGridMinuteBounds {
   const normalized = normalizeSalaoAgendaGridHours(gridHours);
+  const interval = normalizeSalaoAgendaSlotInterval(slotIntervalMinutes);
   let startMinutes = normalized.startHour * 60;
   let endMinutes = normalized.endHour * 60;
 
@@ -228,25 +246,24 @@ export function resolveSalaoAgendaGridMinuteBounds(
     endMinutes = Math.max(endMinutes, appointmentMinutes);
   }
 
-  startMinutes = Math.floor(startMinutes / SALAO_AGENDA_SLOT_MINUTES) * SALAO_AGENDA_SLOT_MINUTES;
-  endMinutes =
-    Math.ceil((endMinutes + 1) / SALAO_AGENDA_SLOT_MINUTES) * SALAO_AGENDA_SLOT_MINUTES;
+  startMinutes = Math.floor(startMinutes / interval) * interval;
+  endMinutes = Math.ceil((endMinutes + 1) / interval) * interval;
 
   if (endMinutes <= startMinutes) {
-    endMinutes = startMinutes + SALAO_AGENDA_SLOT_MINUTES;
+    endMinutes = startMinutes + interval;
   }
 
   return { startMinutes, endMinutes };
 }
 
-/** Gera slots de 30 min entre os limites calculados (inclusive auto-stretch). */
-export function buildSalaoAgendaTimeSlotsFromBounds(bounds: SalaoAgendaGridMinuteBounds): string[] {
+/** Gera slots regulares entre os limites calculados (inclusive auto-stretch). */
+export function buildSalaoAgendaTimeSlotsFromBounds(
+  bounds: SalaoAgendaGridMinuteBounds,
+  slotIntervalMinutes: SalaoAgendaSlotIntervalMinutes = SALAO_AGENDA_SLOT_MINUTES
+): string[] {
+  const interval = normalizeSalaoAgendaSlotInterval(slotIntervalMinutes);
   const slots: string[] = [];
-  for (
-    let m = bounds.startMinutes;
-    m + SALAO_AGENDA_SLOT_MINUTES <= bounds.endMinutes;
-    m += SALAO_AGENDA_SLOT_MINUTES
-  ) {
+  for (let m = bounds.startMinutes; m + interval <= bounds.endMinutes; m += interval) {
     slots.push(minutesToHHMM(m));
   }
   return slots;
@@ -286,8 +303,10 @@ export function computeSalaoAgendaTimeSlots(
   gridHours: SalaoAgendaGridHours,
   dayRows: Pick<AtendimentoLite, "hora_marcada">[]
 ): string[] {
-  const bounds = resolveSalaoAgendaGridMinuteBounds(gridHours, dayRows);
-  const baseSlots = buildSalaoAgendaTimeSlotsFromBounds(bounds);
+  const normalized = normalizeSalaoAgendaGridHours(gridHours);
+  const interval = normalized.slotIntervalMinutes;
+  const bounds = resolveSalaoAgendaGridMinuteBounds(normalized, dayRows, interval);
+  const baseSlots = buildSalaoAgendaTimeSlotsFromBounds(bounds, interval);
   const appointmentTimes = extractSalaoAgendaAppointmentSlotTimes(dayRows);
   return mergeSalaoAgendaTimeSlots(baseSlots, appointmentTimes);
 }

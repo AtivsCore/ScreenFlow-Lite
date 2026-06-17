@@ -21,6 +21,12 @@ import {
   resolveMroTimelineSectionTitle,
 } from "@/lib/aviacao-logistics";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
+import {
+  isSalaoEsteticaSegment,
+  normalizeSalaoStatusLabel,
+  resolveSalaoCategoryDisplay,
+  SALAO_REGISTER_FORM_LABELS,
+} from "@/lib/salao-estetica-logistics";
 import type { ResolvedTenantConfig } from "@/lib/tenant-config";
 
 export type PrintAtendimentoContext = {
@@ -118,6 +124,51 @@ function buildMroPrintFields(
   return fields;
 }
 
+function buildSalaoPrintFields(
+  ctx: PrintAtendimentoContext
+): Array<{ label: string; value: string }> {
+  const { row, tenantConfig, cadastroLookups } = ctx;
+  const categories = tenantConfig.cadastroCategories.filter((c) => c.enabled);
+  const legacy = {
+    profissional_id: row.profissional_id,
+    local_id: row.local_id,
+    especialidade_id: row.especialidade_id,
+    profissionalNome: row.profissionalNome,
+    localNome: row.localNome,
+    servicoNome: row.servicoNome,
+  };
+
+  const fields: Array<{ label: string; value: string }> = [];
+  if (row.nome?.trim()) fields.push({ label: "Nome", value: row.nome.trim() });
+
+  for (const cat of categories) {
+    const value =
+      resolveSalaoCategoryDisplay(
+        cat.id,
+        row.observacao,
+        row.cadastro_valores ?? {},
+        cadastroLookups,
+        categories,
+        legacy
+      )?.trim() || "—";
+    fields.push({ label: cat.label, value });
+  }
+
+  const hora = formatHoraMarcada(row.hora_marcada);
+  if (hora !== "—" && tenantConfig.registerForm.showHoraMarcada) {
+    fields.push({
+      label: SALAO_REGISTER_FORM_LABELS.showHoraMarcada,
+      value: hora,
+    });
+  }
+
+  fields.push({ label: "Status", value: normalizeSalaoStatusLabel(row.status) });
+  const obs = formatObservacaoForDisplay(row.observacao);
+  if (obs) fields.push({ label: "Observações", value: obs });
+
+  return fields;
+}
+
 function buildGenericPrintFields(
   ctx: PrintAtendimentoContext
 ): Array<{ label: string; value: string }> {
@@ -189,7 +240,12 @@ export function buildAtendimentoPrintHtml(ctx: PrintAtendimentoContext): string 
   const { row, tenantConfig } = ctx;
   const segmento = tenantConfig.segmentoAplicado;
   const mroMode = isMroLogisticsSegment(segmento);
-  const fields = mroMode ? buildMroPrintFields(ctx) : buildGenericPrintFields(ctx);
+  const salaoMode = isSalaoEsteticaSegment(segmento);
+  const fields = mroMode
+    ? buildMroPrintFields(ctx)
+    : salaoMode
+      ? buildSalaoPrintFields(ctx)
+      : buildGenericPrintFields(ctx);
   const timeline = mroMode ? parseAviacaoTimeline(row.observacao) : [];
   const timelineTitle = mroMode ? resolveMroTimelineSectionTitle(segmento) : "Histórico";
 
