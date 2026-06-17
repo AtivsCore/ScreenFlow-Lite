@@ -636,6 +636,16 @@ export function buildSalaoMoveToAguardandoPagamentoObservacao(
   );
 }
 
+/** Patch alinhado ao balcão (`salaoPrimaryAction` → Aguardando Pagamento). */
+export function buildSalaoEnviarParaCaixaPatch(
+  row: Pick<AtendimentoLite, "observacao">,
+  queueTabs: Pick<QueueTabEntry, "id" | "preset" | "label">[]
+): { observacao: string | null } {
+  return {
+    observacao: buildSalaoMoveToAguardandoPagamentoObservacao(row.observacao, queueTabs),
+  };
+}
+
 /** Horário marcado entrou na janela de 30 min antecedentes ao momento atual. */
 export function isSalaoHoraReadyForFilaAtiva(
   horaMarcada: string | null | undefined,

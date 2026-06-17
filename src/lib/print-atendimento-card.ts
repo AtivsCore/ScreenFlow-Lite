@@ -22,6 +22,8 @@ import {
 } from "@/lib/aviacao-logistics";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
 import {
+  formatSalaoServicosItemizedLine,
+  formatSalaoTotalLabel,
   isSalaoEsteticaSegment,
   normalizeSalaoStatusLabel,
   resolveSalaoCategoryDisplay,
@@ -142,16 +144,36 @@ function buildSalaoPrintFields(
   if (row.nome?.trim()) fields.push({ label: "Nome", value: row.nome.trim() });
 
   for (const cat of categories) {
-    const value =
-      resolveSalaoCategoryDisplay(
-        cat.id,
-        row.observacao,
-        row.cadastro_valores ?? {},
-        cadastroLookups,
-        categories,
-        legacy
-      )?.trim() || "—";
+    let value: string;
+    if (cat.id === "sal-c3") {
+      value =
+        formatSalaoServicosItemizedLine(row, cadastroLookups)?.trim() ||
+        resolveSalaoCategoryDisplay(
+          cat.id,
+          row.observacao,
+          row.cadastro_valores ?? {},
+          cadastroLookups,
+          categories,
+          legacy
+        )?.trim() ||
+        "—";
+    } else {
+      value =
+        resolveSalaoCategoryDisplay(
+          cat.id,
+          row.observacao,
+          row.cadastro_valores ?? {},
+          cadastroLookups,
+          categories,
+          legacy
+        )?.trim() || "—";
+    }
     fields.push({ label: cat.label, value });
+  }
+
+  const totalPagar = formatSalaoTotalLabel(row, cadastroLookups);
+  if (totalPagar) {
+    fields.push({ label: "TOTAL A PAGAR", value: totalPagar });
   }
 
   const hora = formatHoraMarcada(row.hora_marcada);

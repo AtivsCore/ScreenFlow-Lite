@@ -13,8 +13,7 @@ import {
 import { resolvePublicTenantId } from "@/lib/tenant-id";
 import {
   buildSalaoChamarParaCadeiraPatch,
-  buildSalaoDefaultQueueTabs,
-  buildSalaoMoveToAguardandoPagamentoObservacao,
+  buildSalaoEnviarParaCaixaPatch,
   calculateSalaoTotal,
   filterSalaoMobileProfissionalDayRows,
   formatSalaoCurrency,
@@ -22,6 +21,7 @@ import {
   normalizeSalaoStatusLabel,
   resolveSalaoChamarLabel,
   resolveSalaoKanbanMeta,
+  resolveSalaoQueueTabs,
   resolveSalaoServicoIdsFromRow,
 } from "@/lib/salao-estetica-logistics";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
@@ -89,10 +89,7 @@ export function SalaoMobileAtendimentoView() {
     () => config.cadastroCategories ?? restoreDefaultCadastroCategories(),
     [config.cadastroCategories]
   );
-  const queueTabs = useMemo(
-    () => (config.queueTabs.length > 0 ? config.queueTabs : buildSalaoDefaultQueueTabs()),
-    [config.queueTabs]
-  );
+  const queueTabs = useMemo(() => resolveSalaoQueueTabs(config), [config]);
 
   useEffect(() => {
     cadastroCategoriesRef.current = cadastroCategories;
@@ -315,11 +312,7 @@ export function SalaoMobileAtendimentoView() {
     setSendingToCaixa(true);
     setCallFeedback(null);
 
-    const observacao = buildSalaoMoveToAguardandoPagamentoObservacao(
-      selectedRow.observacao,
-      queueTabs
-    );
-    const patch = { observacao };
+    const patch = buildSalaoEnviarParaCaixaPatch(selectedRow, queueTabs);
 
     try {
       if (supabase) {
@@ -338,9 +331,7 @@ export function SalaoMobileAtendimentoView() {
         if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
       }
 
-      setRows((prev) =>
-        prev.map((r) => (r.id === selectedRow.id ? { ...r, observacao } : r))
-      );
+      setRows((prev) => prev.filter((r) => r.id !== selectedRow.id));
       setCallFeedback("Cliente enviado para o caixa!");
       window.setTimeout(() => {
         setSelectedRow(null);
@@ -551,20 +542,20 @@ export function SalaoMobileAtendimentoView() {
 
             <button
               type="button"
-              disabled={sendingToCaixa || calling}
-              onClick={() => void enviarParaCaixa()}
-              className="mt-4 w-full rounded-xl border border-amber-500/60 bg-amber-950/40 py-3 text-sm font-bold text-amber-100 shadow-sm transition hover:bg-amber-950/70 active:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={calling || sendingToCaixa}
+              onClick={() => void chamarParaCadeira()}
+              className="mt-4 w-full rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-500 active:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {sendingToCaixa ? "Enviando…" : "Enviar para o Caixa"}
+              {calling ? "Chamando…" : chamarLabel}
             </button>
 
             <button
               type="button"
-              disabled={calling || sendingToCaixa}
-              onClick={() => void chamarParaCadeira()}
-              className="mt-2 w-full rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-500 active:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={sendingToCaixa || calling}
+              onClick={() => void enviarParaCaixa()}
+              className="mt-2 w-full rounded-xl border border-amber-500/60 bg-amber-950/40 py-3 text-sm font-bold text-amber-100 shadow-sm transition hover:bg-amber-950/70 active:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {calling ? "Chamando…" : chamarLabel}
+              {sendingToCaixa ? "Enviando…" : "Enviar para o Caixa"}
             </button>
           </div>
         </>

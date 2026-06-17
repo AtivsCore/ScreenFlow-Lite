@@ -15,7 +15,6 @@ import {
   isLocalDayToday,
   parseDateInputValue,
   readSalaoAgendaGridHours,
-  resolveSalaoAgendaServicoLabel,
   resolveSalaoAgendaSlotAppearance,
   startOfLocalDay,
   timeInputValueToHour,
@@ -25,6 +24,13 @@ import {
   type SalaoAgendaSlotIntervalMinutes,
 } from "@/lib/salao-agenda-matrix";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
+import {
+  calculateSalaoTotal,
+  formatSalaoCurrency,
+  formatSalaoServicosItemizedLine,
+  formatSalaoTotalLabel,
+  resolveSalaoServicoIdsFromRow,
+} from "@/lib/salao-estetica-logistics";
 import {
   SalaoProUpsellModal,
   type SalaoProUpsellContext,
@@ -62,7 +68,7 @@ const SALAO_AGENDA_PROF_COL_CLASS = "w-[9rem] max-w-[9rem]";
 function SalaoAgendaOccupiedCard({
   row,
   appearance,
-  servicoLabel,
+  cadastroLookups,
   deleting,
   onOpenEncaixe,
   onEdit,
@@ -70,38 +76,62 @@ function SalaoAgendaOccupiedCard({
 }: {
   row: AtendimentoLite;
   appearance: ReturnType<typeof resolveSalaoAgendaSlotAppearance>;
-  servicoLabel: string;
+  cadastroLookups: CadastroLookups;
   deleting: boolean;
   onOpenEncaixe: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
   const clientName = row.nome?.trim() || "Cliente";
+  const servicosLine =
+    formatSalaoServicosItemizedLine(row, cadastroLookups) ?? "Serviço não informado";
+  const totalLabel = formatSalaoTotalLabel(row, cadastroLookups);
+  const pricing = calculateSalaoTotal(resolveSalaoServicoIdsFromRow(row), cadastroLookups);
+
   const tooltipContent = (
-    <div className="max-w-[14rem] text-left">
+    <div className="max-w-[16rem] text-left">
       <p className="font-semibold leading-snug">{clientName}</p>
-      <p className="mt-0.5 leading-snug opacity-90">{servicoLabel}</p>
+      {pricing.items.length > 0 ? (
+        <ul className="mt-1 space-y-0.5 text-[11px] leading-snug">
+          {pricing.items.map((item) => (
+            <li key={item.id}>
+              {item.nome}
+              {item.valor !== null ? ` (${formatSalaoCurrency(item.valor)})` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-0.5 text-[11px] leading-snug opacity-90">{servicosLine}</p>
+      )}
+      {totalLabel ? (
+        <p className="mt-1.5 text-[11px] font-bold leading-snug">TOTAL: {totalLabel}</p>
+      ) : null}
     </div>
   );
 
   return (
     <div
-      className={`flex h-[3.25rem] w-full max-w-full min-w-0 flex-col justify-between overflow-hidden rounded-md border px-2 py-1 ${appearance.cardClassName}`}
+      className={`flex min-h-[4.25rem] w-full max-w-full min-w-0 flex-col justify-between overflow-hidden rounded-md border px-2 py-1 ${appearance.cardClassName}`}
     >
       <Tooltip content={tooltipContent} side="top" align="start">
-        <div
-          className="min-w-0 max-w-full flex-1 overflow-hidden"
-        >
+        <div className="min-w-0 max-w-full flex-1 overflow-hidden">
           <p className="truncate font-semibold leading-tight">{clientName}</p>
-          <p className="line-clamp-2 overflow-hidden text-ellipsis break-words text-[9px] leading-snug opacity-80">
-            {servicoLabel}
+          <p className="line-clamp-2 overflow-hidden text-ellipsis break-words text-[8px] leading-snug opacity-80">
+            {servicosLine}
           </p>
         </div>
       </Tooltip>
       <div className="flex min-w-0 items-center justify-between gap-1">
-        <span className="min-w-0 truncate text-[9px] font-medium uppercase tracking-wide opacity-90">
-          {appearance.statusLabel}
-        </span>
+        <div className="min-w-0 flex-1">
+          {totalLabel ? (
+            <p className="truncate text-[8px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+              TOTAL: {totalLabel}
+            </p>
+          ) : null}
+          <span className="block min-w-0 truncate text-[9px] font-medium uppercase tracking-wide opacity-90">
+            {appearance.statusLabel}
+          </span>
+        </div>
         <div className="flex shrink-0 items-center gap-0.5">
           <button
             type="button"
@@ -495,9 +525,6 @@ export function SalaoAgendaMatrixView({
                       }
 
                       const appearance = resolveSalaoAgendaSlotAppearance(row);
-                      const servicoLabel =
-                        resolveSalaoAgendaServicoLabel(row, cadastroCategories, cadastroLookups) ??
-                        "Serviço não informado";
 
                       return (
                         <td
@@ -507,7 +534,7 @@ export function SalaoAgendaMatrixView({
                           <SalaoAgendaOccupiedCard
                             row={row}
                             appearance={appearance}
-                            servicoLabel={servicoLabel}
+                            cadastroLookups={cadastroLookups}
                             deleting={deleting === row.id}
                             onOpenEncaixe={() => openSlotRegistry(prof.id, slot)}
                             onEdit={() => onEditRow(row)}
