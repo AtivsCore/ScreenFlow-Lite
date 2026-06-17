@@ -1527,15 +1527,20 @@ export function isSalaoAgendaEligibleRow(
   return rowMatchesSalaoQueueTabEntry(row, horaTab, queueTabs);
 }
 
-/** Linha elegível na busca da agenda: passado, presente e futuro (coluna HORA MARCADA). */
+/** Linha elegível na busca do balcão: hoje (todos os status) + dias futuros ativos. */
 export function isSalaoAgendaSearchEligibleRow(
   row: AtendimentoLite,
   queueTabs: Pick<QueueTabEntry, "id" | "preset">[]
 ): boolean {
-  if (!isActiveQueueRow(row) || !isSalaoActiveStatus(row.status)) return false;
   if (!row.hora_marcada?.trim()) return false;
+  if (!isTodayOrFutureHoraMarcada(row.hora_marcada)) return false;
+
   const horaTab = { id: SALAO_TAB.HORA, preset: "hora" as const };
-  return rowMatchesSalaoQueueTabEntry(row, horaTab, queueTabs);
+  if (!rowMatchesSalaoQueueTabEntry(row, horaTab, queueTabs)) return false;
+
+  if (isTodayHoraMarcada(row.hora_marcada)) return true;
+
+  return isActiveQueueRow(row) && isSalaoActiveStatus(row.status);
 }
 
 export function filterSalaoAgendaSearchRows(

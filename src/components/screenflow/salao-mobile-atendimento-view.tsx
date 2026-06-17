@@ -14,6 +14,7 @@ import { resolvePublicTenantId } from "@/lib/tenant-id";
 import {
   buildSalaoChamarParaCadeiraPatch,
   buildSalaoDefaultQueueTabs,
+  buildSalaoMoveToAguardandoPagamentoObservacao,
   calculateSalaoTotal,
   filterSalaoMobileProfissionalDayRows,
   formatSalaoCurrency,
@@ -77,6 +78,7 @@ export function SalaoMobileAtendimentoView() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [calling, setCalling] = useState(false);
+  const [sendingToCaixa, setSendingToCaixa] = useState(false);
   const [callFeedback, setCallFeedback] = useState<string | null>(null);
 
   const cadastroCategoriesRef = useRef<CadastroCategoryEntry[]>(restoreDefaultCadastroCategories());
@@ -308,6 +310,49 @@ export function SalaoMobileAtendimentoView() {
     }
   };
 
+  const enviarParaCaixa = async () => {
+    if (!selectedRow || sendingToCaixa || calling) return;
+    setSendingToCaixa(true);
+    setCallFeedback(null);
+
+    const observacao = buildSalaoMoveToAguardandoPagamentoObservacao(
+      selectedRow.observacao,
+      queueTabs
+    );
+    const patch = { observacao };
+
+    try {
+      if (supabase) {
+        const { error } = await supabase
+          .from("atendimentos_lite")
+          .update(patch)
+          .eq("id", selectedRow.id);
+        if (error) throw new Error(error.message);
+      } else {
+        const r = await fetch("/api/atendimentos-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: selectedRow.id, ...patch }),
+        });
+        const j = (await r.json()) as { ok?: boolean; message?: string };
+        if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
+      }
+
+      setRows((prev) =>
+        prev.map((r) => (r.id === selectedRow.id ? { ...r, observacao } : r))
+      );
+      setCallFeedback("Cliente enviado para o caixa!");
+      window.setTimeout(() => {
+        setSelectedRow(null);
+        setCallFeedback(null);
+      }, 1200);
+    } catch (e) {
+      setCallFeedback(e instanceof Error ? e.message : "Falha ao enviar para o caixa.");
+    } finally {
+      setSendingToCaixa(false);
+    }
+  };
+
   const drawerMeta = selectedRow
     ? resolveSalaoKanbanMeta(selectedRow, cadastroCategories, cadastroLookups)
     : null;
@@ -495,7 +540,9 @@ export function SalaoMobileAtendimentoView() {
             {callFeedback ? (
               <p
                 className={`mt-3 text-center text-xs ${
-                  callFeedback.includes("sucesso") ? "text-emerald-400" : "text-red-400"
+                  callFeedback.includes("sucesso") || callFeedback.includes("caixa")
+                    ? "text-emerald-400"
+                    : "text-red-400"
                 }`}
               >
                 {callFeedback}
@@ -504,9 +551,18 @@ export function SalaoMobileAtendimentoView() {
 
             <button
               type="button"
-              disabled={calling}
+              disabled={sendingToCaixa || calling}
+              onClick={() => void enviarParaCaixa()}
+              className="mt-4 w-full rounded-xl border border-amber-500/60 bg-amber-950/40 py-3 text-sm font-bold text-amber-100 shadow-sm transition hover:bg-amber-950/70 active:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {sendingToCaixa ? "Enviando…" : "Enviar para o Caixa"}
+            </button>
+
+            <button
+              type="button"
+              disabled={calling || sendingToCaixa}
               onClick={() => void chamarParaCadeira()}
-              className="mt-4 w-full rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-500 active:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 w-full rounded-xl bg-emerald-600 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-500 active:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {calling ? "Chamando…" : chamarLabel}
             </button>

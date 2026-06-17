@@ -283,8 +283,12 @@ const KanbanCard = memo(function KanbanCard({
   const horaMarcadaLabel = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : null;
   const horaMarcadaBadge = resolveSalaoHoraMarcadaBadgeMeta(salaoEsteticaActive);
   const showSalaoTopHoraBadge = Boolean(salaoEsteticaActive && isCompactView && horaMarcadaLabel);
-  const showSalaoFooterHora = Boolean(horaMarcadaLabel && !salaoEsteticaActive);
+  const showSalaoNormalFooterHora = Boolean(
+    salaoEsteticaActive && !isCompactView && horaMarcadaLabel
+  );
   const showGenericTopHoraBadge = Boolean(horaMarcadaLabel && !salaoEsteticaActive);
+  const showFooterHora =
+    showSalaoNormalFooterHora || Boolean(horaMarcadaLabel && !salaoEsteticaActive);
   const observacaoText = aviacaoLogisticsActive
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
@@ -555,7 +559,7 @@ const KanbanCard = memo(function KanbanCard({
           >
             {statusLabel}
           </span>
-          {showSalaoFooterHora ? (
+          {showFooterHora ? (
             <span className="truncate text-[11px] leading-none text-zinc-500 dark:text-zinc-500" title={horaMarcadaLabel!}>
               {horaMarcadaLabel}
             </span>
