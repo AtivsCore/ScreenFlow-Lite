@@ -26,6 +26,12 @@ import {
 } from "@/lib/salao-agenda-matrix";
 import type { CadastroCategoryEntry, QueueTabEntry } from "@/lib/tenant-config";
 import {
+  SalaoProUpsellModal,
+  type SalaoProUpsellContext,
+} from "@/components/screenflow/salao-pro-upsell-modal";
+import { SalaoProWalletButton } from "@/components/screenflow/salao-pro-wallet-button";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import {
   CalendarPlus,
   ChevronLeft,
   ChevronRight,
@@ -46,6 +52,8 @@ type SalaoAgendaMatrixViewProps = {
   onOpenRegistry: (draft?: RegistryInitialDraft) => void;
   onEditRow: (row: AtendimentoLite) => void;
   onDeleteRow: (row: AtendimentoLite) => void | Promise<void>;
+  /** Exibe ícones de carteira PRO (salão, plano free). */
+  salaoProPaywallActive?: boolean;
 };
 
 function SalaoAgendaGridSettingsPopover({
@@ -205,12 +213,15 @@ export function SalaoAgendaMatrixView({
   onOpenRegistry,
   onEditRow,
   onDeleteRow,
+  salaoProPaywallActive = false,
 }: SalaoAgendaMatrixViewProps) {
   const [selectedDay, setSelectedDay] = useState(() => startOfLocalDay(new Date()));
   const [gridHours, setGridHours] = useState<SalaoAgendaGridHours>(() =>
     readSalaoAgendaGridHours(tenantId)
   );
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [salaoUpsellOpen, setSalaoUpsellOpen] = useState(false);
+  const [salaoUpsellContext, setSalaoUpsellContext] = useState<SalaoProUpsellContext>("monthly");
 
   useEffect(() => {
     setGridHours(readSalaoAgendaGridHours(tenantId));
@@ -259,7 +270,13 @@ export function SalaoAgendaMatrixView({
     onOpenRegistry(buildSalaoAgendaRegistryDraft(selectedDay, profissionalId, slotHHMM));
   }
 
+  function openSalaoProUpsell(context: SalaoProUpsellContext) {
+    setSalaoUpsellContext(context);
+    setSalaoUpsellOpen(true);
+  }
+
   return (
+    <TooltipProvider>
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
         <div>
@@ -352,7 +369,16 @@ export function SalaoAgendaMatrixView({
                       key={prof.id}
                       className="sticky top-0 z-20 min-w-[9rem] bg-zinc-50 px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:bg-zinc-800/95 dark:text-zinc-300"
                     >
-                      {prof.label}
+                      <span className="inline-flex items-center justify-center gap-0.5">
+                        <span>{prof.label}</span>
+                        {salaoProPaywallActive ? (
+                          <SalaoProWalletButton
+                            tooltip="Previsão mensal (PRO)"
+                            onClick={() => openSalaoProUpsell("monthly")}
+                            iconClassName="size-2.5"
+                          />
+                        ) : null}
+                      </span>
                     </th>
                   ))}
                 </tr>
@@ -438,5 +464,11 @@ export function SalaoAgendaMatrixView({
         )}
       </div>
     </div>
+    <SalaoProUpsellModal
+      open={salaoUpsellOpen}
+      onClose={() => setSalaoUpsellOpen(false)}
+      context={salaoUpsellContext}
+    />
+    </TooltipProvider>
   );
 }

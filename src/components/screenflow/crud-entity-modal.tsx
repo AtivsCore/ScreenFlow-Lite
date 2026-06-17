@@ -12,7 +12,8 @@ import {
   SERVICES_CRUD_TABLE,
 } from "@/lib/db-tables";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
-import { resolveServicesTableName } from "@/lib/fetch-servicos";
+import { resolveServicesTableName, type ServicoRow } from "@/lib/fetch-servicos";
+import { formatSalaoCurrency } from "@/lib/salao-estetica-logistics";
 import { resolveDefaultTenantId } from "@/lib/tenant-id";
 import { fetchSessionTenantId } from "@/lib/session-tenant";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -21,7 +22,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 
 type BaseRow = { id: string; nome: string | null };
-type ServicoRow = BaseRow & { ordem?: number | null };
 
 type CrudEntityModalProps = {
   open: boolean;
@@ -32,6 +32,8 @@ type CrudEntityModalProps = {
   tenantId?: string | null;
   /** Slot da aviação (ex.: `av-c4`) para isolar gaveta virtual no CRUD. */
   cadastroCategoryId?: string | null;
+  /** Exibe campo Valor (R$) no CRUD de serviços — preset salão. */
+  showServicePrice?: boolean;
   onSaved?: () => void;
 };
 
@@ -43,6 +45,7 @@ export function CrudEntityModal({
   table,
   tenantId,
   cadastroCategoryId,
+  showServicePrice = false,
   onSaved,
 }: CrudEntityModalProps) {
   const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
@@ -61,9 +64,11 @@ export function CrudEntityModal({
   const [effectiveTable, setEffectiveTable] = useState(table);
   const [rows, setRows] = useState<(BaseRow | ServicoRow | ProfissionalRow)[]>([]);
   const [ordemSupported, setOrdemSupported] = useState(true);
+  const [valorSupported, setValorSupported] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nome, setNome] = useState("");
+  const [valor, setValor] = useState("");
   const [especialidade, setEspecialidade] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -71,9 +76,13 @@ export function CrudEntityModal({
     if (!open) return;
     setEffectiveTable(table);
     setOrdemSupported(true);
+    setValorSupported(true);
     setNome("");
+    setValor("");
     setEspecialidade("");
   }, [open, table]);
+
+  const showValorField = showServicePrice && needsServicesResolve && valorSupported;
 
   useEffect(() => {
     if (!open || !supabase) return;
@@ -117,8 +126,12 @@ export function CrudEntityModal({
     const selectCols = isProfissionais
       ? "id,nome,especialidade"
       : needsReorder && ordemSupported
-        ? "id,nome,ordem"
-        : "id,nome";
+        ? showValorField
+          ? "id,nome,ordem,valor"
+          : "id,nome,ordem"
+        : showValorField
+          ? "id,nome,valor"
+          : "id,nome";
 
     let query = supabase.from(tbl).select(selectCols).eq("tenant_id", effectiveTenantId);
     if (needsReorder && ordemSupported) {
@@ -128,6 +141,15 @@ export function CrudEntityModal({
     }
 
     const { data, error: err } = await query;
+
+    if (err && showValorField && /column .*valor|Could not find the 'valor'/i.test(err.message)) {
+      setValorSupported(false);
+      setLoading(false);
+      queueMicrotask(() => {
+        void load();
+      });
+      return;
+    }
 
     if (err && needsReorder && ordemSupported && /ordem/i.test(err.message)) {
       setOrdemSupported(false);
@@ -150,7 +172,7 @@ export function CrudEntityModal({
       setRows(scoped as (BaseRow | ServicoRow | ProfissionalRow)[]);
     }
     setLoading(false);
-  }, [supabase, table, open, effectiveTenantId, needsServicesResolve, needsReorder, ordemSupported, ensureTable, isProfissionais, cadastroCategoryId]);
+  }, [supabase, table, open, effectiveTenantId, needsServicesResolve, needsReorder, ordemSupported, valorSupported, showValorField, ensureTable, isProfissionais, cadastroCategoryId]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -192,10 +214,21 @@ export function CrudEntityModal({
       return;
     }
 
+    const parsedValor = showValorField ? parseServiceValorInput(valor) : null;
+    if (showValorField && valor.trim() && parsedValor === null) {
+      setError("Informe um valor válido (R$) ou deixe o campo vazio.");
+      setBusy(false);
+      return;
+    }
+
     const payload: Record<string, unknown> = {
       nome: trimmed,
       tenant_id: effectiveTenantId,
     };
+
+    if (showValorField && parsedValor !== null) {
+      payload.valor = parsedValor;
+    }
 
     if (isProfissionais) {
       const esp = especialidade.trim();
@@ -220,6 +253,13 @@ export function CrudEntityModal({
 
     let { error: err } = await supabase.from(tbl).insert(payload);
 
+    if (err && showValorField && /column .*valor|Could not find the 'valor'/i.test(err.message)) {
+      setValorSupported(false);
+      const { valor: _removed, ...withoutValor } = payload;
+      const retry = await supabase.from(tbl).insert(withoutValor);
+      err = retry.error;
+    }
+
     if (err && needsServicesResolve && isMissingServicesTableError(err.message)) {
       const retry = await resolveServicesTableName(supabase, effectiveTenantId);
       if (retry.table && retry.table !== tbl) {
@@ -235,6 +275,7 @@ export function CrudEntityModal({
       if (isRls) {
         const viaApi = await insertViaApi(tbl, {
           nome: trimmed,
+          ...(showValorField && parsedValor !== null ? { valor: parsedValor } : {}),
           ...(isProfissionais && especialidade.trim()
             ? { especialidade: especialidade.trim() }
             : {}),
@@ -242,6 +283,7 @@ export function CrudEntityModal({
         });
         if (viaApi.ok) {
           setNome("");
+          setValor("");
           setEspecialidade("");
           onSaved?.();
           await load();
@@ -255,6 +297,7 @@ export function CrudEntityModal({
       setError(err.message);
     } else {
       setNome("");
+      setValor("");
       setEspecialidade("");
       onSaved?.();
       await load();
@@ -306,7 +349,17 @@ export function CrudEntityModal({
 
   function rowLabel(r: BaseRow | ServicoRow | ProfissionalRow): string {
     if (isProfissionais) return formatProfissionalLabel(r as ProfissionalRow);
-    return r.nome ?? "—";
+    const servico = r as ServicoRow;
+    const base = servico.nome ?? "—";
+    if (
+      showValorField &&
+      typeof servico.valor === "number" &&
+      Number.isFinite(servico.valor) &&
+      servico.valor >= 0
+    ) {
+      return `${base} — ${formatSalaoCurrency(servico.valor)}`;
+    }
+    return base;
   }
 
   const showDetectedTable =
@@ -323,6 +376,20 @@ export function CrudEntityModal({
             className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
             disabled={busy || !supabase}
           />
+          {showValorField ? (
+            <input
+              type="number"
+              min={0}
+              step={0.01}
+              value={valor}
+              onChange={(e) => setValor(e.target.value)}
+              placeholder="Valor (R$)"
+              title="Valor (R$)"
+              aria-label="Valor em reais"
+              className="w-[7.5rem] shrink-0 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-50"
+              disabled={busy || !supabase}
+            />
+          ) : null}
           <button
             type="submit"
             disabled={busy || !supabase || !nome.trim()}
@@ -401,4 +468,13 @@ export function CrudEntityModal({
       </div>
     </Modal>
   );
+}
+
+function parseServiceValorInput(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/\./g, "").replace(",", ".");
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100) / 100;
 }

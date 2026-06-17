@@ -34,6 +34,8 @@ type AgendaProViewProps = {
   onOpenRegistry?: (draft?: RegistryInitialDraft) => void;
   onSalaoSendToBalcao?: (row: AtendimentoLite) => void | Promise<void>;
   onSalaoAnteciparOrdem?: (row: AtendimentoLite) => void | Promise<void>;
+  /** Exibe paywall de faturamento PRO (salão, plano free). */
+  salaoProPaywallActive?: boolean;
 };
 
 export function AgendaProView({
@@ -51,6 +53,7 @@ export function AgendaProView({
   onOpenRegistry,
   onSalaoSendToBalcao,
   onSalaoAnteciparOrdem,
+  salaoProPaywallActive = false,
 }: AgendaProViewProps) {
   const salaoMode = isSalaoEsteticaSegment(tenantConfig.segmentoAplicado);
   const [bookingOpen, setBookingOpen] = useState(false);
@@ -103,6 +106,7 @@ export function AgendaProView({
           onOpenRegistry={(draft) => onOpenRegistry?.(draft)}
           onEditRow={onEditRow}
           onDeleteRow={onDeleteRow}
+          salaoProPaywallActive={salaoProPaywallActive}
         />
       </div>
     );

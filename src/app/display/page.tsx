@@ -119,7 +119,7 @@ export default function DisplayPage() {
       if (r.local_id && r.localNome) locais.set(r.local_id, r.localNome);
       if (r.especialidade_id && r.servicoNome) servicos.set(r.especialidade_id, r.servicoNome);
     }
-    return { profissionais, locais, servicos };
+    return { profissionais, locais, servicos, servicosValor: new Map<string, number>() };
   }, [rows]);
 
   useEffect(() => {

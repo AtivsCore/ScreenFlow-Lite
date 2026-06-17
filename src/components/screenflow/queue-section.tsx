@@ -69,6 +69,11 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { formatObservacaoForDisplay } from "@/lib/fila-preset";
+import {
+  SalaoProUpsellModal,
+  type SalaoProUpsellContext,
+} from "@/components/screenflow/salao-pro-upsell-modal";
+import { SalaoProWalletButton } from "@/components/screenflow/salao-pro-wallet-button";
 
 export type QueueViewMode = "list" | "kanban";
 
@@ -94,6 +99,7 @@ function resolveKanbanMeta(
   servico: string | null;
   docaAlocada?: string | null;
   hangarAlocado?: string | null;
+  salaoTotalLabel?: string | null;
 } {
   if (docasLogisticsActive) {
     return resolveDocasKanbanMeta(row, cadastroCategories, cadastroLookups);
@@ -116,6 +122,7 @@ function resolveKanbanMeta(
       local: meta.local,
       servico: meta.servico,
       hangarAlocado: meta.cadeiraLabel,
+      salaoTotalLabel: meta.salaoTotalLabel,
     };
   }
   const legacyCtx = {
@@ -449,6 +456,14 @@ const KanbanCard = memo(function KanbanCard({
                 {line.allocated}
               </span>
             ) : null}
+            {salaoEsteticaActive && meta.salaoTotalLabel ? (
+              <span
+                className="shrink-0 truncate text-[9px] font-bold uppercase leading-none tracking-wide text-emerald-700 dark:text-emerald-400"
+                title={`Total: ${meta.salaoTotalLabel}`}
+              >
+                TOTAL: {meta.salaoTotalLabel}
+              </span>
+            ) : null}
           </div>
           {actionButtons}
         </div>
@@ -524,6 +539,11 @@ const KanbanCard = memo(function KanbanCard({
                 className="line-clamp-2 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400"
               >
                 {observacaoText}
+              </p>
+            ) : null}
+            {salaoEsteticaActive && meta.salaoTotalLabel ? (
+              <p className="mt-0.5 truncate text-[9px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                TOTAL: {meta.salaoTotalLabel}
               </p>
             ) : null}
           </>
@@ -920,6 +940,8 @@ type QueueSectionProps = {
   showTodosTab?: boolean;
   /** Pool ampliado para busca (agenda passado/futuro) — preset salao_estetica. */
   salaoSearchRows?: AtendimentoLite[];
+  /** Exibe ícones de carteira PRO (salão, plano free). */
+  salaoProPaywallActive?: boolean;
 };
 
 export function QueueSection({
@@ -987,9 +1009,12 @@ export function QueueSection({
   salaoProfissionalMirror = false,
   showTodosTab = true,
   salaoSearchRows,
+  salaoProPaywallActive = false,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [salaoUpsellOpen, setSalaoUpsellOpen] = useState(false);
+  const [salaoUpsellContext, setSalaoUpsellContext] = useState<SalaoProUpsellContext>("daily");
   const lastSearchOpenRef = useRef<string | null>(null);
   const [isCompactView, setIsCompactView] = useState(false);
   const enabledCategories = cadastroCategories.filter((c) => c.enabled);
@@ -1164,6 +1189,14 @@ export function QueueSection({
     },
     [salaoProfissionalMirror, salaoProfissionalColumns, showTodosTab, onQueueTabId, onViewModeChange]
   );
+
+  const openSalaoProUpsell = useCallback((context: SalaoProUpsellContext) => {
+    setSalaoUpsellContext(context);
+    setSalaoUpsellOpen(true);
+  }, []);
+
+  const showSalaoProfWallet =
+    salaoProPaywallActive && salaoEsteticaActive && salaoProfissionalMirror;
 
   return (
     <TooltipProvider>
@@ -1453,7 +1486,16 @@ export function QueueSection({
                       onClick={() => onQueueTabId(tab.id)}
                       className={queueListTabButtonClass(active)}
                     >
-                      {label}
+                      <span className="inline-flex items-center gap-1">
+                        <span>{label}</span>
+                        {showSalaoProfWallet && tab.kind === "profissional" ? (
+                          <SalaoProWalletButton
+                            tooltip="Faturamento diário (PRO)"
+                            onClick={() => openSalaoProUpsell("daily")}
+                            iconClassName="size-3"
+                          />
+                        ) : null}
+                      </span>
                     </button>
                   );
                 })
@@ -1607,12 +1649,21 @@ export function QueueSection({
                         }`}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <h3
-                            className="truncate text-[8px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
-                            title={column.label}
-                          >
-                            {column.label}
-                          </h3>
+                          <div className="flex min-w-0 flex-1 items-center gap-0.5">
+                            <h3
+                              className="truncate text-[8px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-300"
+                              title={column.label}
+                            >
+                              {column.label}
+                            </h3>
+                            {showSalaoProfWallet && column.kind === "profissional" ? (
+                              <SalaoProWalletButton
+                                tooltip="Faturamento diário (PRO)"
+                                onClick={() => openSalaoProUpsell("daily")}
+                                iconClassName="size-2.5"
+                              />
+                            ) : null}
+                          </div>
                           <span className="shrink-0 font-mono text-[8px] font-medium leading-none text-zinc-500 dark:text-zinc-400">
                             {count}
                           </span>
@@ -1756,6 +1807,11 @@ export function QueueSection({
         )}
       </div>
     </div>
+      <SalaoProUpsellModal
+        open={salaoUpsellOpen}
+        onClose={() => setSalaoUpsellOpen(false)}
+        context={salaoUpsellContext}
+      />
     </TooltipProvider>
   );
 }

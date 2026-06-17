@@ -1017,6 +1017,7 @@ export function resolveSalaoKanbanMeta(
   local: string | null;
   servico: string | null;
   cadeiraLabel: string | null;
+  salaoTotalLabel: string | null;
 } {
   const legacy: CadastroLegacyContext = {
     profissional_id: row.profissional_id,
@@ -1045,6 +1046,7 @@ export function resolveSalaoKanbanMeta(
       legacy
     ) ?? null;
   const servico =
+    formatSalaoServicosItemizedLine(row, lookups) ??
     resolveSalaoCategoryDisplay(
       "sal-c3",
       row.observacao,
@@ -1052,7 +1054,9 @@ export function resolveSalaoKanbanMeta(
       lookups,
       categories,
       legacy
-    ) ?? null;
+    ) ??
+    null;
+  const salaoTotalLabel = formatSalaoTotalLabel(row, lookups);
 
   return {
     title: row.nome?.trim() || "—",
@@ -1060,6 +1064,7 @@ export function resolveSalaoKanbanMeta(
     local,
     servico,
     cadeiraLabel: local,
+    salaoTotalLabel,
   };
 }
 
@@ -1284,6 +1289,8 @@ export function resolveSalaoHeaderServicoLabel(
   categories: CadastroCategoryEntry[],
   lookups: CadastroLookups
 ): string | null {
+  const priced = formatSalaoServicosPricingLine(row, lookups);
+  if (priced) return priced;
   const label = resolveSalaoCategoryDisplay(
     "sal-c3",
     row.observacao,
@@ -1296,6 +1303,94 @@ export function resolveSalaoHeaderServicoLabel(
     }
   );
   return label?.trim() || null;
+}
+
+export type SalaoServicoPricedItem = {
+  id: string;
+  nome: string;
+  valor: number | null;
+};
+
+export type SalaoTotalCalculation = {
+  items: SalaoServicoPricedItem[];
+  /** Soma dos valores cadastrados; null se nenhum item tiver preço. */
+  total: number | null;
+};
+
+export function formatSalaoCurrency(value: number): string {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+export function resolveSalaoServicoIdsFromRow(
+  row: Pick<AtendimentoLite, "observacao">
+): string[] {
+  return parseSalaoServicosSolicitados(
+    parseSalaoCadastroFields(row.observacao)[SALAO_FIELD_SERVICOS]
+  );
+}
+
+/** Motor de totais: soma valores unitários dos serviços selecionados. */
+export function calculateSalaoTotal(
+  servicosSelecionados: string[],
+  lookups: CadastroLookups
+): SalaoTotalCalculation {
+  const items: SalaoServicoPricedItem[] = [];
+  let total = 0;
+  let hasAnyPrice = false;
+
+  for (const id of servicosSelecionados) {
+    const nome = lookups.servicos.get(id)?.trim() || id;
+    const rawValor = lookups.servicosValor.get(id);
+    const valor =
+      typeof rawValor === "number" && Number.isFinite(rawValor) && rawValor >= 0
+        ? rawValor
+        : null;
+    items.push({ id, nome, valor });
+    if (valor !== null) {
+      total += valor;
+      hasAnyPrice = true;
+    }
+  }
+
+  return { items, total: hasAnyPrice ? total : null };
+}
+
+export function formatSalaoServicosItemizedLine(
+  row: Pick<AtendimentoLite, "observacao">,
+  lookups: CadastroLookups
+): string | null {
+  const ids = resolveSalaoServicoIdsFromRow(row);
+  if (ids.length === 0) return null;
+  const { items } = calculateSalaoTotal(ids, lookups);
+  if (items.length === 0) return null;
+  return items
+    .map((item) =>
+      item.valor !== null ? `${item.nome} (${formatSalaoCurrency(item.valor)})` : item.nome
+    )
+    .join(", ");
+}
+
+export function formatSalaoTotalLabel(
+  row: Pick<AtendimentoLite, "observacao">,
+  lookups: CadastroLookups
+): string | null {
+  const ids = resolveSalaoServicoIdsFromRow(row);
+  if (ids.length === 0) return null;
+  const { total } = calculateSalaoTotal(ids, lookups);
+  if (total === null) return null;
+  return formatSalaoCurrency(total);
+}
+
+/** Linha completa para o painel: itens com preço + total acumulado. */
+export function formatSalaoServicosPricingLine(
+  row: Pick<AtendimentoLite, "observacao">,
+  lookups: CadastroLookups
+): string | null {
+  const itemized = formatSalaoServicosItemizedLine(row, lookups);
+  if (!itemized) return null;
+  const totalLabel = formatSalaoTotalLabel(row, lookups);
+  if (!totalLabel) return itemized;
+  return `${itemized} | TOTAL: ${totalLabel}`;
 }
 
 export function resolveSalaoChamarLabel(localNome: string | null | undefined): string {

@@ -24,6 +24,7 @@ type Body = {
   nome?: string;
   especialidade?: string | null;
   ordem?: number | null;
+  valor?: number | null;
   tenantId?: string | null;
 };
 
@@ -100,6 +101,9 @@ export async function POST(req: Request) {
   if (servicesTableCandidates().includes(targetTable) || targetTable === "servicos") {
     if (typeof body.ordem === "number" && Number.isFinite(body.ordem)) {
       payload.ordem = body.ordem;
+    }
+    if (typeof body.valor === "number" && Number.isFinite(body.valor) && body.valor >= 0) {
+      payload.valor = Math.round(body.valor * 100) / 100;
     }
   }
 

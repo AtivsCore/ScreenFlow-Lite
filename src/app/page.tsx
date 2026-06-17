@@ -194,6 +194,7 @@ export default function Home() {
     profissionais: new Map(),
     locais: new Map(),
     servicos: new Map(),
+    servicosValor: new Map(),
   });
 
   useEffect(() => {
@@ -1800,6 +1801,7 @@ export default function Home() {
               onSalaoAnteciparOrdem={
                 salaoEsteticaActive ? (row) => void salaoAgendaAnteciparOrdem(row) : undefined
               }
+              salaoProPaywallActive={salaoEsteticaActive && !proActive}
             />
           ) : (
             <QueueSection
@@ -1913,6 +1915,7 @@ export default function Home() {
               salaoProfissionalMirror={salaoEsteticaActive}
               showTodosTab={tenantConfig.showTodosTab}
               salaoSearchRows={salaoEsteticaActive ? salaoAgendaSearchRows : undefined}
+              salaoProPaywallActive={salaoEsteticaActive && !proActive}
             />
           )}
         </main>
@@ -1971,6 +1974,9 @@ export default function Home() {
           table={quickCrud.table}
           tenantId={effectiveTenantId}
           cadastroCategoryId={quickCrud.categoryId}
+          showServicePrice={
+            salaoEsteticaActive && quickCrud.table === SERVICES_CRUD_TABLE
+          }
           onClose={() => setQuickCrud(null)}
           onSaved={() => {
             void refreshRows();

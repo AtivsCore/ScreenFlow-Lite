@@ -12,8 +12,12 @@ CREATE TABLE IF NOT EXISTS public.servicos (
   tenant_id uuid NOT NULL,
   nome text NOT NULL,
   ordem integer NOT NULL DEFAULT 0,
+  valor numeric(10,2),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Tenants existentes: adiciona coluna de preço unitário (preset salão).
+ALTER TABLE public.servicos ADD COLUMN IF NOT EXISTS valor numeric(10,2);
 
 CREATE INDEX IF NOT EXISTS idx_servicos_tenant_nome ON public.servicos (tenant_id, nome);
 CREATE INDEX IF NOT EXISTS idx_servicos_tenant_ordem ON public.servicos (tenant_id, ordem, nome);

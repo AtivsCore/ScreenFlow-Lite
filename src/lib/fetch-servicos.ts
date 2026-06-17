@@ -7,7 +7,7 @@ import {
 } from "@/lib/db-tables";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type ServicoRow = { id: string; nome: string | null; ordem?: number | null };
+export type ServicoRow = { id: string; nome: string | null; ordem?: number | null; valor?: number | null };
 
 export type FetchServicosResult = {
   data: ServicoRow[];
@@ -28,18 +28,34 @@ function candidateOrder(): string[] {
   return servicesTableCandidates();
 }
 
+function isMissingValorColumnError(message: string | undefined | null): boolean {
+  if (!message) return false;
+  return /column .*valor|Could not find the 'valor'/i.test(message);
+}
+
 async function queryServicosTable(
   supabase: SupabaseClient,
   table: string,
-  tenantId?: string | null
-): Promise<{ data: ServicoRow[] | null; error: string | null }> {
-  let query = supabase.from(table).select("id,nome,ordem").order("ordem").order("nome");
+  tenantId?: string | null,
+  includeValor = true
+): Promise<{ data: ServicoRow[] | null; error: string | null; valorSupported: boolean }> {
+  const selectCols = includeValor ? "id,nome,ordem,valor" : "id,nome,ordem";
+  let query = supabase.from(table).select(selectCols).order("ordem").order("nome");
   if (tenantId?.trim()) {
     query = query.eq("tenant_id", tenantId.trim());
   }
   const { data, error } = await query;
-  if (error) return { data: null, error: error.message };
-  return { data: (data as ServicoRow[] | null) ?? [], error: null };
+  if (error) {
+    if (includeValor && isMissingValorColumnError(error.message)) {
+      return queryServicosTable(supabase, table, tenantId, false);
+    }
+    return { data: null, error: error.message, valorSupported: includeValor };
+  }
+  return {
+    data: (data as unknown as ServicoRow[] | null) ?? [],
+    error: null,
+    valorSupported: includeValor,
+  };
 }
 
 /** Descobre o nome real da tabela de serviços no PostgREST (cacheia o resultado). */
@@ -116,14 +132,25 @@ export async function fetchServicosRest(
     if (res.ok) {
       setResolvedServicesTable(table);
       const full = await fetch(
-        `${url}/rest/v1/${table}?select=id,nome,ordem&${tenantFilter}&order=ordem&order=nome`,
+        `${url}/rest/v1/${table}?select=id,nome,ordem,valor&${tenantFilter}&order=ordem&order=nome`,
         {
         method: "GET",
         cache: "no-store",
         headers: baseHeaders,
       }
       );
-      const parsed = full.ok ? ((await full.json()) as unknown) : [];
+      if (!full.ok) {
+        const fallback = await fetch(
+          `${url}/rest/v1/${table}?select=id,nome,ordem&${tenantFilter}&order=ordem&order=nome`,
+          { method: "GET", cache: "no-store", headers: baseHeaders }
+        );
+        const parsedFb = fallback.ok ? ((await fallback.json()) as unknown) : [];
+        return {
+          data: Array.isArray(parsedFb) ? (parsedFb as ServicoRow[]) : [],
+          table,
+        };
+      }
+      const parsed = ((await full.json()) as unknown);
       return {
         data: Array.isArray(parsed) ? (parsed as ServicoRow[]) : [],
         table,

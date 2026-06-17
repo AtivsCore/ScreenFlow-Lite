@@ -8,6 +8,8 @@ export type CadastroLookups = {
   profissionais: Map<string, string>;
   locais: Map<string, string>;
   servicos: Map<string, string>;
+  /** Preço unitário (R$) por id de serviço — preset salão. */
+  servicosValor: Map<string, number>;
 };
 
 /** Contexto legado da linha para fallback de exibição (joins e FKs). */
@@ -198,13 +200,19 @@ export function buildCadastroDisplayMap(
 export function buildCadastroLookups(
   profissionais: ProfissionalRow[],
   locais: { id: string; nome: string | null }[],
-  servicos: { id: string; nome: string | null }[]
+  servicos: { id: string; nome: string | null; valor?: number | null }[]
 ): CadastroLookups {
   const profMap = new Map<string, string>();
   for (const p of profissionais) profMap.set(p.id, formatProfissionalLabel(p));
   const locMap = new Map<string, string>();
   for (const l of locais) locMap.set(l.id, l.nome?.trim() || "—");
   const servMap = new Map<string, string>();
-  for (const s of servicos) servMap.set(s.id, s.nome?.trim() || "—");
-  return { profissionais: profMap, locais: locMap, servicos: servMap };
+  const servValorMap = new Map<string, number>();
+  for (const s of servicos) {
+    servMap.set(s.id, s.nome?.trim() || "—");
+    if (typeof s.valor === "number" && Number.isFinite(s.valor) && s.valor >= 0) {
+      servValorMap.set(s.id, s.valor);
+    }
+  }
+  return { profissionais: profMap, locais: locMap, servicos: servMap, servicosValor: servValorMap };
 }

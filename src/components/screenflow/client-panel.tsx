@@ -1,7 +1,7 @@
 "use client";
 
-import { buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valores";
-import { fetchServicos } from "@/lib/fetch-servicos";
+import { buildCadastroLookups, buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valores";
+import { fetchServicos, type ServicoRow } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
   AVIACAO_CLIENT_PANEL_HIDDEN_CATEGORY_IDS,
@@ -175,7 +175,7 @@ export const ClientPanel = memo(function ClientPanel({
 }: ClientPanelProps) {
   const [profissionais, setProfissionais] = useState<ProfOpt[]>([]);
   const [locais, setLocais] = useState<Opt[]>([]);
-  const [servicos, setServicos] = useState<Opt[]>([]);
+  const [servicos, setServicos] = useState<ServicoRow[]>([]);
   const [tvs, setTvs] = useState<Opt[]>([]);
   const [categoryValues, setCategoryValues] = useState<Record<string, string>>({});
   const [clienteNomeDraft, setClienteNomeDraft] = useState("");
@@ -188,13 +188,7 @@ export const ClientPanel = memo(function ClientPanel({
     [cadastroCategories]
   );
   const cadastroLookups = useMemo(
-    () => ({
-      profissionais: new Map(
-        profissionais.map((p) => [p.id, formatProfissionalLabel(p)] as const)
-      ),
-      locais: new Map(locais.map((l) => [l.id, l.nome ?? l.id] as const)),
-      servicos: new Map(servicos.map((s) => [s.id, s.nome ?? s.id] as const)),
-    }),
+    () => buildCadastroLookups(profissionais, locais, servicos),
     [profissionais, locais, servicos]
   );
   const docasMode = isDocasSegment(segmentoAplicado);
@@ -557,12 +551,12 @@ export const ClientPanel = memo(function ClientPanel({
                   {salaoMode && salaoHeaderServicoLabel ? (
                     <span
                       className="min-w-0 max-w-full truncate text-[11px] leading-snug text-zinc-600 dark:text-zinc-300"
-                      title={`Serviço: ${salaoHeaderServicoLabel}`}
+                      title={salaoHeaderServicoLabel}
                     >
                       <span className="text-zinc-400" aria-hidden>
                         •{" "}
                       </span>
-                      <span className="font-medium text-zinc-500 dark:text-zinc-400">Serviço:</span>{" "}
+                      <span className="font-medium text-zinc-500 dark:text-zinc-400">Serviços:</span>{" "}
                       {salaoHeaderServicoLabel}
                     </span>
                   ) : null}
