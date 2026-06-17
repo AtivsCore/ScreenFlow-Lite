@@ -827,6 +827,52 @@ export function clearSalaoMarkedNextObservacao(
   });
 }
 
+/** Patch alinhado ao balcão (`salaoAtenderAgora` com `setCalled: true`). */
+export function buildSalaoChamarParaCadeiraPatch(
+  row: AtendimentoLite,
+  allRows: AtendimentoLite[],
+  queueTabs: Pick<QueueTabEntry, "id" | "preset" | "label">[],
+  options?: { localId?: string | null }
+): {
+  status: typeof SALAO_STATUS.called;
+  observacao: string | null;
+  local_id?: string | null;
+} {
+  const filaTab = resolveSalaoFilaAtivaTab(queueTabs);
+  const filaRows = filterAndSortSalaoQueue(allRows, filaTab, queueTabs).filter(
+    (r) => r.id !== row.id
+  );
+  let observacao = buildSalaoMoveToFilaAtivaObservacao(
+    row.observacao,
+    queueTabs,
+    "top",
+    filaRows
+  );
+  observacao = clearSalaoMarkedNextObservacao(observacao) ?? observacao;
+  const patch: {
+    status: typeof SALAO_STATUS.called;
+    observacao: string | null;
+    local_id?: string | null;
+  } = { status: SALAO_STATUS.called, observacao };
+  if (options?.localId !== undefined) {
+    patch.local_id = options.localId;
+  }
+  return patch;
+}
+
+/** Atendimentos do dia corrente para um profissional (espelho mobile). */
+export function filterSalaoMobileProfissionalDayRows(
+  rows: AtendimentoLite[],
+  profissionalId: string
+): AtendimentoLite[] {
+  return filterAndSortSalaoProfissionalKanbanColumn(rows, {
+    id: profissionalId,
+    label: "",
+    kind: "profissional",
+    profissionalId,
+  });
+}
+
 export function parseSalaoServicosSolicitados(raw: string | undefined): string[] {
   if (!raw?.trim()) return [];
   return raw

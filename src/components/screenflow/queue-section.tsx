@@ -17,7 +17,6 @@ import {
   rowMatchesMroQueueSearch,
 } from "@/lib/aviacao-logistics";
 import {
-  SALAO_TAB,
   buildSalaoProfissionalKanbanColumns,
   buildSalaoProfissionalListTabs,
   filterAndSortSalaoProfissionalKanbanColumn,
@@ -25,9 +24,7 @@ import {
   filterSalaoProfissionalListTabRows,
   filterSalaoProfissionalListTabRowsById,
   isSalaoPoolTabId,
-  isSalaoProfissionalListTodosTab,
   isSalaoQueueTabSelected,
-  isSalaoWaitingStatus,
   normalizeSalaoStatusLabel,
   resolveSalaoCategoryDisplay,
   resolveSalaoKanbanColumnLabel,
@@ -59,9 +56,7 @@ import {
   Pencil,
   Plus,
   Printer,
-  ChevronsUp,
-  ChevronDown,
-  ChevronUp,
+  QrCode,
   Search,
   Trash2,
   UserPlus,
@@ -74,6 +69,7 @@ import {
   type SalaoProUpsellContext,
 } from "@/components/screenflow/salao-pro-upsell-modal";
 import { SalaoProWalletButton } from "@/components/screenflow/salao-pro-wallet-button";
+import { SalaoMobileQrModal } from "@/components/screenflow/salao-mobile-qr-modal";
 
 export type QueueViewMode = "list" | "kanban";
 
@@ -252,13 +248,8 @@ type KanbanCardProps = {
   onPrintRow: (row: AtendimentoLite) => void;
   onCopyRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
-  onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
   kanbanColumnId?: string;
-  salaoFilaAtivaIndex?: number;
-  salaoFilaAtivaCount?: number;
   onSalaoAtenderAgora?: (row: AtendimentoLite) => void;
-  onSalaoMoveFilaUp?: (row: AtendimentoLite) => void;
-  onSalaoMoveFilaDown?: (row: AtendimentoLite) => void;
 };
 
 const KanbanCard = memo(function KanbanCard({
@@ -278,13 +269,8 @@ const KanbanCard = memo(function KanbanCard({
   onPrintRow,
   onCopyRow,
   onDelete,
-  onSalaoDefinirProximo,
   kanbanColumnId,
-  salaoFilaAtivaIndex = -1,
-  salaoFilaAtivaCount = 0,
   onSalaoAtenderAgora,
-  onSalaoMoveFilaUp,
-  onSalaoMoveFilaDown,
 }: KanbanCardProps) {
   const prioStyle = priorityLawEnabled
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
@@ -299,7 +285,6 @@ const KanbanCard = memo(function KanbanCard({
   const observacaoText = aviacaoLogisticsActive
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
-  const isSalaoFilaAtivaColumn = salaoEsteticaActive && kanbanColumnId === SALAO_TAB.FILA_ATIVA;
   const isSalaoPoolColumn =
     salaoEsteticaActive && kanbanColumnId != null && isSalaoPoolTabId(kanbanColumnId);
 
@@ -311,28 +296,6 @@ const KanbanCard = memo(function KanbanCard({
 
   const actionButtons = (
     <div className="flex shrink-0 items-center gap-px" onClick={(e) => e.stopPropagation()}>
-      {isSalaoFilaAtivaColumn && onSalaoMoveFilaUp && salaoFilaAtivaIndex > 0 ? (
-        <button
-          type="button"
-          title="Subir na fila"
-          className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
-          onClick={() => onSalaoMoveFilaUp(row)}
-        >
-          <ChevronUp className="size-3.5" strokeWidth={2} />
-          <span className="sr-only">Subir</span>
-        </button>
-      ) : null}
-      {isSalaoFilaAtivaColumn && onSalaoMoveFilaDown && salaoFilaAtivaIndex >= 0 && salaoFilaAtivaIndex < salaoFilaAtivaCount - 1 ? (
-        <button
-          type="button"
-          title="Descer na fila"
-          className="inline-flex rounded p-0.5 text-zinc-400 transition hover:text-zinc-700 dark:hover:text-zinc-200"
-          onClick={() => onSalaoMoveFilaDown(row)}
-        >
-          <ChevronDown className="size-3.5" strokeWidth={2} />
-          <span className="sr-only">Descer</span>
-        </button>
-      ) : null}
       {isSalaoPoolColumn && onSalaoAtenderAgora ? (
         <button
           type="button"
@@ -341,17 +304,6 @@ const KanbanCard = memo(function KanbanCard({
           onClick={() => onSalaoAtenderAgora(row)}
         >
           Atender
-        </button>
-      ) : null}
-      {salaoEsteticaActive && onSalaoDefinirProximo && isSalaoWaitingStatus(row.status) && !isSalaoPoolColumn && !isSalaoFilaAtivaColumn ? (
-        <button
-          type="button"
-          title="Definir como Próximo"
-          className="inline-flex rounded p-0.5 text-sky-600 transition hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-200"
-          onClick={() => onSalaoDefinirProximo(row)}
-        >
-          <ChevronsUp className="size-3.5" strokeWidth={2} />
-          <span className="sr-only">Definir como Próximo</span>
         </button>
       ) : null}
       {!isCompactView && !notesInline && observacaoText ? (
@@ -628,13 +580,8 @@ type QueueRowProps = {
   onPrintRow: (row: AtendimentoLite) => void;
   onCopyRow: (row: AtendimentoLite) => void;
   onDelete: (row: AtendimentoLite) => void;
-  onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
   listTabId?: string;
-  salaoFilaAtivaIndex?: number;
-  salaoFilaAtivaCount?: number;
   onSalaoAtenderAgora?: (row: AtendimentoLite) => void;
-  onSalaoMoveFilaUp?: (row: AtendimentoLite) => void;
-  onSalaoMoveFilaDown?: (row: AtendimentoLite) => void;
 };
 
 const QueueRow = memo(function QueueRow({
@@ -653,13 +600,8 @@ const QueueRow = memo(function QueueRow({
   onPrintRow,
   onCopyRow,
   onDelete,
-  onSalaoDefinirProximo,
   listTabId,
-  salaoFilaAtivaIndex = -1,
-  salaoFilaAtivaCount = 0,
   onSalaoAtenderAgora,
-  onSalaoMoveFilaUp,
-  onSalaoMoveFilaDown,
 }: QueueRowProps) {
   const prioStyle = priorityLawEnabled
     ? classificacaoBadgeStyle(row.classificacao_prioridade, row.prioridade)
@@ -670,7 +612,6 @@ const QueueRow = memo(function QueueRow({
   const observacaoText = aviacaoLogisticsActive
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
-  const isSalaoFilaAtivaList = salaoEsteticaActive && listTabId === SALAO_TAB.FILA_ATIVA;
   const isSalaoPoolList = salaoEsteticaActive && listTabId != null && isSalaoPoolTabId(listTabId);
   const clientLabel = aviacaoLogisticsActive
     ? resolveAviacaoKanbanMeta(row, cadastroCategories, cadastroLookups).title
@@ -786,28 +727,6 @@ const QueueRow = memo(function QueueRow({
       </td>
       <td className="w-[108px] px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-row items-center justify-end gap-1">
-        {isSalaoFilaAtivaList && onSalaoMoveFilaUp && salaoFilaAtivaIndex > 0 ? (
-          <button
-            type="button"
-            title="Subir na fila"
-            className="inline-flex shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
-            onClick={() => onSalaoMoveFilaUp(row)}
-          >
-            <ChevronUp className="size-3.5" strokeWidth={2} />
-            <span className="sr-only">Subir</span>
-          </button>
-        ) : null}
-        {isSalaoFilaAtivaList && onSalaoMoveFilaDown && salaoFilaAtivaIndex >= 0 && salaoFilaAtivaIndex < salaoFilaAtivaCount - 1 ? (
-          <button
-            type="button"
-            title="Descer na fila"
-            className="inline-flex shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
-            onClick={() => onSalaoMoveFilaDown(row)}
-          >
-            <ChevronDown className="size-3.5" strokeWidth={2} />
-            <span className="sr-only">Descer</span>
-          </button>
-        ) : null}
         {isSalaoPoolList && onSalaoAtenderAgora ? (
           <button
             type="button"
@@ -816,17 +735,6 @@ const QueueRow = memo(function QueueRow({
             onClick={() => onSalaoAtenderAgora(row)}
           >
             Atender
-          </button>
-        ) : null}
-        {salaoEsteticaActive && onSalaoDefinirProximo && isSalaoWaitingStatus(row.status) && !isSalaoPoolList && !isSalaoFilaAtivaList ? (
-          <button
-            type="button"
-            title="Definir como Próximo"
-            className="inline-flex shrink-0 rounded p-0.5 text-sky-600 hover:bg-sky-50 hover:text-sky-800 dark:text-sky-400 dark:hover:bg-sky-950/40"
-            onClick={() => onSalaoDefinirProximo(row)}
-          >
-            <ChevronsUp className="size-3.5" strokeWidth={2} />
-            <span className="sr-only">Definir como Próximo</span>
           </button>
         ) : null}
         <button
@@ -930,10 +838,7 @@ type QueueSectionProps = {
   queueSearchQuery?: string;
   onQueueSearchQueryChange?: (query: string) => void;
   onQueueSearchMatch?: (row: AtendimentoLite) => void;
-  onSalaoDefinirProximo?: (row: AtendimentoLite) => void;
   onSalaoAtenderAgora?: (row: AtendimentoLite) => void;
-  onSalaoMoveFilaUp?: (row: AtendimentoLite) => void;
-  onSalaoMoveFilaDown?: (row: AtendimentoLite) => void;
   /** Espelho diário por profissional (preset salao_estetica). */
   salaoProfissionalMirror?: boolean;
   /** Exibir aba TODOS no espelho (modo Lista/Kanban salão). */
@@ -942,6 +847,8 @@ type QueueSectionProps = {
   salaoSearchRows?: AtendimentoLite[];
   /** Exibe ícones de carteira PRO (salão, plano free). */
   salaoProPaywallActive?: boolean;
+  /** tenant_id para QR Code mobile (preset salao_estetica). */
+  tenantId?: string | null;
 };
 
 export function QueueSection({
@@ -1002,18 +909,17 @@ export function QueueSection({
   queueSearchQuery = "",
   onQueueSearchQueryChange,
   onQueueSearchMatch,
-  onSalaoDefinirProximo,
   onSalaoAtenderAgora,
-  onSalaoMoveFilaUp,
-  onSalaoMoveFilaDown,
   salaoProfissionalMirror = false,
   showTodosTab = true,
   salaoSearchRows,
   salaoProPaywallActive = false,
+  tenantId = null,
 }: QueueSectionProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [salaoUpsellOpen, setSalaoUpsellOpen] = useState(false);
+  const [salaoQrOpen, setSalaoQrOpen] = useState(false);
   const [salaoUpsellContext, setSalaoUpsellContext] = useState<SalaoProUpsellContext>("daily");
   const lastSearchOpenRef = useRef<string | null>(null);
   const [isCompactView, setIsCompactView] = useState(false);
@@ -1141,12 +1047,6 @@ export function QueueSection({
     const tab = activeTab ?? { id: "tab-ordem", preset: "ordem" as const, label: "Ordem" };
     return filterRowsForTab(tab);
   }, [salaoProfissionalMirror, activeSalaoListTab, rows, queueTabId, activeTab, filterRowsForTab]);
-
-  const isSalaoListPaymentTab =
-    salaoProfissionalMirror &&
-    activeSalaoListTab != null &&
-    !isSalaoProfissionalListTodosTab(activeSalaoListTab) &&
-    activeSalaoListTab.kind === "aguardando_pagamento";
 
   const kanbanColumns = salaoProfissionalMirror ? [] : flowTabs;
 
@@ -1387,6 +1287,17 @@ export function QueueSection({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            {salaoEsteticaActive && tenantId ? (
+              <button
+                type="button"
+                title="QR Code — controle pelo celular"
+                aria-label="QR Code — controle pelo celular"
+                onClick={() => setSalaoQrOpen(true)}
+                className="flex size-7 items-center justify-center rounded-md border border-zinc-300 text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800"
+              >
+                <QrCode className="size-3.5" strokeWidth={2} aria-hidden />
+              </button>
+            ) : null}
             {viewMode === "kanban" ? (
               <button
                 type="button"
@@ -1568,7 +1479,7 @@ export function QueueSection({
                     </td>
                   </tr>
                 ) : (
-                  listRows.map((row, rowIdx) => (
+                  listRows.map((row) => (
                     <QueueRow
                       key={row.id}
                       row={row}
@@ -1586,32 +1497,11 @@ export function QueueSection({
                       onPrintRow={onPrintRow}
                       onCopyRow={(r) => void handleCopyRow(r)}
                       onDelete={(r) => void handleDelete(r)}
-                      onSalaoDefinirProximo={
-                        isSalaoListPaymentTab ? undefined : onSalaoDefinirProximo
-                      }
                       listTabId={
                         salaoProfissionalMirror ? activeSalaoListTab?.id : activeTab?.id
                       }
-                      salaoFilaAtivaIndex={
-                        !salaoProfissionalMirror &&
-                        salaoEsteticaActive &&
-                        activeTab?.id === SALAO_TAB.FILA_ATIVA
-                          ? rowIdx
-                          : -1
-                      }
-                      salaoFilaAtivaCount={
-                        !salaoProfissionalMirror &&
-                        salaoEsteticaActive &&
-                        activeTab?.id === SALAO_TAB.FILA_ATIVA
-                          ? listRows.length
-                          : 0
-                      }
                       onSalaoAtenderAgora={
                         salaoProfissionalMirror ? undefined : onSalaoAtenderAgora
-                      }
-                      onSalaoMoveFilaUp={salaoProfissionalMirror ? undefined : onSalaoMoveFilaUp}
-                      onSalaoMoveFilaDown={
-                        salaoProfissionalMirror ? undefined : onSalaoMoveFilaDown
                       }
                     />
                   ))
@@ -1701,9 +1591,6 @@ export function QueueSection({
                                 onPrintRow={onPrintRow}
                                 onCopyRow={(r) => void handleCopyRow(r)}
                                 onDelete={(r) => void handleDelete(r)}
-                                onSalaoDefinirProximo={
-                                  !isPaymentColumn ? onSalaoDefinirProximo : undefined
-                                }
                                 kanbanColumnId={column.id}
                               />
                             ))}
@@ -1755,7 +1642,7 @@ export function QueueSection({
                       <p className="py-6 text-center text-[9px] text-zinc-400 dark:text-zinc-500">—</p>
                     ) : (
                       <div className={`flex flex-col ${compactKanbanActive ? "gap-0.5" : "gap-1"}`}>
-                        {cards.map((row, cardIdx) => (
+                        {cards.map((row) => (
                           <KanbanCard
                             key={row.id}
                             row={row}
@@ -1783,17 +1670,8 @@ export function QueueSection({
                             onPrintRow={onPrintRow}
                             onCopyRow={(r) => void handleCopyRow(r)}
                             onDelete={(r) => void handleDelete(r)}
-                            onSalaoDefinirProximo={onSalaoDefinirProximo}
                             kanbanColumnId={tab.id}
-                            salaoFilaAtivaIndex={
-                              salaoEsteticaActive && tab.id === SALAO_TAB.FILA_ATIVA ? cardIdx : -1
-                            }
-                            salaoFilaAtivaCount={
-                              salaoEsteticaActive && tab.id === SALAO_TAB.FILA_ATIVA ? cards.length : 0
-                            }
                             onSalaoAtenderAgora={onSalaoAtenderAgora}
-                            onSalaoMoveFilaUp={onSalaoMoveFilaUp}
-                            onSalaoMoveFilaDown={onSalaoMoveFilaDown}
                           />
                         ))}
                       </div>
@@ -1812,6 +1690,13 @@ export function QueueSection({
         onClose={() => setSalaoUpsellOpen(false)}
         context={salaoUpsellContext}
       />
+      {tenantId ? (
+        <SalaoMobileQrModal
+          open={salaoQrOpen}
+          onClose={() => setSalaoQrOpen(false)}
+          tenantId={tenantId}
+        />
+      ) : null}
     </TooltipProvider>
   );
 }

@@ -92,11 +92,9 @@ import {
 import {
   SALAO_STATUS,
   SALAO_TAB,
-  buildSalaoMarkedNextObservacao,
   buildSalaoMoveToAguardandoPagamentoObservacao,
   buildSalaoMoveToFilaAtivaObservacao,
   buildSalaoMoveToTabObservacao,
-  buildSalaoSwapSortOrderObservacao,
   buildSalaoProfissionalKanbanColumns,
   clearSalaoMarkedNextObservacao,
   countActiveBySalaoProfissionalKanban,
@@ -108,7 +106,6 @@ import {
   isSalaoProfissionalKanbanColumnId,
   isSalaoProfissionalMirrorQueueTabId,
   isSalaoQueueTabIdInVisible,
-  isSalaoWaitingStatus,
   mergeSalaoObservacao,
   parseSalaoCadastroFields,
   resolveSalaoFilaAtivaTab,
@@ -1150,32 +1147,6 @@ export default function Home() {
     [supabase, selectedId, selected, proActive, purgeRow, applyLocalPatch, tryProxyPatch]
   );
 
-  const definirSalaoProximo = useCallback(
-    async (row?: AtendimentoLite) => {
-      const target = row ?? selected;
-      if (!target) return;
-      const observacao = buildSalaoMarkedNextObservacao(target.observacao);
-      if (row && row.id !== selectedId) {
-        setPending(true);
-        try {
-          if (supabase) {
-            const patch = { status: SALAO_STATUS.next, observacao };
-            applyLocalPatch(row.id, patch);
-            const { error } = await supabase.from("atendimentos_lite").update(patch).eq("id", row.id);
-            if (error) setLoadError(error.message);
-          } else {
-            await tryProxyPatch(row.id, { status: SALAO_STATUS.next, observacao });
-          }
-        } finally {
-          setPending(false);
-        }
-        return;
-      }
-      await updateSalaoStatus(SALAO_STATUS.next, { observacao });
-    },
-    [selected, selectedId, supabase, applyLocalPatch, tryProxyPatch, updateSalaoStatus]
-  );
-
   const salaoAtenderAgora = useCallback(
     async (row: AtendimentoLite, options?: { setCalled?: boolean }) => {
       const filaTab = resolveSalaoFilaAtivaTab(visibleQueueTabs);
@@ -1203,31 +1174,6 @@ export default function Home() {
       }
     },
     [rows, visibleQueueTabs, patchAtendimentoById, selectedId]
-  );
-
-  const salaoMoveFilaAtiva = useCallback(
-    async (row: AtendimentoLite, direction: -1 | 1) => {
-      const filaTab = resolveSalaoFilaAtivaTab(visibleQueueTabs);
-      const sorted = filterAndSortSalaoQueue(rows, filaTab, visibleQueueTabs);
-      const idx = sorted.findIndex((r) => r.id === row.id);
-      if (idx < 0) return;
-      const swapIdx = idx + direction;
-      if (swapIdx < 0 || swapIdx >= sorted.length) return;
-      const other = sorted[swapIdx]!;
-      const { observacaoA, observacaoB } = buildSalaoSwapSortOrderObservacao(row, other);
-
-      setPending(true);
-      setLoadError(null);
-      try {
-        await Promise.all([
-          patchAtendimentoById(row.id, { observacao: observacaoA }),
-          patchAtendimentoById(other.id, { observacao: observacaoB }),
-        ]);
-      } finally {
-        setPending(false);
-      }
-    },
-    [rows, visibleQueueTabs, patchAtendimentoById]
   );
 
   const salaoAgendaSendToBalcao = useCallback(
@@ -1738,11 +1684,6 @@ export default function Home() {
             onFinalizar={() => shortcutHandlers.onFinalizar()}
             salaoCurrentTabId={salaoEsteticaActive ? selectedSalaoTabId : undefined}
             onPatchClienteNome={salaoEsteticaActive ? patchClienteNome : undefined}
-            onDefinirProximo={
-              salaoEsteticaActive && selected && isSalaoWaitingStatus(selected.status)
-                ? () => void definirSalaoProximo()
-                : undefined
-            }
             onLimpar={() => setSelectedId(null)}
             onRegistrarAvaria={() => void registerAviacaoAvaria()}
             onPrintSelected={
@@ -1900,22 +1841,14 @@ export default function Home() {
               onQueueSearchMatch={
                 aviacaoLogisticsActive || salaoEsteticaActive ? handleQueueSearchMatch : undefined
               }
-              onSalaoDefinirProximo={
-                salaoEsteticaActive ? (row) => void definirSalaoProximo(row) : undefined
-              }
               onSalaoAtenderAgora={
                 salaoEsteticaActive ? (row) => void salaoAtenderAgora(row) : undefined
-              }
-              onSalaoMoveFilaUp={
-                salaoEsteticaActive ? (row) => void salaoMoveFilaAtiva(row, -1) : undefined
-              }
-              onSalaoMoveFilaDown={
-                salaoEsteticaActive ? (row) => void salaoMoveFilaAtiva(row, 1) : undefined
               }
               salaoProfissionalMirror={salaoEsteticaActive}
               showTodosTab={tenantConfig.showTodosTab}
               salaoSearchRows={salaoEsteticaActive ? salaoAgendaSearchRows : undefined}
               salaoProPaywallActive={salaoEsteticaActive && !proActive}
+              tenantId={salaoEsteticaActive ? effectiveTenantId : undefined}
             />
           )}
         </main>

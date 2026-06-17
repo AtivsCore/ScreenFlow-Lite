@@ -30,7 +30,7 @@ import {
   type SalaoProUpsellContext,
 } from "@/components/screenflow/salao-pro-upsell-modal";
 import { SalaoProWalletButton } from "@/components/screenflow/salao-pro-wallet-button";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import {
   CalendarPlus,
   ChevronLeft,
@@ -55,6 +55,85 @@ type SalaoAgendaMatrixViewProps = {
   /** Exibe ícones de carteira PRO (salão, plano free). */
   salaoProPaywallActive?: boolean;
 };
+
+const SALAO_AGENDA_TIME_COL_CLASS = "w-[4.5rem] max-w-[4.5rem]";
+const SALAO_AGENDA_PROF_COL_CLASS = "w-[9rem] max-w-[9rem]";
+
+function SalaoAgendaOccupiedCard({
+  row,
+  appearance,
+  servicoLabel,
+  deleting,
+  onOpenEncaixe,
+  onEdit,
+  onDelete,
+}: {
+  row: AtendimentoLite;
+  appearance: ReturnType<typeof resolveSalaoAgendaSlotAppearance>;
+  servicoLabel: string;
+  deleting: boolean;
+  onOpenEncaixe: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const clientName = row.nome?.trim() || "Cliente";
+  const tooltipContent = (
+    <div className="max-w-[14rem] text-left">
+      <p className="font-semibold leading-snug">{clientName}</p>
+      <p className="mt-0.5 leading-snug opacity-90">{servicoLabel}</p>
+    </div>
+  );
+
+  return (
+    <div
+      className={`flex h-[3.25rem] w-full max-w-full min-w-0 flex-col justify-between overflow-hidden rounded-md border px-2 py-1 ${appearance.cardClassName}`}
+    >
+      <Tooltip content={tooltipContent} side="top" align="start">
+        <div
+          className="min-w-0 max-w-full flex-1 overflow-hidden"
+          title={`${clientName} — ${servicoLabel}`}
+        >
+          <p className="truncate font-semibold leading-tight">{clientName}</p>
+          <p className="line-clamp-2 overflow-hidden text-ellipsis break-words text-[9px] leading-snug opacity-80">
+            {servicoLabel}
+          </p>
+        </div>
+      </Tooltip>
+      <div className="flex min-w-0 items-center justify-between gap-1">
+        <span className="min-w-0 truncate text-[9px] font-medium uppercase tracking-wide opacity-90">
+          {appearance.statusLabel}
+        </span>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            title="Encaixe — novo agendamento neste horário"
+            className="rounded p-0.5 opacity-70 hover:opacity-100"
+            onClick={onOpenEncaixe}
+          >
+            <Plus className="size-3" strokeWidth={2.5} />
+          </button>
+          <button
+            type="button"
+            title="Editar"
+            className="rounded p-0.5 opacity-80 hover:opacity-100"
+            onClick={onEdit}
+          >
+            <Pencil className="size-3" strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            title="Excluir"
+            disabled={deleting}
+            className="rounded p-0.5 opacity-80 hover:opacity-100 disabled:opacity-40"
+            onClick={onDelete}
+          >
+            <Trash2 className="size-3" strokeWidth={1.75} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SalaoAgendaGridSettingsPopover({
   tenantId,
@@ -358,16 +437,18 @@ export function SalaoAgendaMatrixView({
             Nenhum profissional cadastrado para este tenant.
           </p>
         ) : (
-            <table className="min-w-full border-collapse text-[11px]">
+            <table className="w-full table-fixed border-collapse text-[11px]">
               <thead className="sticky top-0 z-20 bg-zinc-50 shadow-sm dark:bg-zinc-800/95">
                 <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                  <th className="sticky top-0 left-0 z-30 min-w-[4.5rem] border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-800/95">
+                  <th
+                    className={`sticky top-0 left-0 z-30 ${SALAO_AGENDA_TIME_COL_CLASS} border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-800/95`}
+                  >
                     Horário
                   </th>
                   {profissionais.map((prof) => (
                     <th
                       key={prof.id}
-                      className="sticky top-0 z-20 min-w-[9rem] bg-zinc-50 px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:bg-zinc-800/95 dark:text-zinc-300"
+                      className={`sticky top-0 z-20 ${SALAO_AGENDA_PROF_COL_CLASS} bg-zinc-50 px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:bg-zinc-800/95 dark:text-zinc-300`}
                     >
                       <span className="inline-flex items-center justify-center gap-0.5">
                         <span>{prof.label}</span>
@@ -386,14 +467,19 @@ export function SalaoAgendaMatrixView({
               <tbody>
                 {timeSlots.map((slot) => (
                   <tr key={slot} className="border-b border-zinc-100 dark:border-zinc-800/80">
-                    <td className="sticky left-0 z-10 border-r border-zinc-200 bg-white px-2 py-1.5 font-mono text-[10px] font-semibold text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                    <td
+                      className={`sticky left-0 z-10 ${SALAO_AGENDA_TIME_COL_CLASS} border-r border-zinc-200 bg-white px-2 py-1.5 font-mono text-[10px] font-semibold text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400`}
+                    >
                       {slot}
                     </td>
                     {profissionais.map((prof) => {
                       const row = occupancy.get(`${prof.id}|${slot}`);
                       if (!row) {
                         return (
-                          <td key={prof.id} className="p-1 align-top">
+                          <td
+                            key={prof.id}
+                            className={`${SALAO_AGENDA_PROF_COL_CLASS} max-w-0 p-1 align-top`}
+                          >
                             <button
                               type="button"
                               title={`Agendar ${slot} — ${prof.label}`}
@@ -410,50 +496,24 @@ export function SalaoAgendaMatrixView({
                       }
 
                       const appearance = resolveSalaoAgendaSlotAppearance(row);
-                      const servico = resolveSalaoAgendaServicoLabel(row, cadastroCategories, cadastroLookups);
+                      const servicoLabel =
+                        resolveSalaoAgendaServicoLabel(row, cadastroCategories, cadastroLookups) ??
+                        "Serviço não informado";
 
                       return (
-                        <td key={prof.id} className="p-1 align-top">
-                          <div
-                            className={`flex h-[3.25rem] min-w-[8.5rem] flex-col justify-between rounded-md border px-2 py-1 ${appearance.cardClassName}`}
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate font-semibold leading-tight">{row.nome ?? "Cliente"}</p>
-                              <p className="truncate text-[9px] opacity-80">{servico ?? "Serviço não informado"}</p>
-                            </div>
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="truncate text-[9px] font-medium uppercase tracking-wide opacity-90">
-                                {appearance.statusLabel}
-                              </span>
-                              <div className="flex shrink-0 items-center gap-0.5">
-                                <button
-                                  type="button"
-                                  title="Encaixe — novo agendamento neste horário"
-                                  className="rounded p-0.5 opacity-70 hover:opacity-100"
-                                  onClick={() => openSlotRegistry(prof.id, slot)}
-                                >
-                                  <Plus className="size-3" strokeWidth={2.5} />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Editar"
-                                  className="rounded p-0.5 opacity-80 hover:opacity-100"
-                                  onClick={() => onEditRow(row)}
-                                >
-                                  <Pencil className="size-3" strokeWidth={1.75} />
-                                </button>
-                                <button
-                                  type="button"
-                                  title="Excluir"
-                                  disabled={deleting === row.id}
-                                  className="rounded p-0.5 opacity-80 hover:opacity-100 disabled:opacity-40"
-                                  onClick={() => void handleDelete(row)}
-                                >
-                                  <Trash2 className="size-3" strokeWidth={1.75} />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
+                        <td
+                          key={prof.id}
+                          className={`${SALAO_AGENDA_PROF_COL_CLASS} max-w-0 p-1 align-top`}
+                        >
+                          <SalaoAgendaOccupiedCard
+                            row={row}
+                            appearance={appearance}
+                            servicoLabel={servicoLabel}
+                            deleting={deleting === row.id}
+                            onOpenEncaixe={() => openSlotRegistry(prof.id, slot)}
+                            onEdit={() => onEditRow(row)}
+                            onDelete={() => void handleDelete(row)}
+                          />
                         </td>
                       );
                     })}

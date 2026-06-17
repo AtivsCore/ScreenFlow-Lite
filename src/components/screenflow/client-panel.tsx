@@ -36,7 +36,6 @@ import {
 import {
   buildSalaoCategoryPatch,
   isSalaoEsteticaSegment,
-  isSalaoWaitingStatus,
   parseSalaoCadastroFields,
   parseSalaoServicosSolicitados,
   resolveSalaoChamarLabel,
@@ -99,8 +98,6 @@ type ClientPanelProps = {
   onRegistrarAvaria?: () => void;
   onPrintSelected?: () => void;
   onCopySelected?: () => void;
-  /** Salão: marca o cliente selecionado como próximo na fila. */
-  onDefinirProximo?: () => void;
   /** Estágio atual da aeronave selecionada (coluna Kanban/lista). */
   aviacaoCurrentTabId?: string | null;
   /** Coluna Kanban/lista do card selecionado (salão). */
@@ -167,7 +164,6 @@ export const ClientPanel = memo(function ClientPanel({
   onRegistrarAvaria,
   onPrintSelected,
   onCopySelected,
-  onDefinirProximo,
   aviacaoCurrentTabId,
   salaoCurrentTabId,
   onPatchClienteNome,
@@ -738,16 +734,6 @@ export const ClientPanel = memo(function ClientPanel({
         <div className="flex flex-wrap gap-1.5">
           {salaoMode ? (
             <>
-              {onDefinirProximo && selected && isSalaoWaitingStatus(selected.status) ? (
-                <button
-                  type="button"
-                  disabled={!canMutate}
-                  onClick={onDefinirProximo}
-                  className={secondaryBtnClass}
-                >
-                  Definir como Próximo
-                </button>
-              ) : null}
               <button
                 type="button"
                 disabled={!canMutate}
