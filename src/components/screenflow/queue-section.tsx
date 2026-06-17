@@ -282,6 +282,9 @@ const KanbanCard = memo(function KanbanCard({
   const contextLine = formatKanbanContextLine(meta);
   const horaMarcadaLabel = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : null;
   const horaMarcadaBadge = resolveSalaoHoraMarcadaBadgeMeta(salaoEsteticaActive);
+  const showSalaoTopHoraBadge = Boolean(salaoEsteticaActive && isCompactView && horaMarcadaLabel);
+  const showSalaoFooterHora = Boolean(horaMarcadaLabel && !salaoEsteticaActive);
+  const showGenericTopHoraBadge = Boolean(horaMarcadaLabel && !salaoEsteticaActive);
   const observacaoText = aviacaoLogisticsActive
     ? formatAviacaoObservacaoForDisplay(row.observacao)
     : formatObservacaoForDisplay(row.observacao);
@@ -374,7 +377,7 @@ const KanbanCard = memo(function KanbanCard({
         }}
         className={cardShellClass}
       >
-        {horaMarcadaLabel ? (
+        {showSalaoTopHoraBadge || showGenericTopHoraBadge ? (
           <p
             className="mb-0.5 truncate text-[9px] font-semibold leading-none tracking-wide text-teal-700 dark:text-teal-400"
             title={`${horaMarcadaBadge.titlePrefix}: ${horaMarcadaLabel}`}
@@ -436,7 +439,7 @@ const KanbanCard = memo(function KanbanCard({
       }}
       className={cardShellClass}
     >
-      {horaMarcadaLabel ? (
+      {showSalaoTopHoraBadge || showGenericTopHoraBadge ? (
         <p
           className="mb-0.5 truncate text-[9px] font-semibold leading-none tracking-wide text-teal-700 dark:text-teal-400"
           title={`${horaMarcadaBadge.titlePrefix}: ${horaMarcadaLabel}`}
@@ -552,8 +555,8 @@ const KanbanCard = memo(function KanbanCard({
           >
             {statusLabel}
           </span>
-          {horaMarcadaLabel ? (
-            <span className="truncate text-[11px] leading-none text-zinc-500 dark:text-zinc-500" title={horaMarcadaLabel}>
+          {showSalaoFooterHora ? (
+            <span className="truncate text-[11px] leading-none text-zinc-500 dark:text-zinc-500" title={horaMarcadaLabel!}>
               {horaMarcadaLabel}
             </span>
           ) : null}

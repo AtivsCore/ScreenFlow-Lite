@@ -7,6 +7,7 @@ import { buildCadastroLookups, type CadastroLookups } from "@/lib/cadastro-valor
 import {
   mergeTenantConfig,
   restoreDefaultCadastroCategories,
+  type CadastroCategoryEntry,
   type ResolvedTenantConfig,
 } from "@/lib/tenant-config";
 import { resolvePublicTenantId } from "@/lib/tenant-id";
@@ -24,7 +25,7 @@ import {
 } from "@/lib/salao-estetica-logistics";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 
 const PROF_STORAGE_PREFIX = "sf-salao-mobile-prof";
@@ -78,6 +79,9 @@ export function SalaoMobileAtendimentoView() {
   const [calling, setCalling] = useState(false);
   const [callFeedback, setCallFeedback] = useState<string | null>(null);
 
+  const cadastroCategoriesRef = useRef<CadastroCategoryEntry[]>(restoreDefaultCadastroCategories());
+  const initialLoadDoneRef = useRef(false);
+
   const salaoActive = isSalaoEsteticaSegment(config.segmentoAplicado);
   const cadastroCategories = useMemo(
     () => config.cadastroCategories ?? restoreDefaultCadastroCategories(),
@@ -87,6 +91,10 @@ export function SalaoMobileAtendimentoView() {
     () => (config.queueTabs.length > 0 ? config.queueTabs : buildSalaoDefaultQueueTabs()),
     [config.queueTabs]
   );
+
+  useEffect(() => {
+    cadastroCategoriesRef.current = cadastroCategories;
+  }, [cadastroCategories]);
 
   const profissionaisOptions = useMemo(() => {
     return [...cadastroLookups.profissionais.entries()]
@@ -105,17 +113,21 @@ export function SalaoMobileAtendimentoView() {
     return filterSalaoMobileProfissionalDayRows(rows, profissionalId);
   }, [rows, profissionalId]);
 
-  const refreshData = useCallback(
+  const fetchMobileAppointments = useCallback(
     async (silent = false) => {
       if (!tenantId) {
         setLoadError("tenantId ausente ou inválido na URL.");
         setRows([]);
         setLoading(false);
+        setRefreshing(false);
         return;
       }
 
-      if (!silent) setLoading(true);
-      else setRefreshing(true);
+      if (!silent && !initialLoadDoneRef.current) {
+        setLoading(true);
+      } else if (silent) {
+        setRefreshing(true);
+      }
 
       try {
         const [qRes, cRes, cadRes] = await Promise.all([
@@ -147,9 +159,11 @@ export function SalaoMobileAtendimentoView() {
 
         const nested = qJson.data as AtendimentoLiteNested[];
         const lookup = qJson.servicos ? buildServicoLookup(qJson.servicos) : undefined;
-        const flat = mapAtendimentosNestedToFlat(nested, lookup, cadastroCategories).filter(
-          (r) => (r.tenant_id ?? "").toLowerCase() === tenantId
-        );
+        const flat = mapAtendimentosNestedToFlat(
+          nested,
+          lookup,
+          cadastroCategoriesRef.current
+        ).filter((r) => (r.tenant_id ?? "").toLowerCase() === tenantId);
         setRows(flat);
 
         const cadJson = (await cadRes.json()) as {
@@ -172,22 +186,26 @@ export function SalaoMobileAtendimentoView() {
         }
 
         setLoadError(null);
+        initialLoadDoneRef.current = true;
       } catch (e) {
         setLoadError(e instanceof Error ? e.message : String(e));
+        initialLoadDoneRef.current = true;
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [tenantId, cadastroCategories]
+    [tenantId, profissionalId]
   );
 
   useEffect(() => {
-    if (!tenantId) return;
+    if (!tenantId) {
+      setLoading(false);
+      return;
+    }
     const stored = readStoredProfissionalId(tenantId);
     if (stored) setProfissionalId(stored);
-    void refreshData();
-  }, [tenantId, refreshData]);
+  }, [tenantId]);
 
   useEffect(() => {
     if (!tenantId || !profissionalId) return;
@@ -195,28 +213,36 @@ export function SalaoMobileAtendimentoView() {
   }, [tenantId, profissionalId]);
 
   useEffect(() => {
-    if (!supabase || !tenantId) return;
+    if (!tenantId) return;
 
-    const channel = supabase
-      .channel(`salao-mobile-${tenantId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "atendimentos_lite" },
-        () => {
-          void refreshData(true);
-        }
-      )
-      .subscribe();
+    void fetchMobileAppointments(false);
+
+    const intervalId = window.setInterval(() => {
+      void fetchMobileAppointments(true);
+    }, 8000);
+
+    let channel: ReturnType<NonNullable<typeof supabase>["channel"]> | null = null;
+
+    if (supabase) {
+      channel = supabase
+        .channel(`salao-mobile-${tenantId}`)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "atendimentos_lite" },
+          () => {
+            void fetchMobileAppointments(true);
+          }
+        )
+        .subscribe();
+    }
 
     return () => {
-      void supabase.removeChannel(channel);
+      window.clearInterval(intervalId);
+      if (channel && supabase) {
+        void supabase.removeChannel(channel);
+      }
     };
-  }, [supabase, tenantId, refreshData]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => void refreshData(true), 8000);
-    return () => window.clearInterval(id);
-  }, [refreshData]);
+  }, [tenantId, profissionalId, fetchMobileAppointments, supabase]);
 
   useEffect(() => {
     if (!selectedRow) return;
@@ -315,7 +341,7 @@ export function SalaoMobileAtendimentoView() {
             type="button"
             aria-label="Atualizar lista"
             disabled={refreshing}
-            onClick={() => void refreshData(true)}
+            onClick={() => void fetchMobileAppointments(true)}
             className="flex size-9 items-center justify-center rounded-full border border-zinc-700 text-zinc-400 transition hover:bg-zinc-900 hover:text-zinc-100 disabled:opacity-50"
           >
             {refreshing ? (

@@ -91,7 +91,6 @@ function SalaoAgendaOccupiedCard({
       <Tooltip content={tooltipContent} side="top" align="start">
         <div
           className="min-w-0 max-w-full flex-1 overflow-hidden"
-          title={`${clientName} — ${servicoLabel}`}
         >
           <p className="truncate font-semibold leading-tight">{clientName}</p>
           <p className="line-clamp-2 overflow-hidden text-ellipsis break-words text-[9px] leading-snug opacity-80">
