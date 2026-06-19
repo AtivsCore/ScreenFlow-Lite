@@ -147,6 +147,7 @@ function parseQueueTabs(raw: unknown): QueueTabEntry[] | null {
       "encaixe",
       "prioridade",
       "urgente",
+      "reagendar",
       "outros",
     ];
     if (!id || !label || !presets.includes(preset)) continue;

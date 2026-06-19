@@ -1,11 +1,6 @@
 import { Suspense } from "react";
 import { SalaoMobileAtendimentoView } from "@/components/screenflow/salao-mobile-atendimento-view";
 
-export const metadata = {
-  title: "Controle Profissional — ScreenFlow Lite",
-  description: "Controle remoto da fila de atendimentos pelo celular",
-};
-
 export default function SalaoMobileAtendimentoPage() {
   return (
     <Suspense

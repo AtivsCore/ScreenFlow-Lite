@@ -1,0 +1,24 @@
+{
+  "name": "ScreenFlow Lite",
+  "short_name": "ScreenFlow",
+  "description": "Controle remoto da fila de atendimentos pelo celular",
+  "start_url": "/atendimento/mobile",
+  "scope": "/atendimento/mobile",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#18181b",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

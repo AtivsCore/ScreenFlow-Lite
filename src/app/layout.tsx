@@ -17,8 +17,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ScreenFlow Lite",
   description: "Gestão de fila e chamadas",
+  manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/icon.svg",
+    icon: [{ url: "/favicon.ico" }, { url: "/icon.svg", type: "image/svg+xml" }],
+    apple: "/favicon.ico",
   },
 };
 

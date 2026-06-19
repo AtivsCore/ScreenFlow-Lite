@@ -163,6 +163,32 @@ export function buildSalaoDefaultQueueTabs(): QueueTabEntry[] {
   ];
 }
 
+/** Abas operacionais que precisam existir no seletor de classificação mesmo se ausentes no JSON salvo. */
+const SALAO_ESSENTIAL_CLASSIFICATION_TAB_IDS: readonly SalaoTabId[] = [
+  SALAO_TAB.REAGENDAR,
+];
+
+function ensureSalaoEssentialClassificationTabs(tabs: QueueTabEntry[]): QueueTabEntry[] {
+  const defaults = buildSalaoDefaultQueueTabs();
+  const byId = new Map(tabs.map((t) => [t.id, t]));
+  for (const tabId of SALAO_ESSENTIAL_CLASSIFICATION_TAB_IDS) {
+    if (!byId.has(tabId)) {
+      const fallback = defaults.find((t) => t.id === tabId);
+      if (fallback) byId.set(tabId, fallback);
+    }
+  }
+  const ordered: QueueTabEntry[] = [];
+  for (const tabId of SALAO_QUEUE_TAB_ORDER) {
+    const tab = byId.get(tabId);
+    if (tab) {
+      ordered.push(tab);
+      byId.delete(tabId);
+    }
+  }
+  for (const tab of byId.values()) ordered.push(tab);
+  return ordered;
+}
+
 export function resolveSalaoQueueTabs(config: {
   queueTabs: QueueTabEntry[];
   showTodosTab?: boolean;
@@ -170,7 +196,9 @@ export function resolveSalaoQueueTabs(config: {
   const hasClassificationTabs = config.queueTabs.some(
     (t) => t.preset !== "todos" && t.preset !== "outros"
   );
-  const flowTabs = hasClassificationTabs ? config.queueTabs.filter((t) => t.preset !== "todos") : buildSalaoDefaultQueueTabs();
+  const flowTabs = hasClassificationTabs
+    ? ensureSalaoEssentialClassificationTabs(config.queueTabs.filter((t) => t.preset !== "todos"))
+    : buildSalaoDefaultQueueTabs();
   return config.showTodosTab ? [TODOS_QUEUE_TAB, ...flowTabs] : flowTabs;
 }
 

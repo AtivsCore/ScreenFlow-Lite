@@ -7,6 +7,15 @@ import type { NextConfig } from "next";
  * Produção na Vercel: defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY
  * em Project → Settings → Environment Variables e gere um novo deploy.
  */
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: "/favicon.ico",
+        destination: "/icon.svg",
+      },
+    ];
+  },
+};
 
 export default nextConfig;
