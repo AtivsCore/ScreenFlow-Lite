@@ -13,6 +13,7 @@ import {
 import { resolvePublicTenantId } from "@/lib/tenant-id";
 import {
   buildSalaoChamarParaCadeiraPatch,
+  buildSalaoEnviarParaCaixaPatch,
   buildSalaoMoveToAguardandoPagamentoObservacao,
   calculateSalaoTotal,
   filterSalaoMobileProfissionalDayRows,
@@ -26,7 +27,6 @@ import {
   SALAO_AGUARDANDO_PAGAMENTO_FILA_MARKER,
 } from "@/lib/salao-estetica-logistics";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -39,45 +39,62 @@ type AtendimentoLitePatch = {
   local_id?: string | null;
 };
 
+type AtendimentoStatusApiError = {
+  httpStatus: number;
+  message: string;
+  ok?: boolean;
+  status?: number;
+};
+
 async function patchAtendimentoLiteRow(
-  supabase: SupabaseClient | null,
+  tenantId: string | null,
   id: string,
   patch: AtendimentoLitePatch
 ): Promise<void> {
-  const patchViaApi = async () => {
-    const r = await fetch("/api/atendimentos-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...patch }),
-    });
-    const j = (await r.json()) as { ok?: boolean; message?: string };
-    if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
-  };
-
-  if (supabase) {
-    const { data, error } = await supabase
-      .from("atendimentos_lite")
-      .update(patch)
-      .eq("id", id)
-      .select("id")
-      .maybeSingle();
-    if (!error && data?.id) return;
+  if (!tenantId) {
+    throw { httpStatus: 400, message: "tenant_id ausente na URL do mobile." } satisfies AtendimentoStatusApiError;
   }
 
-  await patchViaApi();
+  const r = await fetch("/api/atendimentos-status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id,
+      tenant_id: tenantId,
+      salao_mobile: true,
+      ...patch,
+    }),
+  });
+
+  let j: { ok?: boolean; message?: string; status?: number; via?: string } = {};
+  try {
+    j = (await r.json()) as typeof j;
+  } catch {
+    j = { message: `Resposta inválida (HTTP ${r.status})` };
+  }
+
+  if (!r.ok || !j.ok) {
+    throw {
+      httpStatus: r.status,
+      message: j.message || `HTTP ${r.status}`,
+      ok: j.ok,
+      status: j.status,
+      via: j.via,
+    } satisfies AtendimentoStatusApiError & { via?: string };
+  }
 }
 
-function buildMobileEnviarParaCaixaObservacao(
-  currentObservacao: string | null | undefined,
+function buildMobileEnviarParaCaixaPatch(
+  row: Pick<AtendimentoLite, "observacao">,
   queueTabs: Parameters<typeof buildSalaoMoveToAguardandoPagamentoObservacao>[1]
-): string {
-  const observacao = buildSalaoMoveToAguardandoPagamentoObservacao(currentObservacao, queueTabs);
-  if (!observacao?.includes(SALAO_AGUARDANDO_PAGAMENTO_FILA_MARKER)) {
+): AtendimentoLitePatch {
+  const patch = buildSalaoEnviarParaCaixaPatch(row, queueTabs);
+  if (!patch.observacao?.includes(SALAO_AGUARDANDO_PAGAMENTO_FILA_MARKER)) {
     throw new Error(
       `Marcador ${SALAO_AGUARDANDO_PAGAMENTO_FILA_MARKER} ausente — verifique a configuração da fila.`
     );
   }
-  return observacao;
+  return patch;
 }
 
 function profStorageKey(tenantId: string): string {
@@ -313,7 +330,7 @@ export function SalaoMobileAtendimentoView() {
     });
 
     try {
-      await patchAtendimentoLiteRow(supabase, selectedRow.id, patch);
+      await patchAtendimentoLiteRow(tenantId, selectedRow.id, patch);
 
       setRows((prev) =>
         prev.map((r) =>
@@ -347,22 +364,32 @@ export function SalaoMobileAtendimentoView() {
     setSendingToCaixa(true);
     setCallFeedback(null);
 
-    const observacao = buildMobileEnviarParaCaixaObservacao(selectedRow.observacao, queueTabs);
-    const patch = { observacao };
+    const patch = buildMobileEnviarParaCaixaPatch(selectedRow, queueTabs);
 
     try {
-      await patchAtendimentoLiteRow(supabase, selectedRow.id, patch);
+      await patchAtendimentoLiteRow(tenantId, selectedRow.id, patch);
 
       setRows((prev) =>
-        prev.map((r) => (r.id === selectedRow.id ? { ...r, observacao: patch.observacao } : r))
+        prev.map((r) =>
+          r.id === selectedRow.id
+            ? { ...r, observacao: patch.observacao ?? r.observacao, status: patch.status ?? r.status }
+            : r
+        )
       );
       setCallFeedback("Cliente enviado para o caixa!");
       window.setTimeout(() => {
         setSelectedRow(null);
         setCallFeedback(null);
       }, 1200);
-    } catch (e) {
-      setCallFeedback(e instanceof Error ? e.message : "Falha ao enviar para o caixa.");
+    } catch (err) {
+      alert("Erro ao enviar: " + JSON.stringify(err));
+      setCallFeedback(
+        err instanceof Error
+          ? err.message
+          : typeof err === "object" && err && "message" in err
+            ? String((err as { message?: string }).message)
+            : "Falha ao enviar para o caixa."
+      );
     } finally {
       setSendingToCaixa(false);
     }
