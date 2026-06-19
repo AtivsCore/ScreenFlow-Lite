@@ -110,33 +110,27 @@ function SalaoAgendaOccupiedCard({
       {totalLabel ? (
         <p className="mt-1.5 text-[11px] font-bold leading-snug">TOTAL: {totalLabel}</p>
       ) : null}
+      <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">
+        {appearance.statusLabel}
+      </p>
     </div>
   );
 
   return (
     <div
-      className={`flex min-h-[4.25rem] w-full max-w-full min-w-0 flex-col justify-between overflow-hidden rounded-md border px-2 py-1 ${appearance.cardClassName}`}
+      className={`flex h-[3.25rem] w-full max-w-full min-w-0 flex-col justify-between overflow-hidden rounded-md border px-2 py-1 ${appearance.cardClassName}`}
     >
       <Tooltip content={tooltipContent} side="top" align="start">
         <div className="min-w-0 max-w-full flex-1 overflow-hidden">
           <p className="truncate font-semibold leading-tight">{clientName}</p>
-          <p className="line-clamp-2 overflow-hidden text-ellipsis break-words text-[8px] leading-snug opacity-80">
-            {servicosLine}
-          </p>
-        </div>
-      </Tooltip>
-      <div className="flex min-w-0 items-center justify-between gap-1">
-        <div className="min-w-0 flex-1">
           {totalLabel ? (
-            <p className="truncate text-[8px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            <p className="truncate text-[11px] font-bold leading-tight text-emerald-600 dark:text-emerald-400">
               TOTAL: {totalLabel}
             </p>
           ) : null}
-          <span className="block min-w-0 truncate text-[9px] font-medium uppercase tracking-wide opacity-90">
-            {appearance.statusLabel}
-          </span>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5">
+      </Tooltip>
+      <div className="flex shrink-0 items-center justify-end gap-0.5">
           <button
             type="button"
             title="Encaixe — novo agendamento neste horário"
@@ -162,7 +156,6 @@ function SalaoAgendaOccupiedCard({
           >
             <Trash2 className="size-3" strokeWidth={1.75} />
           </button>
-        </div>
       </div>
     </div>
   );

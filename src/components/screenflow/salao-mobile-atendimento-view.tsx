@@ -23,6 +23,7 @@ import {
   resolveSalaoKanbanMeta,
   resolveSalaoQueueTabs,
   resolveSalaoServicoIdsFromRow,
+  SALAO_AGUARDANDO_PAGAMENTO_FILA_MARKER,
 } from "@/lib/salao-estetica-logistics";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -43,18 +44,40 @@ async function patchAtendimentoLiteRow(
   id: string,
   patch: AtendimentoLitePatch
 ): Promise<void> {
+  const patchViaApi = async () => {
+    const r = await fetch("/api/atendimentos-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...patch }),
+    });
+    const j = (await r.json()) as { ok?: boolean; message?: string };
+    if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
+  };
+
   if (supabase) {
-    const { error } = await supabase.from("atendimentos_lite").update(patch).eq("id", id);
-    if (!error) return;
+    const { data, error } = await supabase
+      .from("atendimentos_lite")
+      .update(patch)
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
+    if (!error && data?.id) return;
   }
 
-  const r = await fetch("/api/atendimentos-status", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, ...patch }),
-  });
-  const j = (await r.json()) as { ok?: boolean; message?: string };
-  if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
+  await patchViaApi();
+}
+
+function buildMobileEnviarParaCaixaObservacao(
+  currentObservacao: string | null | undefined,
+  queueTabs: Parameters<typeof buildSalaoMoveToAguardandoPagamentoObservacao>[1]
+): string {
+  const observacao = buildSalaoMoveToAguardandoPagamentoObservacao(currentObservacao, queueTabs);
+  if (!observacao?.includes(SALAO_AGUARDANDO_PAGAMENTO_FILA_MARKER)) {
+    throw new Error(
+      `Marcador ${SALAO_AGUARDANDO_PAGAMENTO_FILA_MARKER} ausente — verifique a configuração da fila.`
+    );
+  }
+  return observacao;
 }
 
 function profStorageKey(tenantId: string): string {
@@ -324,10 +347,7 @@ export function SalaoMobileAtendimentoView() {
     setSendingToCaixa(true);
     setCallFeedback(null);
 
-    const observacao = buildSalaoMoveToAguardandoPagamentoObservacao(
-      selectedRow.observacao,
-      queueTabs
-    );
+    const observacao = buildMobileEnviarParaCaixaObservacao(selectedRow.observacao, queueTabs);
     const patch = { observacao };
 
     try {

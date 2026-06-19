@@ -626,6 +626,10 @@ export function buildSalaoMoveToTabObservacao(
   });
 }
 
+/** Marcador canônico da coluna Aguardando Pagamento no painel principal. */
+export const SALAO_AGUARDANDO_PAGAMENTO_FILA_MARKER =
+  `__sf_fila:tab:${SALAO_TAB.AGUARDANDO_PAGAMENTO}__` as const;
+
 export function buildSalaoMoveToAguardandoPagamentoObservacao(
   currentObservacao: string | null | undefined,
   queueTabs: Pick<QueueTabEntry, "id" | "preset" | "label">[]
