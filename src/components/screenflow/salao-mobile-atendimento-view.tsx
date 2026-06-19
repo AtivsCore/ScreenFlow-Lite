@@ -133,6 +133,56 @@ function writeStoredProfissionalId(tenantId: string, profissionalId: string): vo
   }
 }
 
+function buildSalaoMobileManifestUrl(tenantId: string): string {
+  const startUrl = `/atendimento/mobile?tenantId=${encodeURIComponent(tenantId)}`;
+  const dynamicManifest = {
+    name: "Fila Profissional",
+    short_name: "Minha Fila",
+    start_url: startUrl,
+    scope: "/atendimento/mobile",
+    display: "standalone",
+    background_color: "#09090b",
+    theme_color: "#09090b",
+    icons: [
+      {
+        src: "/favicon.ico",
+        sizes: "any",
+        type: "image/x-icon",
+        purpose: "any",
+      },
+    ],
+  };
+  return `data:application/manifest+json,${encodeURIComponent(JSON.stringify(dynamicManifest))}`;
+}
+
+function syncSalaoMobileManifestLink(tenantId: string | null): () => void {
+  if (typeof document === "undefined") return () => undefined;
+
+  document
+    .querySelectorAll('link[rel="manifest"]:not([data-sf-salao-mobile-manifest])')
+    .forEach((el) => el.remove());
+
+  let link = document.querySelector<HTMLLinkElement>('link[rel="manifest"][data-sf-salao-mobile-manifest]');
+
+  if (!tenantId) {
+    link?.remove();
+    return () => undefined;
+  }
+
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "manifest";
+    link.setAttribute("data-sf-salao-mobile-manifest", "true");
+    document.head.appendChild(link);
+  }
+
+  link.href = buildSalaoMobileManifestUrl(tenantId);
+
+  return () => {
+    link?.remove();
+  };
+}
+
 export function SalaoMobileAtendimentoView() {
   const searchParams = useSearchParams();
   const tenantId = useMemo(
@@ -172,6 +222,8 @@ export function SalaoMobileAtendimentoView() {
     [config.cadastroCategories]
   );
   const queueTabs = useMemo(() => resolveSalaoQueueTabs(config), [config]);
+
+  useEffect(() => syncSalaoMobileManifestLink(tenantId), [tenantId]);
 
   useEffect(() => {
     setStandaloneApp(isStandaloneDisplay());

@@ -3,7 +3,6 @@ import type { Metadata, Viewport } from "next";
 export const metadata: Metadata = {
   title: "Controle Profissional — ScreenFlow Lite",
   description: "Controle remoto da fila de atendimentos pelo celular",
-  manifest: "/manifest.webmanifest",
   icons: {
     icon: "/favicon.ico",
     apple: "/favicon.ico",
