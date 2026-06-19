@@ -146,9 +146,15 @@ function buildSalaoMobileManifestUrl(tenantId: string): string {
     icons: [
       {
         src: "/favicon.ico",
-        sizes: "any",
+        sizes: "48x48 32x32 16x16",
         type: "image/x-icon",
         purpose: "any",
+      },
+      {
+        src: "/favicon.ico",
+        sizes: "48x48 32x32 16x16",
+        type: "image/x-icon",
+        purpose: "maskable",
       },
     ],
   };

@@ -4,8 +4,8 @@ export const metadata: Metadata = {
   title: "Controle Profissional — ScreenFlow Lite",
   description: "Controle remoto da fila de atendimentos pelo celular",
   icons: {
-    icon: "/favicon.ico",
-    apple: "/favicon.ico",
+    icon: [{ url: "/favicon.ico", sizes: "any" }],
+    apple: [{ url: "/favicon.ico", sizes: "any" }],
   },
   appleWebApp: {
     capable: true,
