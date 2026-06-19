@@ -19,10 +19,12 @@ import {
 import {
   buildSalaoProfissionalKanbanColumns,
   buildSalaoProfissionalListTabs,
+  calculateSalaoTotal,
   filterAndSortSalaoProfissionalKanbanColumn,
   filterAndSortSalaoQueue,
   filterSalaoProfissionalListTabRows,
   filterSalaoProfissionalListTabRowsById,
+  formatSalaoCurrency,
   isSalaoPoolTabId,
   isSalaoQueueTabSelected,
   normalizeSalaoStatusLabel,
@@ -33,6 +35,7 @@ import {
   resolveSalaoProfissionalListActiveTab,
   resolveSalaoProfissionalListDefaultTabId,
   resolveSalaoQueueTabClickId,
+  resolveSalaoServicoIdsFromRow,
   rowMatchesSalaoQueueSearch,
   type SalaoProfissionalKanbanColumn,
 } from "@/lib/salao-estetica-logistics";
@@ -164,6 +167,61 @@ function formatKanbanContextLine(meta: { profissional: string | null; local: str
 
 const CLINICAS_SEGMENT_ID = "clinicas_consultorios";
 const SALAO_ESTETICA_SEGMENT_ID = "salao_estetica";
+const SALAO_SERVICO_CATEGORY_ID = "sal-c3";
+
+function salaoListTabStorageKey(tenantId: string | null | undefined): string {
+  return tenantId ? `sf-salao-list-tab-${tenantId}` : "sf-salao-list-tab";
+}
+
+function readPinnedSalaoListTabId(tenantId: string | null | undefined): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return sessionStorage.getItem(salaoListTabStorageKey(tenantId));
+  } catch {
+    return null;
+  }
+}
+
+function SalaoListServicoCell({
+  row,
+  cadastroLookups,
+  fallbackLabel,
+}: {
+  row: AtendimentoLite;
+  cadastroLookups: CadastroLookups;
+  fallbackLabel: string | null;
+}) {
+  const pricing = calculateSalaoTotal(resolveSalaoServicoIdsFromRow(row), cadastroLookups);
+  const displayLabel = fallbackLabel ?? "—";
+
+  const tooltipContent =
+    pricing.items.length > 0 ? (
+      <div className="max-w-[16rem] text-left">
+        <p className="text-[10px] font-semibold uppercase tracking-wide opacity-80">Serviços</p>
+        <ul className="mt-1 space-y-0.5 text-[11px] leading-snug">
+          {pricing.items.map((item) => (
+            <li key={item.id}>
+              {item.nome}
+              {item.valor !== null ? ` (${formatSalaoCurrency(item.valor)})` : ""}
+            </li>
+          ))}
+        </ul>
+        {pricing.total !== null ? (
+          <p className="mt-1.5 text-[11px] font-bold leading-snug">
+            TOTAL: {formatSalaoCurrency(pricing.total)}
+          </p>
+        ) : null}
+      </div>
+    ) : (
+      displayLabel
+    );
+
+  return (
+    <Tooltip content={tooltipContent} side="top" align="start">
+      <span className="block min-w-0 truncate">{displayLabel}</span>
+    </Tooltip>
+  );
+}
 
 function queueListTabButtonClass(isActive: boolean): string {
   return [
@@ -721,9 +779,18 @@ const QueueRow = memo(function QueueRow({
           <td
             key={cat.id}
             className="w-32 overflow-hidden truncate px-2 py-1.5 text-zinc-700 dark:text-zinc-300"
-            title={label ?? undefined}
           >
-            {label ?? "—"}
+            {salaoEsteticaActive && cat.id === SALAO_SERVICO_CATEGORY_ID ? (
+              <SalaoListServicoCell
+                row={row}
+                cadastroLookups={cadastroLookups}
+                fallbackLabel={label}
+              />
+            ) : (
+              <span className="block min-w-0 truncate" title={label ?? undefined}>
+                {label ?? "—"}
+              </span>
+            )}
           </td>
         );
       })}
@@ -948,6 +1015,46 @@ export function QueueSection({
     return buildSalaoProfissionalListTabs(salaoProfissionalColumns, showTodosTab);
   }, [salaoProfissionalMirror, salaoProfissionalColumns, showTodosTab]);
 
+  const [pinnedSalaoListTabId, setPinnedSalaoListTabId] = useState<string | null>(() =>
+    readPinnedSalaoListTabId(tenantId)
+  );
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const stored = readPinnedSalaoListTabId(tenantId);
+    if (stored) setPinnedSalaoListTabId(stored);
+  }, [tenantId]);
+
+  const resolvedSalaoListTabId = useMemo(() => {
+    if (!salaoProfissionalMirror || viewMode !== "list") return queueTabId;
+    const candidate = pinnedSalaoListTabId ?? queueTabId;
+    if (salaoListTabs.some((t) => t.id === candidate)) return candidate;
+    return resolveSalaoProfissionalListDefaultTabId(salaoProfissionalColumns, showTodosTab);
+  }, [
+    salaoProfissionalMirror,
+    viewMode,
+    pinnedSalaoListTabId,
+    queueTabId,
+    salaoListTabs,
+    salaoProfissionalColumns,
+    showTodosTab,
+  ]);
+
+  const pinSalaoListTab = useCallback(
+    (tabId: string) => {
+      setPinnedSalaoListTabId(tabId);
+      if (typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem(salaoListTabStorageKey(tenantId), tabId);
+        } catch {
+          /* quota */
+        }
+      }
+      onQueueTabId(tabId);
+    },
+    [tenantId, onQueueTabId]
+  );
+
   const salaoSearchPool = useMemo(() => {
     if (!salaoEsteticaActive) return rows;
     if (salaoSearchRows && salaoSearchRows.length > 0) return salaoSearchRows;
@@ -956,6 +1063,9 @@ export function QueueSection({
 
   const isTabActive = useCallback(
     (tabId: string) => {
+      if (salaoProfissionalMirror && viewMode === "list") {
+        return resolvedSalaoListTabId === tabId;
+      }
       if (salaoProfissionalMirror) {
         return queueTabId === tabId;
       }
@@ -967,7 +1077,7 @@ export function QueueSection({
       }
       return queueTabId === tabId;
     },
-    [salaoProfissionalMirror, aviacaoLogisticsActive, salaoEsteticaActive, queueTabId, mroSegmentId]
+    [salaoProfissionalMirror, viewMode, resolvedSalaoListTabId, aviacaoLogisticsActive, salaoEsteticaActive, queueTabId, mroSegmentId]
   );
 
   const filterRowsForTab = useCallback(
@@ -1041,8 +1151,8 @@ export function QueueSection({
 
   const activeSalaoListTab = useMemo(() => {
     if (!salaoProfissionalMirror || salaoListTabs.length === 0) return null;
-    return resolveSalaoProfissionalListActiveTab(salaoListTabs, queueTabId);
-  }, [salaoProfissionalMirror, salaoListTabs, queueTabId]);
+    return resolveSalaoProfissionalListActiveTab(salaoListTabs, resolvedSalaoListTabId);
+  }, [salaoProfissionalMirror, salaoListTabs, resolvedSalaoListTabId]);
 
   const listRows = useMemo(() => {
     if (salaoProfissionalMirror && activeSalaoListTab) {
@@ -1087,14 +1197,29 @@ export function QueueSection({
 
   const handleViewModeChange = useCallback(
     (mode: QueueViewMode) => {
-      if (salaoProfissionalMirror) {
-        onQueueTabId(
-          resolveSalaoProfissionalListDefaultTabId(salaoProfissionalColumns, showTodosTab)
-        );
+      if (salaoProfissionalMirror && mode === "list") {
+        const stored = pinnedSalaoListTabId ?? readPinnedSalaoListTabId(tenantId);
+        if (stored && salaoListTabs.some((t) => t.id === stored)) {
+          pinSalaoListTab(stored);
+        } else {
+          onQueueTabId(
+            resolveSalaoProfissionalListDefaultTabId(salaoProfissionalColumns, showTodosTab)
+          );
+        }
       }
       onViewModeChange(mode);
     },
-    [salaoProfissionalMirror, salaoProfissionalColumns, showTodosTab, onQueueTabId, onViewModeChange]
+    [
+      salaoProfissionalMirror,
+      salaoProfissionalColumns,
+      showTodosTab,
+      pinnedSalaoListTabId,
+      tenantId,
+      salaoListTabs,
+      pinSalaoListTab,
+      onQueueTabId,
+      onViewModeChange,
+    ]
   );
 
   const openSalaoProUpsell = useCallback((context: SalaoProUpsellContext) => {
@@ -1401,7 +1526,11 @@ export function QueueSection({
                       type="button"
                       role="tab"
                       aria-selected={active}
-                      onClick={() => onQueueTabId(tab.id)}
+                      onClick={() =>
+                        salaoProfissionalMirror && viewMode === "list"
+                          ? pinSalaoListTab(tab.id)
+                          : onQueueTabId(tab.id)
+                      }
                       className={queueListTabButtonClass(active)}
                     >
                       <span className="inline-flex items-center gap-1">

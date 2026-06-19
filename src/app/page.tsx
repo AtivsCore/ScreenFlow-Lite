@@ -21,6 +21,7 @@ import { SERVICES_CRUD_TABLE } from "@/lib/db-tables";
 import { buildCadastroLookups, type CadastroLookups } from "@/lib/cadastro-valores";
 import { SegmentConfigModal } from "@/components/screenflow/segment-config-modal";
 import { EditAtendimentoModal } from "@/components/screenflow/edit-atendimento-modal";
+import { SalaoReagendamentosModal } from "@/components/screenflow/salao-reagendamentos-modal";
 import { printAtendimentoCard } from "@/lib/print-atendimento-card";
 import {
   buildAtendimentoShareSummary,
@@ -161,6 +162,7 @@ export default function Home() {
   const [proUpgradeTitle, setProUpgradeTitle] = useState<string | undefined>();
   const [proUpgradeDescription, setProUpgradeDescription] = useState<string | undefined>();
   const [appView, setAppView] = useState<AppView>("fila");
+  const [salaoReagendamentosOpen, setSalaoReagendamentosOpen] = useState(false);
   const [quickCrud, setQuickCrud] = useState<{
     title: string;
     table: string;
@@ -1168,12 +1170,14 @@ export default function Home() {
       try {
         await patchAtendimentoById(row.id, patch);
         if (row.id !== selectedId) setSelectedId(row.id);
-        setQueueTabId(resolveSalaoQueueTabClickId(SALAO_TAB.FILA_ATIVA));
+        if (queueViewMode === "kanban") {
+          setQueueTabId(resolveSalaoQueueTabClickId(SALAO_TAB.FILA_ATIVA));
+        }
       } finally {
         setPending(false);
       }
     },
-    [rows, visibleQueueTabs, patchAtendimentoById, selectedId]
+    [rows, visibleQueueTabs, patchAtendimentoById, selectedId, queueViewMode]
   );
 
   const salaoAgendaSendToBalcao = useCallback(
@@ -1242,7 +1246,9 @@ export default function Home() {
     setLoadError(null);
     try {
       await patchAtendimento({ observacao });
-      setQueueTabId(SALAO_TAB.AGUARDANDO_PAGAMENTO);
+      if (queueViewMode === "kanban") {
+        setQueueTabId(SALAO_TAB.AGUARDANDO_PAGAMENTO);
+      }
     } finally {
       setPending(false);
     }
@@ -1252,6 +1258,7 @@ export default function Home() {
     updateSalaoStatus,
     visibleQueueTabs,
     patchAtendimento,
+    queueViewMode,
   ]);
 
   const patchClienteNome = useCallback(
@@ -1629,11 +1636,15 @@ export default function Home() {
     <div className="flex h-screen max-h-screen min-h-0 w-full max-w-full min-w-0 flex-1 overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
       <AppSidebar
         activeView={appView}
+        salaoEsteticaActive={salaoEsteticaActive}
         onOpenSegment={() => setSegmentOpen(true)}
         onOpenSettings={openGeneralSettings}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         onOpenReports={() => setReportsOpen(true)}
         onOpenAgenda={handleOpenAgenda}
+        onOpenReagendamentos={
+          salaoEsteticaActive ? () => setSalaoReagendamentosOpen(true) : undefined
+        }
         onSignOut={() => void supabase?.auth.signOut()}
       />
 
@@ -2042,6 +2053,22 @@ export default function Home() {
         allowFullDatetime={proActive && editFromAgenda}
         onSaved={() => void refreshRows()}
       />
+
+      {salaoEsteticaActive ? (
+        <SalaoReagendamentosModal
+          open={salaoReagendamentosOpen}
+          onClose={() => setSalaoReagendamentosOpen(false)}
+          rows={rows}
+          cadastroCategories={tenantConfig.cadastroCategories}
+          cadastroLookups={cadastroLookups}
+          onRescueRow={(row) => {
+            setSalaoReagendamentosOpen(false);
+            setEditFromAgenda(false);
+            setEditRow(row);
+            setSelectedId(row.id);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

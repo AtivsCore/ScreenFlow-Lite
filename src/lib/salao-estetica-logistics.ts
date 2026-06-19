@@ -1564,6 +1564,26 @@ export function filterSalaoAgendaSearchRows(
   return rows.filter((row) => isSalaoAgendaSearchEligibleRow(row, queueTabs));
 }
 
+/** Cliente na aba/coluna de reagendamento (repescagem). */
+export function isSalaoReagendamentoRow(
+  row: Pick<AtendimentoLite, "observacao">
+): boolean {
+  const tabId = parseFilaTabId(row.observacao);
+  if (tabId === SALAO_TAB.REAGENDAR) return true;
+  return parseFilaPreset(row.observacao) === "reagendar";
+}
+
+/** Lista operacional de reagendamentos pendentes de resgate na recepção. */
+export function filterSalaoReagendamentoRescueRows(rows: AtendimentoLite[]): AtendimentoLite[] {
+  return rows
+    .filter((row) => isSalaoReagendamentoRow(row) && isActiveQueueRow(row))
+    .sort((a, b) => {
+      const th = horaComparable(a.hora_marcada) - horaComparable(b.hora_marcada);
+      if (th !== 0) return th;
+      return compareQueueArrivalOrder(a, b);
+    });
+}
+
 /** Agendamento com horário no dia de hoje (ações rápidas na Agenda). */
 export function isSalaoAgendaTodayRow(row: Pick<AtendimentoLite, "hora_marcada">): boolean {
   return isTodayHoraMarcada(row.hora_marcada);

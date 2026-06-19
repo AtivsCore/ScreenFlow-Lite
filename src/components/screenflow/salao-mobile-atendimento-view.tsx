@@ -29,7 +29,20 @@ import {
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Smartphone } from "lucide-react";
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
+function isStandaloneDisplay(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
 
 const PROF_STORAGE_PREFIX = "sf-salao-mobile-prof";
 
@@ -146,6 +159,9 @@ export function SalaoMobileAtendimentoView() {
   const [calling, setCalling] = useState(false);
   const [sendingToCaixa, setSendingToCaixa] = useState(false);
   const [callFeedback, setCallFeedback] = useState<string | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [iosInstallOpen, setIosInstallOpen] = useState(false);
+  const [standaloneApp, setStandaloneApp] = useState(false);
 
   const cadastroCategoriesRef = useRef<CadastroCategoryEntry[]>(restoreDefaultCadastroCategories());
   const initialLoadDoneRef = useRef(false);
@@ -156,6 +172,31 @@ export function SalaoMobileAtendimentoView() {
     [config.cadastroCategories]
   );
   const queueTabs = useMemo(() => resolveSalaoQueueTabs(config), [config]);
+
+  useEffect(() => {
+    setStandaloneApp(isStandaloneDisplay());
+    const onBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (installPrompt) {
+      try {
+        await installPrompt.prompt();
+        await installPrompt.userChoice;
+      } catch {
+        /* prompt indisponível */
+      } finally {
+        setInstallPrompt(null);
+      }
+      return;
+    }
+    setIosInstallOpen(true);
+  };
 
   useEffect(() => {
     cadastroCategoriesRef.current = cadastroCategories;
@@ -456,6 +497,17 @@ export function SalaoMobileAtendimentoView() {
             ))}
           </select>
         </label>
+
+        {!standaloneApp ? (
+          <button
+            type="button"
+            onClick={() => void handleInstallApp()}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-2 text-[11px] font-semibold text-emerald-200 transition hover:bg-emerald-950/50"
+          >
+            <Smartphone className="size-3.5" strokeWidth={2} aria-hidden />
+            Instalar no Celular (App)
+          </button>
+        ) : null}
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-3 pb-28">
@@ -607,6 +659,42 @@ export function SalaoMobileAtendimentoView() {
               className="mt-2 w-full rounded-xl border border-amber-500/60 bg-amber-950/40 py-3 text-sm font-bold text-amber-100 shadow-sm transition hover:bg-amber-950/70 active:bg-amber-950 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {sendingToCaixa ? "Enviando…" : "Enviar para o Caixa"}
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      {iosInstallOpen ? (
+        <>
+          <button
+            type="button"
+            aria-label="Fechar instruções de instalação"
+            className="fixed inset-0 z-40 bg-black/50"
+            onClick={() => setIosInstallOpen(false)}
+          />
+          <div
+            className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl border-t border-zinc-700 bg-zinc-900 px-4 pt-4 shadow-2xl"
+            style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+          >
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-zinc-700" />
+            <h2 className="text-sm font-semibold text-zinc-50">Instalar como aplicativo</h2>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+              Para usar como aplicativo nativo no celular:
+            </p>
+            <ol className="mt-3 space-y-2 text-xs leading-relaxed text-zinc-300">
+              <li>1. Clique no botão de Compartilhar do seu navegador 📤</li>
+              <li>2. Role para baixo e selecione &quot;Adicionar à Tela de Início&quot; 📱</li>
+            </ol>
+            <p className="mt-3 text-[10px] text-zinc-500">
+              O atalho manterá o tenant atual (
+              <span className="font-mono">{tenantId.slice(0, 8)}…</span>) para acesso direto.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIosInstallOpen(false)}
+              className="mt-4 w-full rounded-xl bg-zinc-800 py-3 text-sm font-semibold text-zinc-100"
+            >
+              Entendi
             </button>
           </div>
         </>

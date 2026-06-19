@@ -1,17 +1,19 @@
 "use client";
 
 import { ReportsSidebarIcon } from "@/components/screenflow/reports-modal";
-import { CalendarDays, Keyboard, LayoutGrid, LogOut, Settings } from "lucide-react";
+import { CalendarClock, CalendarDays, Keyboard, LayoutGrid, LogOut, Settings } from "lucide-react";
 
 export type AppView = "fila" | "agenda";
 
 type AppSidebarProps = {
   activeView?: AppView;
+  salaoEsteticaActive?: boolean;
   onOpenSegment: () => void;
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
   onOpenReports: () => void;
   onOpenAgenda: () => void;
+  onOpenReagendamentos?: () => void;
   onSignOut?: () => void;
 };
 
@@ -23,11 +25,13 @@ function navButtonClass(active: boolean) {
 
 export function AppSidebar({
   activeView = "fila",
+  salaoEsteticaActive = false,
   onOpenSegment,
   onOpenSettings,
   onOpenShortcuts,
   onOpenReports,
   onOpenAgenda,
+  onOpenReagendamentos,
   onSignOut,
 }: AppSidebarProps) {
   return (
@@ -53,6 +57,19 @@ export function AppSidebar({
           <CalendarDays className="size-5" strokeWidth={1.75} aria-hidden />
           <span className="text-[8px] font-semibold uppercase leading-none tracking-wide">Agenda</span>
         </button>
+
+        {salaoEsteticaActive && onOpenReagendamentos ? (
+          <button
+            type="button"
+            onClick={onOpenReagendamentos}
+            className={`flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition ${navButtonClass(false)}`}
+          >
+            <CalendarClock className="size-5" strokeWidth={1.75} aria-hidden />
+            <span className="text-[8px] font-semibold uppercase leading-none tracking-wide">
+              Reagend.
+            </span>
+          </button>
+        ) : null}
       </div>
 
       <button

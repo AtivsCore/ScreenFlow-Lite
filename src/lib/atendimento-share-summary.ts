@@ -13,12 +13,16 @@ import {
   getAviacaoStepLabel,
 } from "@/lib/aviacao-logistics";
 import {
+  calculateSalaoTotal,
+  formatSalaoCurrency,
+  formatSalaoTotalLabel,
   isSalaoEsteticaSegment,
   parseSalaoCadastroFields,
   parseSalaoServicosSolicitados,
   resolveSalaoCategoryDisplay,
   resolveSalaoLocalLabel,
   resolveSalaoProfissionalLabel,
+  resolveSalaoServicoIdsFromRow,
   resolveSalaoTabIdFromObservacao,
   resolveSalaoQueueTabLabel,
   normalizeSalaoStatusLabel,
@@ -79,10 +83,8 @@ function buildSalaoShareSummary(
   const categories = options.cadastroCategories.filter((c) => c.enabled);
   const estabelecimento = options.establishmentName?.trim() || "ScreenFlow Lite";
   const cliente = row.nome?.trim() || "—";
-  const horarioData = row.hora_marcada
-    ? formatHoraMarcada(row.hora_marcada)
-    : formatCreatedAt(row.created_at);
-  const servicos = resolveSalaoServicosLabel(row, options.cadastroLookups, categories);
+  const horarioMarcado = row.hora_marcada ? formatHoraMarcada(row.hora_marcada) : null;
+  const horarioData = horarioMarcado ?? formatCreatedAt(row.created_at);
   const profissional =
     resolveSalaoProfissionalLabel(row, categories, options.cadastroLookups) ?? "—";
   const local = resolveSalaoLocalLabel(row, categories, options.cadastroLookups) ?? "—";
@@ -95,16 +97,35 @@ function buildSalaoShareSummary(
     }
   }
 
+  const servicoIds = resolveSalaoServicoIdsFromRow(row);
+  const pricing = calculateSalaoTotal(servicoIds, options.cadastroLookups);
+  const servicoFallback = resolveSalaoServicosLabel(row, options.cadastroLookups, categories);
+
   const lines = [
     `${estabelecimento} - Confirmação de Atendimento`,
     "",
     `Cliente: ${cliente}`,
-    `Horário/Data: ${horarioData}`,
-    `Serviço(s): ${servicos}`,
-    `Profissional: ${profissional}`,
-    `Local: ${local}`,
-    `Etapa: ${etapa}`,
+    horarioMarcado ? `Horário Marcado: ${horarioMarcado}` : `Horário/Data: ${horarioData}`,
   ];
+
+  if (pricing.items.length > 0) {
+    lines.push("Serviços:");
+    for (const item of pricing.items) {
+      lines.push(
+        item.valor !== null
+          ? `  • ${item.nome}: ${formatSalaoCurrency(item.valor)}`
+          : `  • ${item.nome}`
+      );
+    }
+    const totalLabel = formatSalaoTotalLabel(row, options.cadastroLookups);
+    if (totalLabel) {
+      lines.push(`VALOR TOTAL DO ATENDIMENTO: ${totalLabel}`);
+    }
+  } else {
+    lines.push(`Serviço(s): ${servicoFallback}`);
+  }
+
+  lines.push(`Profissional: ${profissional}`, `Local: ${local}`, `Etapa: ${etapa}`);
 
   const observacoes = formatSalaoObservacaoForDisplay(row.observacao);
   if (observacoes) {
