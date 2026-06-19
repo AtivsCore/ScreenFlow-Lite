@@ -137,6 +137,7 @@ export default function Home() {
 
   const [rows, setRows] = useState<AtendimentoLite[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedRowSnapshot, setSelectedRowSnapshot] = useState<AtendimentoLite | null>(null);
   const [queueTabId, setQueueTabId] = useState<string>("tab-ordem");
   const [queueSearchQuery, setQueueSearchQuery] = useState("");
   const [searchDetailRow, setSearchDetailRow] = useState<AtendimentoLite | null>(null);
@@ -551,38 +552,49 @@ export default function Home() {
     salaoProfissionalKanbanColumns,
   ]);
 
-  const handleSelectId = useCallback(
-    (id: string) => {
+  const handleSelectRow = useCallback(
+    (row: AtendimentoLite) => {
       startTransition(() => {
-        setSelectedId(id);
+        setSelectedRowSnapshot(row);
+        setSelectedId(row.id);
         if (aviacaoLogisticsActive && aviacaoActiveColumns.length > 0) {
-          const row = rows.find((r) => r.id === id);
-          if (row) {
-            const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, aviacaoActiveColumns);
-            if (tabId) setQueueTabId(resolveAviacaoQueueTabClickId(tabId, mroSegmentId));
-          }
+          const tabId = resolveAviacaoTabIdFromObservacao(row.observacao, aviacaoActiveColumns);
+          if (tabId) setQueueTabId(resolveAviacaoQueueTabClickId(tabId, mroSegmentId));
         }
-        if (salaoEsteticaActive) {
-          const row = rows.find((r) => r.id === id);
-          if (row) {
-            const columnId = resolveSalaoProfissionalKanbanColumnId(
-              row,
-              salaoProfissionalKanbanColumns
-            );
-            if (columnId) setQueueTabId(columnId);
-          }
+        if (salaoEsteticaActive && queueViewMode !== "list") {
+          const columnId = resolveSalaoProfissionalKanbanColumnId(
+            row,
+            salaoProfissionalKanbanColumns
+          );
+          if (columnId) setQueueTabId(columnId);
         }
       });
     },
     [
       startTransition,
       aviacaoLogisticsActive,
-      salaoEsteticaActive,
       aviacaoActiveColumns,
-      salaoProfissionalKanbanColumns,
-      rows,
       mroSegmentId,
+      salaoEsteticaActive,
+      salaoProfissionalKanbanColumns,
+      queueViewMode,
     ]
+  );
+
+  const handleSelectId = useCallback(
+    (id: string) => {
+      const row =
+        rows.find((r) => r.id === id) ?? queueDisplayRows.find((r) => r.id === id);
+      if (row) {
+        handleSelectRow(row);
+        return;
+      }
+      startTransition(() => {
+        setSelectedRowSnapshot(null);
+        setSelectedId(id);
+      });
+    },
+    [rows, queueDisplayRows, handleSelectRow, startTransition]
   );
 
   const tabCounts = useMemo(
@@ -605,10 +617,15 @@ export default function Home() {
     ]
   );
 
-  const selected = useMemo(
-    () => (selectedId ? rows.find((r) => r.id === selectedId) ?? null : null),
-    [rows, selectedId]
-  );
+  const selected = useMemo(() => {
+    if (!selectedId) return null;
+    const fresh =
+      rows.find((r) => r.id === selectedId) ??
+      queueDisplayRows.find((r) => r.id === selectedId);
+    if (fresh) return fresh;
+    if (selectedRowSnapshot?.id === selectedId) return selectedRowSnapshot;
+    return null;
+  }, [selectedId, rows, queueDisplayRows, selectedRowSnapshot]);
 
   useEffect(() => {
     if (!useStaticBaseSelector) return;
@@ -1169,7 +1186,7 @@ export default function Home() {
       setLoadError(null);
       try {
         await patchAtendimentoById(row.id, patch);
-        if (row.id !== selectedId) setSelectedId(row.id);
+        if (row.id !== selectedId) handleSelectRow(row);
         if (queueViewMode === "kanban") {
           setQueueTabId(resolveSalaoQueueTabClickId(SALAO_TAB.FILA_ATIVA));
         }
@@ -1177,7 +1194,7 @@ export default function Home() {
         setPending(false);
       }
     },
-    [rows, visibleQueueTabs, patchAtendimentoById, selectedId, queueViewMode]
+    [rows, visibleQueueTabs, patchAtendimentoById, selectedId, queueViewMode, handleSelectRow]
   );
 
   const salaoAgendaSendToBalcao = useCallback(
@@ -1767,7 +1784,7 @@ export default function Home() {
               cadastroCategories={tenantConfig.cadastroCategories}
               cadastroLookups={cadastroLookups}
               selectedId={selectedId}
-              onSelectId={handleSelectId}
+              onSelectRow={handleSelectRow}
               loading={loading}
               supabase={supabase}
               onRefresh={() => void refreshRows()}
@@ -2065,7 +2082,7 @@ export default function Home() {
             setSalaoReagendamentosOpen(false);
             setEditFromAgenda(false);
             setEditRow(row);
-            setSelectedId(row.id);
+            handleSelectRow(row);
           }}
         />
       ) : null}

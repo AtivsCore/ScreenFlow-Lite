@@ -1,6 +1,6 @@
 "use client";
 
-import { buildCadastroLookups, buildCadastroPayload, type CadastroValores } from "@/lib/cadastro-valores";
+import { buildCadastroLookups, buildCadastroPayload, hydrateCadastroValores, type CadastroValores } from "@/lib/cadastro-valores";
 import { fetchServicos, type ServicoRow } from "@/lib/fetch-servicos";
 import { formatProfissionalLabel, type ProfissionalRow } from "@/lib/profissionais-display";
 import {
@@ -409,7 +409,16 @@ export const ClientPanel = memo(function ClientPanel({
       ? parseDocasCadastroFields(selected.observacao)
       : aviacaoMode
         ? parseAviacaoCadastroFields(selected.observacao)
-        : {};
+        : salaoMode
+          ? parseSalaoCadastroFields(selected.observacao)
+          : {};
+    const salaoHydrated = salaoMode
+      ? hydrateCadastroValores(vals, enabledCategories, {
+          profissional_id: selected.profissional_id,
+          local_id: selected.local_id,
+          especialidade_id: selected.especialidade_id,
+        })
+      : null;
     const next: Record<string, string> = {};
     for (const cat of enabledCategories) {
       if (docasMode && isDocasTextField(cat.id)) {
@@ -432,6 +441,12 @@ export const ClientPanel = memo(function ClientPanel({
             ? hydrateAviacaoHangarSelectValue(selected, opts)
             : hydrateAviacaoFormValue(cat.id, vals, selected.observacao, opts);
         if (v) next[cat.id] = v;
+      } else if (salaoMode && cat.id === SALAO_FIELD_SERVICOS) {
+        const t = inlineFields[SALAO_FIELD_SERVICOS];
+        if (t) next[cat.id] = t;
+      } else if (salaoMode) {
+        const v = salaoHydrated?.[cat.id];
+        if (v) next[cat.id] = v;
       } else {
         const v = vals[cat.id];
         if (v) next[cat.id] = v;
@@ -443,9 +458,12 @@ export const ClientPanel = memo(function ClientPanel({
     selected?.cadastro_valores,
     selected?.observacao,
     selected?.local_id,
+    selected?.profissional_id,
+    selected?.especialidade_id,
     enabledCategories,
     docasMode,
     aviacaoMode,
+    salaoMode,
     profissionais,
     locais,
     servicos,

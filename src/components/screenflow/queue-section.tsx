@@ -301,7 +301,7 @@ type KanbanCardProps = {
   segmentoId: string | null | undefined;
   meta: ReturnType<typeof resolveKanbanMeta>;
   deleting: string | null;
-  onSelectId: (id: string) => void;
+  onSelectRow: (row: AtendimentoLite) => void;
   onEditRow: (row: AtendimentoLite) => void;
   onPrintRow: (row: AtendimentoLite) => void;
   onCopyRow: (row: AtendimentoLite) => void;
@@ -322,7 +322,7 @@ const KanbanCard = memo(function KanbanCard({
   segmentoId,
   meta,
   deleting,
-  onSelectId,
+  onSelectRow,
   onEditRow,
   onPrintRow,
   onCopyRow,
@@ -430,11 +430,11 @@ const KanbanCard = memo(function KanbanCard({
       <article
         role="button"
         tabIndex={0}
-        onClick={() => onSelectId(row.id)}
+        onClick={() => onSelectRow(row)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            onSelectId(row.id);
+            onSelectRow(row);
           }
         }}
         className={cardShellClass}
@@ -492,11 +492,11 @@ const KanbanCard = memo(function KanbanCard({
     <article
       role="button"
       tabIndex={0}
-      onClick={() => onSelectId(row.id)}
+      onClick={() => onSelectRow(row)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelectId(row.id);
+          onSelectRow(row);
         }
       }}
       className={cardShellClass}
@@ -640,7 +640,7 @@ type QueueRowProps = {
   cadastroCategories: CadastroCategoryEntry[];
   cadastroLookups: CadastroLookups;
   deleting: string | null;
-  onSelectId: (id: string) => void;
+  onSelectRow: (row: AtendimentoLite) => void;
   onEditRow: (row: AtendimentoLite) => void;
   onPrintRow: (row: AtendimentoLite) => void;
   onCopyRow: (row: AtendimentoLite) => void;
@@ -660,7 +660,7 @@ const QueueRow = memo(function QueueRow({
   cadastroCategories,
   cadastroLookups,
   deleting,
-  onSelectId,
+  onSelectRow,
   onEditRow,
   onPrintRow,
   onCopyRow,
@@ -694,11 +694,11 @@ const QueueRow = memo(function QueueRow({
     <tr
       role="button"
       tabIndex={0}
-      onClick={() => onSelectId(row.id)}
+      onClick={() => onSelectRow(row)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onSelectId(row.id);
+          onSelectRow(row);
         }
       }}
       className={`cursor-pointer border-b border-zinc-100 transition-colors hover:bg-zinc-50/80 dark:border-zinc-800 dark:hover:bg-zinc-800/40 ${
@@ -866,7 +866,7 @@ type QueueSectionProps = {
   cadastroCategories: CadastroCategoryEntry[];
   cadastroLookups: CadastroLookups;
   selectedId: string | null;
-  onSelectId: (id: string) => void;
+  onSelectRow: (row: AtendimentoLite) => void;
   loading: boolean;
   supabase: SupabaseClient | null;
   onRefresh: () => void;
@@ -937,7 +937,7 @@ export function QueueSection({
   cadastroCategories,
   cadastroLookups,
   selectedId,
-  onSelectId,
+  onSelectRow,
   loading,
   supabase,
   onRefresh,
@@ -1628,7 +1628,7 @@ export function QueueSection({
                       cadastroCategories={enabledCategories}
                       cadastroLookups={cadastroLookups}
                       deleting={deleting}
-                      onSelectId={onSelectId}
+                      onSelectRow={onSelectRow}
                       onEditRow={onEditRow}
                       onPrintRow={onPrintRow}
                       onCopyRow={(r) => void handleCopyRow(r)}
@@ -1722,7 +1722,7 @@ export function QueueSection({
                                   salaoEsteticaActive
                                 )}
                                 deleting={deleting}
-                                onSelectId={onSelectId}
+                                onSelectRow={onSelectRow}
                                 onEditRow={onEditRow}
                                 onPrintRow={onPrintRow}
                                 onCopyRow={(r) => void handleCopyRow(r)}
@@ -1801,7 +1801,7 @@ export function QueueSection({
                               salaoEsteticaActive
                             )}
                             deleting={deleting}
-                            onSelectId={onSelectId}
+                            onSelectRow={onSelectRow}
                             onEditRow={onEditRow}
                             onPrintRow={onPrintRow}
                             onCopyRow={(r) => void handleCopyRow(r)}
