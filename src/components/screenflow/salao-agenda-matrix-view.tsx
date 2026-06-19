@@ -62,8 +62,12 @@ type SalaoAgendaMatrixViewProps = {
   salaoProPaywallActive?: boolean;
 };
 
-const SALAO_AGENDA_TIME_COL_CLASS = "w-[4.5rem] max-w-[4.5rem]";
-const SALAO_AGENDA_PROF_COL_CLASS = "w-[9rem] max-w-[9rem]";
+const SALAO_AGENDA_TIME_COL_STICKY =
+  "sticky top-0 left-0 z-30 border-r border-zinc-200 bg-zinc-50 px-2 shadow-sm dark:border-zinc-800 dark:bg-zinc-800/95";
+const SALAO_AGENDA_TIME_CELL_STICKY =
+  "sticky left-0 z-10 border-r border-zinc-200 bg-white px-2 dark:border-zinc-800 dark:bg-zinc-900";
+const SALAO_AGENDA_PROF_COL_STICKY =
+  "sticky top-0 z-20 bg-zinc-50 px-2 shadow-sm dark:bg-zinc-800/95";
 
 function SalaoAgendaOccupiedCard({
   row,
@@ -467,17 +471,23 @@ export function SalaoAgendaMatrixView({
           </p>
         ) : (
             <table className="w-full table-fixed border-collapse text-[11px]">
+              <colgroup>
+                <col className="w-[4.5rem]" />
+                {profissionais.map((p) => (
+                  <col key={p.id} className="w-[9rem]" />
+                ))}
+              </colgroup>
               <thead className="sticky top-0 z-20 bg-zinc-50 shadow-sm dark:bg-zinc-800/95">
                 <tr className="border-b border-zinc-200 dark:border-zinc-800">
                   <th
-                    className={`sticky top-0 left-0 z-30 ${SALAO_AGENDA_TIME_COL_CLASS} border-r border-zinc-200 bg-zinc-50 px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-800/95`}
+                    className={`${SALAO_AGENDA_TIME_COL_STICKY} py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500`}
                   >
                     Horário
                   </th>
                   {profissionais.map((prof) => (
                     <th
                       key={prof.id}
-                      className={`sticky top-0 z-20 ${SALAO_AGENDA_PROF_COL_CLASS} bg-zinc-50 px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-600 shadow-sm dark:bg-zinc-800/95 dark:text-zinc-300`}
+                      className={`${SALAO_AGENDA_PROF_COL_STICKY} py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300`}
                     >
                       <span className="inline-flex items-center justify-center gap-0.5">
                         <span>{prof.label}</span>
@@ -497,7 +507,7 @@ export function SalaoAgendaMatrixView({
                 {timeSlots.map((slot) => (
                   <tr key={slot} className="border-b border-zinc-100 dark:border-zinc-800/80">
                     <td
-                      className={`sticky left-0 z-10 ${SALAO_AGENDA_TIME_COL_CLASS} border-r border-zinc-200 bg-white px-2 py-1.5 font-mono text-[10px] font-semibold text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400`}
+                      className={`${SALAO_AGENDA_TIME_CELL_STICKY} py-1.5 font-mono text-[10px] font-semibold text-zinc-600 dark:text-zinc-400`}
                     >
                       {slot}
                     </td>
@@ -505,10 +515,7 @@ export function SalaoAgendaMatrixView({
                       const row = occupancy.get(`${prof.id}|${slot}`);
                       if (!row) {
                         return (
-                          <td
-                            key={prof.id}
-                            className={`${SALAO_AGENDA_PROF_COL_CLASS} max-w-0 p-1 align-top`}
-                          >
+                          <td key={prof.id} className="p-1 align-top">
                             <button
                               type="button"
                               title={`Agendar ${slot} — ${prof.label}`}
@@ -527,10 +534,7 @@ export function SalaoAgendaMatrixView({
                       const appearance = resolveSalaoAgendaSlotAppearance(row);
 
                       return (
-                        <td
-                          key={prof.id}
-                          className={`${SALAO_AGENDA_PROF_COL_CLASS} max-w-0 p-1 align-top`}
-                        >
+                        <td key={prof.id} className="p-1 align-top">
                           <SalaoAgendaOccupiedCard
                             row={row}
                             appearance={appearance}

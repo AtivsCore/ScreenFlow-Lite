@@ -13,7 +13,7 @@ import {
 import { resolvePublicTenantId } from "@/lib/tenant-id";
 import {
   buildSalaoChamarParaCadeiraPatch,
-  buildSalaoEnviarParaCaixaPatch,
+  buildSalaoMoveToAguardandoPagamentoObservacao,
   calculateSalaoTotal,
   filterSalaoMobileProfissionalDayRows,
   formatSalaoCurrency,
@@ -25,11 +25,37 @@ import {
   resolveSalaoServicoIdsFromRow,
 } from "@/lib/salao-estetica-logistics";
 import { useMergedSupabaseClient } from "@/hooks/use-merged-supabase-client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 
 const PROF_STORAGE_PREFIX = "sf-salao-mobile-prof";
+
+type AtendimentoLitePatch = {
+  status?: string;
+  observacao?: string | null;
+  local_id?: string | null;
+};
+
+async function patchAtendimentoLiteRow(
+  supabase: SupabaseClient | null,
+  id: string,
+  patch: AtendimentoLitePatch
+): Promise<void> {
+  if (supabase) {
+    const { error } = await supabase.from("atendimentos_lite").update(patch).eq("id", id);
+    if (!error) return;
+  }
+
+  const r = await fetch("/api/atendimentos-status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ...patch }),
+  });
+  const j = (await r.json()) as { ok?: boolean; message?: string };
+  if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
+}
 
 function profStorageKey(tenantId: string): string {
   return `${PROF_STORAGE_PREFIX}-${tenantId}`;
@@ -264,21 +290,7 @@ export function SalaoMobileAtendimentoView() {
     });
 
     try {
-      if (supabase) {
-        const { error } = await supabase
-          .from("atendimentos_lite")
-          .update(patch)
-          .eq("id", selectedRow.id);
-        if (error) throw new Error(error.message);
-      } else {
-        const r = await fetch("/api/atendimentos-status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: selectedRow.id, ...patch }),
-        });
-        const j = (await r.json()) as { ok?: boolean; message?: string };
-        if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
-      }
+      await patchAtendimentoLiteRow(supabase, selectedRow.id, patch);
 
       setRows((prev) =>
         prev.map((r) =>
@@ -312,26 +324,18 @@ export function SalaoMobileAtendimentoView() {
     setSendingToCaixa(true);
     setCallFeedback(null);
 
-    const patch = buildSalaoEnviarParaCaixaPatch(selectedRow, queueTabs);
+    const observacao = buildSalaoMoveToAguardandoPagamentoObservacao(
+      selectedRow.observacao,
+      queueTabs
+    );
+    const patch = { observacao };
 
     try {
-      if (supabase) {
-        const { error } = await supabase
-          .from("atendimentos_lite")
-          .update(patch)
-          .eq("id", selectedRow.id);
-        if (error) throw new Error(error.message);
-      } else {
-        const r = await fetch("/api/atendimentos-status", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: selectedRow.id, ...patch }),
-        });
-        const j = (await r.json()) as { ok?: boolean; message?: string };
-        if (!r.ok || !j.ok) throw new Error(j.message || `HTTP ${r.status}`);
-      }
+      await patchAtendimentoLiteRow(supabase, selectedRow.id, patch);
 
-      setRows((prev) => prev.filter((r) => r.id !== selectedRow.id));
+      setRows((prev) =>
+        prev.map((r) => (r.id === selectedRow.id ? { ...r, observacao: patch.observacao } : r))
+      );
       setCallFeedback("Cliente enviado para o caixa!");
       window.setTimeout(() => {
         setSelectedRow(null);
